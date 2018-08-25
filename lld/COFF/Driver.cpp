@@ -731,6 +731,29 @@ static void parseOrderFile(StringRef Arg) {
   }
 }
 
+static bool findPath(SectionChunk *From, SectionChunk *To,
+                     std::vector<SectionChunk *> &Path,
+                     std::set<SectionChunk *> &Seen) {
+  if (!Seen.insert(From).second)
+    return false;
+
+  Path.push_back(From);
+  if (From == To) {
+    for (SectionChunk *P : Path)
+      llvm::outs() << " " << P->getDebugName() << '\n';
+    return true;
+  }
+
+  for (Symbol *S : From->symbols())
+    if (auto *D = dyn_cast<DefinedRegular>(S))
+      if (auto *S = dyn_cast_or_null<SectionChunk>(D->getChunk()))
+        if (findPath(S, To, Path, Seen))
+          return true;
+
+  Path.pop_back();
+  return false;
+}
+
 void LinkerDriver::link(ArrayRef<const char *> ArgsArr) {
   // If the first command line argument is "/lib", link.exe acts like lib.exe.
   // We call our own implementation of lib.exe that understands bitcode files.
@@ -1436,6 +1459,50 @@ void LinkerDriver::link(ArrayRef<const char *> ArgsArr) {
   // functions.
   if (auto *Arg = Args.getLastArg(OPT_order))
     parseOrderFile(Arg->getValue());
+
+  if (const char *Path1 = getenv("PATH1")) {
+    if (const char *Path2 = getenv("PATH2")) {
+      StringRef Ignore = getenv("IGNORE");
+      Symbol *From = nullptr;
+      Symbol *To = nullptr;
+      std::set<SectionChunk *> Seen;
+
+      Symtab->forEachSymbol([&](Symbol *Sym) {
+        if (!isa<Lazy>(Sym)) {
+          if (Sym->getName() == Path1)
+            From = Sym;
+          if (Sym->getName() == Path2)
+            To = Sym;
+          if (Ignore.find(Sym->getName()) != StringRef::npos)
+            Seen.insert(cast<DefinedRegular>(Sym)->getChunk());
+        }
+      });
+      for (ObjFile *File : ObjFile::Instances)
+        for (Symbol *Sym : File->getSymbols())
+          if (Sym && !Sym->isExternal()) {
+            if (Sym->getName() == Path1)
+              From = Sym;
+            if (Sym->getName() == Path2)
+              To = Sym;
+          }
+
+      if (!From)
+        error("could not find From");
+      if (!To)
+        error("could not find To");
+
+      auto *FromD = dyn_cast<DefinedRegular>(From);
+      auto *ToD = dyn_cast<DefinedRegular>(To);
+
+      if (FromD && ToD && dyn_cast_or_null<SectionChunk>(FromD->getChunk()) &&
+          dyn_cast_or_null<SectionChunk>(ToD->getChunk())) {
+        std::vector<SectionChunk *> Path;
+        findPath(cast<SectionChunk>(FromD->getChunk()),
+                 cast<SectionChunk>(ToD->getChunk()), Path, Seen);
+      }
+    }
+  }
+
 
   // Identify unreferenced COMDAT sections.
   if (Config->DoGC)

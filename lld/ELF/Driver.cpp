@@ -57,6 +57,7 @@
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/raw_ostream.h"
 #include <cstdlib>
+#include <set>
 #include <utility>
 
 using namespace llvm;
@@ -1331,6 +1332,42 @@ static const char *LibcallRoutineNames[] = {
 #undef HANDLE_LIBCALL
 };
 
+template <typename ELFT>
+static bool findPath(InputSection *From, InputSection *To,
+                     std::vector<InputSection *> &Path,
+                     std::set<InputSection *> &Seen) {
+  if (!Seen.insert(From).second)
+    return false;
+
+  Path.push_back(From);
+  if (From == To) {
+    for (InputSection *P : Path)
+      llvm::outs() << " " << P->Name << '\n';
+    return true;
+  }
+
+  if (From->AreRelocsRela) {
+    for (const typename ELFT::Rela &Rel : From->template relas<ELFT>()) {
+      if (auto *D =
+              dyn_cast<Defined>(&From->getFile<ELFT>()->getRelocTargetSym(Rel)))
+        if (auto *S = dyn_cast_or_null<InputSection>(D->Section))
+          if (findPath<ELFT>(S, To, Path, Seen))
+            return true;
+    }
+  } else {
+    for (const typename ELFT::Rel &Rel : From->template rels<ELFT>()) {
+      if (auto *D =
+              dyn_cast<Defined>(&From->getFile<ELFT>()->getRelocTargetSym(Rel)))
+        if (auto *S = dyn_cast_or_null<InputSection>(D->Section))
+          if (findPath<ELFT>(S, To, Path, Seen))
+            return true;
+    }
+  }
+
+  Path.pop_back();
+  return false;
+}
+
 // Do actual linking. Note that when this function is called,
 // all linker scripts have already been parsed.
 template <class ELFT> void LinkerDriver::link(opt::InputArgList &Args) {
@@ -1517,6 +1554,45 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &Args) {
   // mergeable section.
   if (!Config->Relocatable)
     InputSections.push_back(createCommentSection());
+
+  if (const char *Path1 = getenv("PATH1")) {
+    if (const char *Path2 = getenv("PATH2")) {
+      Symbol *From = nullptr;
+      Symbol *To = nullptr;
+
+      for (Symbol *Sym : Symtab->getSymbols())
+        if (!Sym->isLazy()) {
+          if (Sym->getName() == Path1)
+            From = Sym;
+          if (Sym->getName() == Path2)
+            To = Sym;
+        }
+      for (InputFile *File : ObjectFiles)
+        for (Symbol *Sym : File->getSymbols())
+          if (Sym->isLocal()) {
+            if (Sym->getName() == Path1)
+              From = Sym;
+            if (Sym->getName() == Path2)
+              To = Sym;
+          }
+
+      if (!From)
+        error("could not find From");
+      if (!To)
+        error("could not find To");
+
+      auto *FromD = dyn_cast<Defined>(From);
+      auto *ToD = dyn_cast<Defined>(To);
+
+      if (FromD && ToD && dyn_cast_or_null<InputSection>(FromD->Section) &&
+          dyn_cast_or_null<InputSection>(ToD->Section)) {
+        std::vector<InputSection *> Path;
+        std::set<InputSection *> Seen;
+        findPath<ELFT>(cast<InputSection>(FromD->Section),
+                       cast<InputSection>(ToD->Section), Path, Seen);
+      }
+    }
+  }
 
   // Do size optimizations: garbage collection, merging of SHF_MERGE sections
   // and identical code folding.
