@@ -190,6 +190,7 @@ template <class ELFT> static void doGcSections() {
   SmallVector<InputSection *, 256> Q;
   CNamedSections.clear();
 
+  uint64_t QBit = 1;
   auto Enqueue = [&](InputSectionBase *Sec, uint64_t Offset) {
     // Skip over discarded sections. This in theory shouldn't happen, because
     // the ELF spec doesn't allow a relocation to point to a deduplicated
@@ -203,11 +204,11 @@ template <class ELFT> static void doGcSections() {
     // (splittable) sections, each piece of data has independent liveness bit.
     // So we explicitly tell it which offset is in use.
     if (auto *MS = dyn_cast<MergeInputSection>(Sec))
-      MS->getSectionPiece(Offset)->Live = true;
+      MS->getSectionPiece(Offset)->Live |= QBit;
 
-    if (Sec->Live)
+    if (Sec->Live & QBit)
       return;
-    Sec->Live = true;
+    Sec->Live |= QBit;
 
     // Add input section to the queue.
     if (InputSection *S = dyn_cast<InputSection>(Sec))
@@ -261,6 +262,13 @@ template <class ELFT> static void doGcSections() {
   // Mark all reachable sections.
   while (!Q.empty())
     forEachSuccessor<ELFT>(*Q.pop_back_val(), Enqueue);
+
+  for (StringRef S : Config->ModuleSymbol) {
+    QBit <<= 1;
+    MarkSymbol(Symtab->find(S));
+    while (!Q.empty())
+      forEachSuccessor<ELFT>(*Q.pop_back_val(), Enqueue);
+  }
 }
 
 // Before calling this function, Live bits are off for all
@@ -270,7 +278,7 @@ template <class ELFT> void elf::markLive() {
   if (!Config->GcSections) {
     // If -gc-sections is missing, no sections are removed.
     for (InputSectionBase *Sec : InputSections)
-      Sec->Live = true;
+      Sec->Live = 1;
 
     // If a DSO defines a symbol referenced in a regular object, it is needed.
     for (Symbol *Sym : Symtab->getSymbols())
@@ -304,7 +312,7 @@ template <class ELFT> void elf::markLive() {
     bool IsLinkOrder = (Sec->Flags & SHF_LINK_ORDER);
     bool IsRel = (Sec->Type == SHT_REL || Sec->Type == SHT_RELA);
     if (!IsAlloc && !IsLinkOrder && !IsRel)
-      Sec->Live = true;
+      Sec->Live = 1;
   }
 
   // Follow the graph to mark all live sections.

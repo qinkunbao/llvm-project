@@ -1082,6 +1082,7 @@ template <class ELFT> void InputSection::writeTo(uint8_t *Buf) {
 
 void InputSection::replace(InputSection *Other) {
   Alignment = std::max(Alignment, Other->Alignment);
+  Live |= Other->Live;
   Other->Repl = Repl;
   Other->Live = false;
 }

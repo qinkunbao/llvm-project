@@ -218,6 +218,9 @@ defm merge_exidx_entries: B<"merge-exidx-entries",
     "Enable merging .ARM.exidx entries (default)",
     "Disable merging .ARM.exidx entries">;
 
+defm module_symbol: Eq<"module-symbol", "Split given symbol into a separate module">,
+  MetaVarName<"<symbol>">;
+
 def nostdlib: F<"nostdlib">,
   HelpText<"Only search directories specified on the command line">;
 

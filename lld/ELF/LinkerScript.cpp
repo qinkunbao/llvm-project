@@ -528,8 +528,15 @@ void LinkerScript::processSectionCommands() {
   Ctx = nullptr;
 }
 
+static uint64_t getOutputSectionLiveness(InputSectionBase *IS) {
+  if (countPopulation(IS->Live) == 1)
+    return IS->Live;
+  return 1;
+}
+
 static OutputSection *findByName(ArrayRef<BaseCommand *> Vec,
-                                 StringRef Name) {
+                                 StringRef Name,
+                                 uint64_t Live) {
   for (BaseCommand *Base : Vec)
     if (auto *Sec = dyn_cast<OutputSection>(Base))
       if (Sec->Name == Name)
@@ -541,11 +548,13 @@ static OutputSection *createSection(InputSectionBase *IS,
                                     StringRef OutsecName) {
   OutputSection *Sec = Script->createOutputSection(OutsecName, "<internal>");
   Sec->addSection(cast<InputSection>(IS));
+  Sec->Live = getOutputSectionLiveness(IS);
   return Sec;
 }
 
-static OutputSection *addInputSec(StringMap<OutputSection *> &Map,
-                                  InputSectionBase *IS, StringRef OutsecName) {
+static OutputSection *
+addInputSec(std::map<std::pair<std::string, uint64_t>, OutputSection *> &Map,
+            InputSectionBase *IS, StringRef OutsecName) {
   // Sections with SHT_GROUP or SHF_GROUP attributes reach here only when the -r
   // option is given. A section with SHT_GROUP defines a "section group", and
   // its members have SHF_GROUP attribute. Usually these flags have already been
@@ -624,7 +633,7 @@ static OutputSection *addInputSec(StringMap<OutputSection *> &Map,
   //
   // Given the above issues, we instead merge sections by name and error on
   // incompatible types and flags.
-  OutputSection *&Sec = Map[OutsecName];
+  OutputSection *&Sec = Map[{OutsecName, getOutputSectionLiveness(IS)}];
   if (Sec) {
     Sec->addSection(cast<InputSection>(IS));
     return nullptr;
@@ -637,7 +646,7 @@ static OutputSection *addInputSec(StringMap<OutputSection *> &Map,
 // Add sections that didn't match any sections command.
 void LinkerScript::addOrphanSections() {
   unsigned End = SectionCommands.size();
-  StringMap<OutputSection *> Map;
+  std::map<std::pair<std::string, uint64_t>, OutputSection *> Map;
   std::vector<OutputSection *> V;
 
   auto Add = [&](InputSectionBase *S) {
@@ -652,7 +661,8 @@ void LinkerScript::addOrphanSections() {
       warn(toString(S) + " is being placed in '" + Name + "'");
 
     if (OutputSection *Sec =
-            findByName(makeArrayRef(SectionCommands).slice(0, End), Name)) {
+            findByName(makeArrayRef(SectionCommands).slice(0, End), Name,
+                       getOutputSectionLiveness(S))) {
       Sec->addSection(cast<InputSection>(S));
       return;
     }

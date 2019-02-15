@@ -54,14 +54,14 @@ public:
   // The next two bit fields are only used by InputSectionBase, but we
   // put them here so the struct packs better.
 
-  // The garbage collector sets sections' Live bits.
-  // If GC is disabled, all sections are considered live by default.
-  unsigned Live : 1;
-
   unsigned Bss : 1;
 
   // Set for sections that should not be folded by ICF.
   unsigned KeepUnique : 1;
+
+  // The garbage collector sets sections' Live bits.
+  // If GC is disabled, all sections are considered live by default.
+  uint64_t Live;
 
   // These corresponds to the fields in Elf_Shdr.
   uint32_t Alignment;
@@ -86,8 +86,8 @@ protected:
   SectionBase(Kind SectionKind, StringRef Name, uint64_t Flags,
               uint64_t Entsize, uint64_t Alignment, uint32_t Type,
               uint32_t Info, uint32_t Link)
-      : Name(Name), Repl(this), SectionKind(SectionKind), Live(false),
-        Bss(false), KeepUnique(false), Alignment(Alignment), Flags(Flags),
+      : Name(Name), Repl(this), SectionKind(SectionKind), Bss(false),
+        KeepUnique(false), Live(0), Alignment(Alignment), Flags(Flags),
         Entsize(Entsize), Type(Type), Link(Link), Info(Info) {}
 };
 
@@ -227,11 +227,11 @@ struct SectionPiece {
 
   uint32_t InputOff;
   uint32_t Hash;
-  int64_t OutputOff : 63;
-  uint64_t Live : 1;
+  int64_t OutputOff;
+  uint64_t Live;
 };
 
-static_assert(sizeof(SectionPiece) == 16, "SectionPiece is too big");
+static_assert(sizeof(SectionPiece) == 24, "SectionPiece is too big");
 
 // This corresponds to a SHF_MERGE section of an input file.
 class MergeInputSection : public InputSectionBase {
