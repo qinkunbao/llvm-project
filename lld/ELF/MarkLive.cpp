@@ -199,7 +199,6 @@ template <class ELFT> static void doGcSections() {
     if (Sec == &InputSection::Discarded)
       return;
 
-
     // Usually, a whole section is marked as live or dead, but in mergeable
     // (splittable) sections, each piece of data has independent liveness bit.
     // So we explicitly tell it which offset is in use.
@@ -230,11 +229,16 @@ template <class ELFT> static void doGcSections() {
   for (StringRef S : Script->ReferencedSymbols)
     MarkSymbol(Symtab->find(S));
 
+  std::vector<Symbol *> VRSymbols;
   // Preserve externally-visible symbols if the symbols defined by this
   // file can interrupt other ELF file's symbols at runtime.
   for (Symbol *S : Symtab->getSymbols())
-    if (S->includeInDynsym())
-      MarkSymbol(S);
+    if (S->includeInDynsym()) {
+      if (S->getName().startswith("Java_") && S->getName().contains("_vr_"))
+        VRSymbols.push_back(S);
+      else
+        MarkSymbol(S);
+    }
 
   // Preserve special sections and those which are specified in linker
   // script KEEP command.
@@ -266,6 +270,8 @@ template <class ELFT> static void doGcSections() {
   for (StringRef S : Config->ModuleSymbol) {
     QBit <<= 1;
     MarkSymbol(Symtab->find(S));
+    for (Symbol *Sym : VRSymbols)
+      MarkSymbol(Sym);
     while (!Q.empty())
       forEachSuccessor<ELFT>(*Q.pop_back_val(), Enqueue);
   }
