@@ -151,7 +151,8 @@ static bool needsInterpSection() {
 template <class ELFT> void elf::writeResult() { Writer<ELFT>().run(); }
 
 template <class ELFT> void Writer<ELFT>::removeEmptyPTLoad() {
-  llvm::erase_if(Phdrs, [&](const PhdrEntry *P) {
+  for (auto &M : Mods) {
+  llvm::erase_if(M.Phdrs, [&](const PhdrEntry *P) {
     if (P->p_type != PT_LOAD)
       return false;
     if (!P->FirstSec)
@@ -159,6 +160,7 @@ template <class ELFT> void Writer<ELFT>::removeEmptyPTLoad() {
     uint64_t Size = P->LastSec->Addr + P->LastSec->Size - P->FirstSec->Addr;
     return Size == 0;
   });
+  }
 }
 
 template <class ELFT> static void combineEhFrameSections() {
@@ -510,7 +512,7 @@ template <class ELFT> void Writer<ELFT>::run() {
   for (OutputSection *Sec : OutputSections)
     Sec->maybeCompress<ELFT>();
 
-  Script->allocateHeaders(Phdrs);
+  Script->allocateHeaders(Mods[0].Phdrs);
 
   // Remove empty PT_LOAD to avoid causing the dynamic linker to try to mmap a
   // 0 sized region. This has to be done late since only after assignAddresses
@@ -1797,14 +1799,15 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
   // image base and the dynamic section on mips includes the image base.
   if (!Config->Relocatable && !Config->OFormatBinary) {
     if (Script->hasPhdrsCommands()) {
-      Mods[0].Phdrs = Phdrs = Script->createPhdrs();
+      Phdrs = Script->createPhdrs();
       addPtArmExid(Phdrs);
+      Mods[0].Phdrs = Phdrs;
     } else {
       Phdrs = createPhdrs();
-      createPerModulePhdrs();
       addPtArmExid(Phdrs);
+      createPerModulePhdrs();
     }
-    Out::ProgramHeaders->Size = sizeof(Elf_Phdr) * Phdrs.size();
+    Out::ProgramHeaders->Size = sizeof(Elf_Phdr) * Mods[0].Phdrs.size();
 
     // Find the TLS segment. This happens before the section layout loop so that
     // Android relocation packing can look up TLS symbol addresses.
@@ -2112,7 +2115,8 @@ void Writer<ELFT>::createPerModulePhdrs() {
         Mods[I].Phdrs.push_back(Phdr);
         continue;
       }
-      if (Phdr->FirstSec->Live == (1 << I))
+      if (Phdr->FirstSec->Live == (1 << I) ||
+          (I == 0 && Phdr->FirstSec->Live == 0))
         Mods[I].Phdrs.push_back(Phdr);
     }
     if (I != 0) {
@@ -2516,7 +2520,7 @@ static void writeElfHeader(uint8_t *Buf, ArrayRef<PhdrEntry *> Phdrs) {
 
 template <class ELFT> void Writer<ELFT>::writeHeader() {
   uint8_t *Buf = Buffer->getBufferStart();
-  writeElfHeader<ELFT>(Buf, Phdrs);
+  writeElfHeader<ELFT>(Buf, Mods[0].Phdrs);
   auto *EHdr = reinterpret_cast<Elf_Ehdr *>(Buf);
 
   // Write the section header table.
@@ -2602,13 +2606,15 @@ template <class ELFT> void Writer<ELFT>::writeTrapInstr() {
   // Round up the file size of the last segment to the page boundary iff it is
   // an executable segment to ensure that other tools don't accidentally
   // trim the instruction padding (e.g. when stripping the file).
+  for (auto &M : Mods) {
   PhdrEntry *Last = nullptr;
-  for (PhdrEntry *P : Phdrs)
+  for (PhdrEntry *P : M.Phdrs)
     if (P->p_type == PT_LOAD)
       Last = P;
 
   if (Last && (Last->p_flags & PF_X))
     Last->p_memsz = Last->p_filesz = alignTo(Last->p_filesz, Target->PageSize);
+  }
 }
 
 // Write section contents to a mmap'ed file.
