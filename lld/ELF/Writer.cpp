@@ -36,6 +36,15 @@ using namespace lld;
 using namespace lld::elf;
 
 namespace {
+
+struct LoadableModule {
+  OutputSection *ElfHeader;
+  OutputSection *ProgramHeaders;
+  std::vector<PhdrEntry *> Phdrs;
+};
+
+std::vector<LoadableModule> Mods;
+
 // The writer writes a SymbolTable result to a file.
 template <class ELFT> class Writer {
 public:
@@ -60,6 +69,7 @@ private:
 
   std::vector<PhdrEntry *> createPhdrs();
   void removeEmptyPTLoad();
+  void createPerModulePhdrs();
   void addPtArmExid(std::vector<PhdrEntry *> &Phdrs);
   void assignFileOffsets();
   void assignFileOffsetsBinary();
@@ -442,6 +452,21 @@ template <class ELFT> static void createSyntheticSections() {
     // Add a sentinel to terminate .ARM.exidx. It helps an unwinder
     // to find the exact address range of the last entry.
     Add(make<ARMExidxSentinelSection>());
+
+  LoadableModule MainMod;
+  MainMod.ElfHeader = Out::ElfHeader;
+  MainMod.ProgramHeaders = Out::ProgramHeaders;
+  Mods.push_back(MainMod);
+  for (uint64_t I = 0; I != Config->ModuleSymbol.size(); ++I) {
+    LoadableModule Mod;
+    Mod.ElfHeader = make<OutputSection>(".mod.ehdr", SHT_PROGBITS, SHF_ALLOC);
+    Mod.ElfHeader->Live = 2 << I;
+    Script->SectionCommands.push_back(Mod.ElfHeader);
+    Mod.ProgramHeaders = make<OutputSection>(".mod.phdr", SHT_PROGBITS, SHF_ALLOC);
+    Mod.ProgramHeaders->Live = 2 << I;
+    Script->SectionCommands.push_back(Mod.ProgramHeaders);
+    Mods.push_back(Mod);
+  }
 }
 
 // The main function of the writer.
@@ -752,6 +777,9 @@ enum RankFlags {
 static unsigned getSectionRank(const OutputSection *Sec) {
   unsigned Rank = Sec->Live << 17;
 
+  if (Sec->Name == ".mod.ehdr" || Sec->Name == ".mod.phdr")
+    return Rank;
+
   // We want to put section specified by -T option first, so we
   // can start assigning VA starting from them later.
   if (Config->SectionStartMap.count(Sec->Name))
@@ -879,6 +907,12 @@ static unsigned getSectionRank(const OutputSection *Sec) {
 }
 
 static bool compareSections(const BaseCommand *ACmd, const BaseCommand *BCmd) {
+  // XXX
+  if (!isa<OutputSection>(ACmd))
+    return false;
+  if (!isa<OutputSection>(BCmd))
+    return true;
+
   const OutputSection *A = cast<OutputSection>(ACmd);
   const OutputSection *B = cast<OutputSection>(BCmd);
 
@@ -1762,8 +1796,14 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
   // The headers have to be created before finalize as that can influence the
   // image base and the dynamic section on mips includes the image base.
   if (!Config->Relocatable && !Config->OFormatBinary) {
-    Phdrs = Script->hasPhdrsCommands() ? Script->createPhdrs() : createPhdrs();
-    addPtArmExid(Phdrs);
+    if (Script->hasPhdrsCommands()) {
+      Mods[0].Phdrs = Phdrs = Script->createPhdrs();
+      addPtArmExid(Phdrs);
+    } else {
+      Phdrs = createPhdrs();
+      createPerModulePhdrs();
+      addPtArmExid(Phdrs);
+    }
     Out::ProgramHeaders->Size = sizeof(Elf_Phdr) * Phdrs.size();
 
     // Find the TLS segment. This happens before the section layout loop so that
@@ -2018,9 +2058,8 @@ template <class ELFT> std::vector<PhdrEntry *> Writer<ELFT>::createPhdrs() {
 
   // PT_GNU_RELRO includes all sections that should be marked as
   // read-only by dynamic linker after proccessing relocations.
-  for (uint64_t Live : {1, 2})
-    if (PhdrEntry *RelRo = createRelroPhdr(Live))
-      Ret.push_back(RelRo);
+  if (PhdrEntry *RelRo = createRelroPhdr(1))
+    Ret.push_back(RelRo);
 
   // PT_GNU_EH_FRAME is a special section pointing on .eh_frame_hdr.
   if (!In.EhFrame->empty() && In.EhFrameHdr && In.EhFrame->getParent() &&
@@ -2061,6 +2100,28 @@ template <class ELFT> std::vector<PhdrEntry *> Writer<ELFT>::createPhdrs() {
     }
   }
   return Ret;
+}
+
+template <class ELFT>
+void Writer<ELFT>::createPerModulePhdrs() {
+  for (uint64_t I = 0; I != Mods.size(); ++I) {
+    for (PhdrEntry *Phdr : Phdrs) {
+      if (Phdr->p_type == PT_INTERP || Phdr->p_type == PT_NOTE ||
+          Phdr->p_type == PT_GNU_STACK || Phdr->p_type == PT_OPENBSD_WXNEEDED) {
+        // These program headers need to be copied into every module.
+        Mods[I].Phdrs.push_back(Phdr);
+        continue;
+      }
+      if (Phdr->FirstSec->Live == (1 << I))
+        Mods[I].Phdrs.push_back(Phdr);
+    }
+    if (I != 0) {
+      if (PhdrEntry *RelRo = createRelroPhdr(1 << I)) {
+        Mods[I].Phdrs.push_back(RelRo);
+        Phdrs.push_back(RelRo);
+      }
+    }
+  }
 }
 
 template <class ELFT>

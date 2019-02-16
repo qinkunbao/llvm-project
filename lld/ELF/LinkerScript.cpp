@@ -836,6 +836,10 @@ static bool isDiscardable(OutputSection &Sec) {
   if (!Sec.Phdrs.empty())
     return false;
 
+  // XXX
+  if (Sec.Name == ".mod.ehdr" || Sec.Name == ".mod.phdr")
+    return false;
+
   // We do not want to remove sections that reference symbols in address and
   // other expressions. We add script symbols as undefined, and want to ensure
   // all of them are defined in the output, hence have to keep them.
