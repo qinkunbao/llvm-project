@@ -728,8 +728,8 @@ static bool isRelroSection(const OutputSection *Sec) {
 // * It is easy to check if a give branch was taken.
 // * It is easy two see how similar two ranks are (see getRankProximity).
 enum RankFlags {
-  RF_NOT_ADDR_SET = 1 << 18,
-  RF_NOT_ALLOC = 1 << 17,
+  RF_NOT_ADDR_SET = 1 << 31,
+  RF_NOT_ALLOC = 1 << 30,
   RF_NOT_INTERP = 1 << 16,
   RF_NOT_NOTE = 1 << 15,
   RF_WRITE = 1 << 14,
@@ -750,7 +750,7 @@ enum RankFlags {
 };
 
 static unsigned getSectionRank(const OutputSection *Sec) {
-  unsigned Rank = 0;
+  unsigned Rank = Sec->Live << 17;
 
   // We want to put section specified by -T option first, so we
   // can start assigning VA starting from them later.
@@ -1300,6 +1300,8 @@ template <class ELFT> void Writer<ELFT>::sortSections() {
     auto *OS = dyn_cast<OutputSection>(Base);
     if (!OS)
       continue;
+    if (OS->Live == 0)
+      OS->Live = 1;
     OS->SortRank = getSectionRank(OS);
 
     // We want to assign rude approximation values to OutSecOff fields
@@ -1998,7 +2000,7 @@ template <class ELFT> std::vector<PhdrEntry *> Writer<ELFT>::createPhdrs() {
   bool InRelroPhdr = false;
   bool IsRelroFinished = false;
   for (OutputSection *Sec : OutputSections) {
-    if (!needsPtLoad(Sec))
+    if (!needsPtLoad(Sec) || Sec->Live != 1)
       continue;
     if (isRelroSection(Sec)) {
       InRelroPhdr = true;
@@ -2402,17 +2404,16 @@ static uint8_t getAbiVersion() {
   return 0;
 }
 
-template <class ELFT> void Writer<ELFT>::writeHeader() {
-  uint8_t *Buf = Buffer->getBufferStart();
-
+template <typename ELFT>
+static void writeElfHeader(uint8_t *Buf, ArrayRef<PhdrEntry *> Phdrs) {
   // For executable segments, the trap instructions are written before writing
   // the header. Setting Elf header bytes to zero ensures that any unused bytes
   // in header are zero-cleared, instead of having trap instructions.
-  memset(Buf, 0, sizeof(Elf_Ehdr));
+  memset(Buf, 0, sizeof(typename ELFT::Ehdr));
   memcpy(Buf, "\177ELF", 4);
 
   // Write the ELF header.
-  auto *EHdr = reinterpret_cast<Elf_Ehdr *>(Buf);
+  auto *EHdr = reinterpret_cast<typename ELFT::Ehdr *>(Buf);
   EHdr->e_ident[EI_CLASS] = Config->Is64 ? ELFCLASS64 : ELFCLASS32;
   EHdr->e_ident[EI_DATA] = Config->IsLE ? ELFDATA2LSB : ELFDATA2MSB;
   EHdr->e_ident[EI_VERSION] = EV_CURRENT;
@@ -2422,19 +2423,18 @@ template <class ELFT> void Writer<ELFT>::writeHeader() {
   EHdr->e_machine = Config->EMachine;
   EHdr->e_version = EV_CURRENT;
   EHdr->e_entry = getEntryAddr();
-  EHdr->e_shoff = SectionHeaderOff;
   EHdr->e_flags = Config->EFlags;
-  EHdr->e_ehsize = sizeof(Elf_Ehdr);
+  EHdr->e_ehsize = sizeof(typename ELFT::Ehdr);
   EHdr->e_phnum = Phdrs.size();
-  EHdr->e_shentsize = sizeof(Elf_Shdr);
+  EHdr->e_shentsize = sizeof(typename ELFT::Shdr);
 
   if (!Config->Relocatable) {
-    EHdr->e_phoff = sizeof(Elf_Ehdr);
-    EHdr->e_phentsize = sizeof(Elf_Phdr);
+    EHdr->e_phoff = sizeof(typename ELFT::Ehdr);
+    EHdr->e_phentsize = sizeof(typename ELFT::Phdr);
   }
 
   // Write the program header table.
-  auto *HBuf = reinterpret_cast<Elf_Phdr *>(Buf + EHdr->e_phoff);
+  auto *HBuf = reinterpret_cast<typename ELFT::Phdr *>(Buf + EHdr->e_phoff);
   for (PhdrEntry *P : Phdrs) {
     HBuf->p_type = P->p_type;
     HBuf->p_flags = P->p_flags;
@@ -2446,6 +2446,12 @@ template <class ELFT> void Writer<ELFT>::writeHeader() {
     HBuf->p_align = P->p_align;
     ++HBuf;
   }
+}
+
+template <class ELFT> void Writer<ELFT>::writeHeader() {
+  uint8_t *Buf = Buffer->getBufferStart();
+  writeElfHeader<ELFT>(Buf, Phdrs);
+  auto *EHdr = reinterpret_cast<Elf_Ehdr *>(Buf);
 
   // Write the section header table.
   //
@@ -2456,7 +2462,8 @@ template <class ELFT> void Writer<ELFT>::writeHeader() {
   // the value. The sentinel values and fields are:
   // e_shnum = 0, SHdrs[0].sh_size = number of sections.
   // e_shstrndx = SHN_XINDEX, SHdrs[0].sh_link = .shstrtab section index.
-  auto *SHdrs = reinterpret_cast<Elf_Shdr *>(Buf + EHdr->e_shoff);
+  EHdr->e_shoff = SectionHeaderOff;
+  auto *SHdrs = reinterpret_cast<Elf_Shdr *>(Buf + SectionHeaderOff);
   size_t Num = OutputSections.size() + 1;
   if (Num >= SHN_LORESERVE)
     SHdrs->sh_size = Num;
