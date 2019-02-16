@@ -1930,6 +1930,30 @@ static uint64_t computeFlags(uint64_t Flags) {
   return Flags;
 }
 
+static PhdrEntry *createRelroPhdr(uint64_t Live) {
+  // Current dynamic loaders only support one PT_GNU_RELRO PHDR, give
+  // an error message if more than one PT_GNU_RELRO PHDR is required.
+  PhdrEntry *RelRo = make<PhdrEntry>(PT_GNU_RELRO, PF_R);
+  bool InRelroPhdr = false;
+  bool IsRelroFinished = false;
+  for (OutputSection *Sec : OutputSections) {
+    if (!needsPtLoad(Sec) || Sec->Live != Live)
+      continue;
+    if (isRelroSection(Sec)) {
+      InRelroPhdr = true;
+      if (!IsRelroFinished)
+        RelRo->add(Sec);
+      else
+        error("section: " + Sec->Name + " is not contiguous with other relro" +
+              " sections");
+    } else if (InRelroPhdr) {
+      InRelroPhdr = false;
+      IsRelroFinished = true;
+    }
+  }
+  return RelRo->FirstSec ? RelRo : nullptr;
+}
+
 // Decide which program headers to create and which sections to include in each
 // one.
 template <class ELFT> std::vector<PhdrEntry *> Writer<ELFT>::createPhdrs() {
@@ -1994,28 +2018,9 @@ template <class ELFT> std::vector<PhdrEntry *> Writer<ELFT>::createPhdrs() {
 
   // PT_GNU_RELRO includes all sections that should be marked as
   // read-only by dynamic linker after proccessing relocations.
-  // Current dynamic loaders only support one PT_GNU_RELRO PHDR, give
-  // an error message if more than one PT_GNU_RELRO PHDR is required.
-  PhdrEntry *RelRo = make<PhdrEntry>(PT_GNU_RELRO, PF_R);
-  bool InRelroPhdr = false;
-  bool IsRelroFinished = false;
-  for (OutputSection *Sec : OutputSections) {
-    if (!needsPtLoad(Sec) || Sec->Live != 1)
-      continue;
-    if (isRelroSection(Sec)) {
-      InRelroPhdr = true;
-      if (!IsRelroFinished)
-        RelRo->add(Sec);
-      else
-        error("section: " + Sec->Name + " is not contiguous with other relro" +
-              " sections");
-    } else if (InRelroPhdr) {
-      InRelroPhdr = false;
-      IsRelroFinished = true;
-    }
-  }
-  if (RelRo->FirstSec)
-    Ret.push_back(RelRo);
+  for (uint64_t Live : {1, 2})
+    if (PhdrEntry *RelRo = createRelroPhdr(Live))
+      Ret.push_back(RelRo);
 
   // PT_GNU_EH_FRAME is a special section pointing on .eh_frame_hdr.
   if (!In.EhFrame->empty() && In.EhFrameHdr && In.EhFrame->getParent() &&
