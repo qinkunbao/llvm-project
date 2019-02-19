@@ -779,14 +779,14 @@ enum RankFlags {
 static unsigned getSectionRank(const OutputSection *Sec) {
   unsigned Rank = Sec->Live << 17;
 
-  if (Sec->Name == ".mod.ehdr" || Sec->Name == ".mod.phdr")
-    return Rank;
-
   // We want to put section specified by -T option first, so we
   // can start assigning VA starting from them later.
   if (Config->SectionStartMap.count(Sec->Name))
     return Rank;
   Rank |= RF_NOT_ADDR_SET;
+
+  if (Sec->Name == ".mod.ehdr" || Sec->Name == ".mod.phdr")
+    return Rank;
 
   // Allocatable sections go first to reduce the total PT_LOAD size and
   // so debug info doesn't change addresses in actual code.
