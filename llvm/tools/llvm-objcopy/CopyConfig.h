@@ -81,6 +81,7 @@ struct CopyConfig {
   StringRef SplitDWO;
   StringRef SymbolsPrefix;
   DiscardType DiscardMode = DiscardType::None;
+  unsigned ExtractModule = 0;
 
   // Repeated options
   std::vector<StringRef> AddSection;

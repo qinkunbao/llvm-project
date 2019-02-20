@@ -137,6 +137,9 @@ def extract_dwo
       HelpText<
           "Remove all sections that are not DWARF .dwo sections from file">;
 
+defm extract_module : Eq<"extract-module", "Extract <n>th module from input file">,
+                      MetaVarName<"n">;
+
 def localize_hidden
     : Flag<["-", "--"], "localize-hidden">,
       HelpText<

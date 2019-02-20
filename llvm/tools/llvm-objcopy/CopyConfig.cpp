@@ -482,6 +482,12 @@ DriverConfig parseObjcopyOptions(ArrayRef<const char *> ArgsArr) {
 
   Config.PreserveDates = InputArgs.hasArg(OBJCOPY_preserve_dates);
 
+  if (auto *A = InputArgs.getLastArg(OBJCOPY_extract_module))
+    if (!to_integer(A->getValue(), Config.ExtractModule, 10)) {
+      StringRef Spelling = InputArgs.getArgString(A->getIndex());
+      error(Spelling + ": number expected, but got '" + A->getValue() + "'");
+    }
+
   if (Config.DecompressDebugSections &&
       Config.CompressionType != DebugCompressionType::None) {
     error("Cannot specify --compress-debug-sections at the same time as "

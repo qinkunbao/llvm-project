@@ -445,6 +445,14 @@ static Error handleArgs(const CopyConfig &Config, Object &Obj,
       return (Sec.Flags & SHF_ALLOC) == 0;
     };
 
+  if (Config.ExtractModule) {
+    RemovePred = [RemovePred, &Obj](const SectionBase &Sec) {
+      if (RemovePred(Sec))
+        return true;
+      return (Sec.Flags & SHF_ALLOC) != 0 && !Sec.ParentSegment;
+    };
+  }
+
   // Explicit copies:
   if (!Config.OnlySection.empty()) {
     RemovePred = [&Config, RemovePred, &Obj](const SectionBase &Sec) {
