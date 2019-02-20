@@ -293,10 +293,10 @@ void elf::addReservedSymbols() {
   ElfSym::Edata2 = Add("_edata", -1);
 }
 
-static OutputSection *findSection(StringRef Name) {
+static OutputSection *findSection(StringRef Name, unsigned Live = 1) {
   for (BaseCommand *Base : Script->SectionCommands)
     if (auto *Sec = dyn_cast<OutputSection>(Base))
-      if (Sec->Name == Name)
+      if (Sec->Name == Name && (Sec->Live == Live || (Sec->Live == 0 && Live == 1)))
         return Sec;
   return nullptr;
 }
@@ -323,8 +323,13 @@ template <class ELFT> static void createSyntheticSections() {
   Out::ProgramHeaders = make<OutputSection>("", 0, SHF_ALLOC);
   Out::ProgramHeaders->Alignment = Config->Wordsize;
 
-  if (needsInterpSection())
-    Add(createInterpSection());
+  if (needsInterpSection()) {
+    for (unsigned I = 0; I != Config->ModuleSymbol.size() + 1; ++I) {
+      InputSection *S = createInterpSection();
+      S->Live = 1 << I;
+      Add(S);
+    }
+  }
 
   if (Config->Strip != StripPolicy::All) {
     In.StrTab = make<StringTableSection>(".strtab", false);
@@ -785,6 +790,7 @@ static bool isRelroSection(const OutputSection *Sec) {
 enum RankFlags {
   RF_NOT_ADDR_SET = 1 << 31,
   RF_NOT_ALLOC = 1 << 30,
+  RF_NOT_MOD_HDR = 1 << 17,
   RF_NOT_INTERP = 1 << 16,
   RF_NOT_NOTE = 1 << 15,
   RF_WRITE = 1 << 14,
@@ -805,7 +811,7 @@ enum RankFlags {
 };
 
 static unsigned getSectionRank(const OutputSection *Sec) {
-  unsigned Rank = Sec->Live << 17;
+  unsigned Rank = Sec->Live << 18;
 
   // We want to put section specified by -T option first, so we
   // can start assigning VA starting from them later.
@@ -815,6 +821,7 @@ static unsigned getSectionRank(const OutputSection *Sec) {
 
   if (Sec->Name == ".mod.ehdr" || Sec->Name == ".mod.phdr")
     return Rank;
+  Rank |= RF_NOT_MOD_HDR;
 
   // Allocatable sections go first to reduce the total PT_LOAD size and
   // so debug info doesn't change addresses in actual code.
@@ -2136,10 +2143,26 @@ template <class ELFT> std::vector<PhdrEntry *> Writer<ELFT>::createPhdrs() {
 template <class ELFT>
 void Writer<ELFT>::createPerModulePhdrs() {
   for (uint64_t I = 0; I != Mods.size(); ++I) {
+    auto AddHdr = [&](unsigned Type, unsigned Flags) -> PhdrEntry * {
+      Phdrs.push_back(make<PhdrEntry>(Type, Flags));
+      Mods[I].Phdrs.push_back(Phdrs.back());
+      return Phdrs.back();
+    };
+
+    if (I != 0) {
+      AddHdr(PT_PHDR, PF_R)->add(Mods[I].ProgramHeaders);
+      if (OutputSection *Cmd = findSection(".interp", 1 << I))
+        AddHdr(PT_INTERP, Cmd->getPhdrFlags())->add(Cmd);
+    }
+
     for (PhdrEntry *Phdr : Phdrs) {
-      if (Phdr->p_type == PT_INTERP || Phdr->p_type == PT_NOTE ||
-          Phdr->p_type == PT_GNU_STACK || Phdr->p_type == PT_OPENBSD_WXNEEDED) {
+      // XXX this doesn't seem like the right way to do this
+      if (I != 0 && (Phdr->p_type == PT_INTERP || Phdr->p_type == PT_PHDR))
+        continue;
+      if (Phdr->p_type == PT_GNU_STACK || Phdr->p_type == PT_OPENBSD_WXNEEDED) {
         // These program headers need to be copied into every module.
+        // XXX we'll need to copy the notes as well (not just the headers but
+        // the notes themselves)
         Mods[I].Phdrs.push_back(Phdr);
         continue;
       }
@@ -2147,6 +2170,7 @@ void Writer<ELFT>::createPerModulePhdrs() {
           (I == 0 && Phdr->FirstSec->Live == 0))
         Mods[I].Phdrs.push_back(Phdr);
     }
+
     if (I != 0) {
       if (PhdrEntry *RelRo = createRelroPhdr(1 << I)) {
         Mods[I].Phdrs.push_back(RelRo);
@@ -2301,6 +2325,11 @@ template <class ELFT> void Writer<ELFT>::assignFileOffsets() {
   }
 }
 
+static uint64_t getEhdrOffset(OutputSection *OS) {
+  uint64_t ModIndex = OS->Live ? countTrailingZeros(OS->Live) : 0;
+  return Mods[ModIndex].ElfHeader->Offset;
+}
+
 // Finalize the program headers. We call this function after we assign
 // file offsets and VAs to all sections.
 template <class ELFT> void Writer<ELFT>::setPhdrs() {
@@ -2314,7 +2343,7 @@ template <class ELFT> void Writer<ELFT>::setPhdrs() {
         P->p_filesz += Last->Size;
 
       P->p_memsz = Last->Addr + Last->Size - First->Addr;
-      P->p_offset = First->Offset;
+      P->p_offset = First->Offset - getEhdrOffset(First);
       P->p_vaddr = First->Addr;
 
       if (!P->HasLMA)
