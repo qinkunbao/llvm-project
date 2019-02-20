@@ -756,13 +756,15 @@ void GroupSection::accept(MutableSectionVisitor &Visitor) {
 // Returns true IFF a section is wholly inside the range of a segment
 static bool sectionWithinSegment(const SectionBase &Section,
                                  const Segment &Segment) {
+  if (!(Section.Flags & SHF_ALLOC))
+    return false;
   // If a section is empty it should be treated like it has a size of 1. This is
   // to clarify the case when an empty section lies on a boundary between two
   // segments and ensures that the section "belongs" to the second segment and
   // not the first.
   uint64_t SecSize = Section.Size ? Section.Size : 1;
-  return Segment.Offset <= Section.OriginalOffset &&
-         Segment.Offset + Segment.FileSize >= Section.OriginalOffset + SecSize;
+  return Segment.VAddr <= Section.Addr &&
+         Segment.VAddr + Segment.MemSize >= Section.Addr + SecSize;
 }
 
 // Returns true IFF a segment's original offset is inside of another segment's
