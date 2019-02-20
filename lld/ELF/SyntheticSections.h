@@ -448,11 +448,13 @@ template <class ELFT> class DynamicSection final : public SyntheticSection {
   typedef typename ELFT::Shdr Elf_Shdr;
   typedef typename ELFT::Sym Elf_Sym;
 
+  StringTableSection *StrTab;
+
   // finalizeContents() fills this vector with the section contents.
   std::vector<std::pair<int32_t, std::function<uint64_t()>>> Entries;
 
 public:
-  DynamicSection();
+  DynamicSection(StringTableSection *StrTab);
   void finalizeContents() override;
   void writeTo(uint8_t *Buf) override;
   size_t getSize() const override { return Size; }

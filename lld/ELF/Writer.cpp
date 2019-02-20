@@ -41,6 +41,8 @@ struct LoadableModule {
   OutputSection *ElfHeader;
   OutputSection *ProgramHeaders;
   std::vector<PhdrEntry *> Phdrs;
+  SyntheticSection *Dynamic;
+  StringTableSection *DynStrTab;
 };
 
 std::vector<LoadableModule> Mods;
@@ -310,7 +312,7 @@ template <class ELFT> static void createSyntheticSections() {
   auto Add = [](InputSectionBase *Sec) { InputSections.push_back(Sec); };
 
   In.DynStrTab = make<StringTableSection>(".dynstr", true);
-  In.Dynamic = make<DynamicSection<ELFT>>();
+  In.Dynamic = make<DynamicSection<ELFT>>(In.DynStrTab);
   if (Config->AndroidPackDynRelocs) {
     In.RelaDyn = make<AndroidPackedRelocationSection<ELFT>>(
         Config->IsRela ? ".rela.dyn" : ".rel.dyn");
@@ -484,6 +486,8 @@ template <class ELFT> static void createSyntheticSections() {
   LoadableModule MainMod;
   MainMod.ElfHeader = Out::ElfHeader;
   MainMod.ProgramHeaders = Out::ProgramHeaders;
+  MainMod.DynStrTab = In.DynStrTab;
+  MainMod.Dynamic = In.Dynamic;
   Mods.push_back(MainMod);
   for (uint64_t I = 0; I != Config->ModuleSymbol.size(); ++I) {
     LoadableModule Mod;
@@ -493,7 +497,6 @@ template <class ELFT> static void createSyntheticSections() {
     Mod.ProgramHeaders = make<OutputSection>(".mod.phdr", SHT_PROGBITS, SHF_ALLOC);
     Mod.ProgramHeaders->Live = 2 << I;
     Script->SectionCommands.push_back(Mod.ProgramHeaders);
-    Mods.push_back(Mod);
 
     auto *Ehdr = make<ModEhdrSection<ELFT>>(I + 1);
     Ehdr->Live = 2 << I;
@@ -501,6 +504,14 @@ template <class ELFT> static void createSyntheticSections() {
     auto *Phdr = make<ModPhdrSection<ELFT>>(I + 1);
     Phdr->Live = 2 << I;
     Add(Phdr);
+    Mod.DynStrTab = make<StringTableSection>(".dynstr", true);
+    Mod.DynStrTab->Live = 2 << I;
+    Add(Mod.DynStrTab);
+    Mod.Dynamic = make<DynamicSection<ELFT>>(Mod.DynStrTab);
+    Mod.Dynamic->Live = 2 << I;
+    Add(Mod.Dynamic);
+
+    Mods.push_back(Mod);
   }
 }
 
@@ -767,7 +778,7 @@ static bool isRelroSection(const OutputSection *Sec) {
   // .dynamic section contains data for the dynamic linker, and
   // there's no need to write to it at runtime, so it's better to put
   // it into RELRO.
-  if (Sec == In.Dynamic->getParent())
+  if (Sec->Name == ".dynamic")
     return true;
 
   // Sections with some special names are put into RELRO. This is a
@@ -1866,7 +1877,8 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
   finalizeSynthetic(In.ShStrTab);
   finalizeSynthetic(In.StrTab);
   finalizeSynthetic(In.VerDef);
-  finalizeSynthetic(In.DynStrTab);
+  for (auto &M : Mods)
+    finalizeSynthetic(M.DynStrTab);
   finalizeSynthetic(In.Got);
   finalizeSynthetic(In.MipsGot);
   finalizeSynthetic(In.IgotPlt);
@@ -1880,7 +1892,8 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
   finalizeSynthetic(In.EhFrameHdr);
   finalizeSynthetic(InX<ELFT>::VerSym);
   finalizeSynthetic(InX<ELFT>::VerNeed);
-  finalizeSynthetic(In.Dynamic);
+  for (auto &M : Mods)
+    finalizeSynthetic(M.Dynamic);
 
   if (!Script->HasSectionsCommand && !Config->Relocatable)
     fixSectionAlignments();
@@ -2172,6 +2185,8 @@ void Writer<ELFT>::createPerModulePhdrs() {
     }
 
     if (I != 0) {
+      if (OutputSection *Sec = Mods[I].Dynamic->getParent())
+        AddHdr(PT_DYNAMIC, Sec->getPhdrFlags())->add(Sec);
       if (PhdrEntry *RelRo = createRelroPhdr(1 << I)) {
         Mods[I].Phdrs.push_back(RelRo);
         Phdrs.push_back(RelRo);

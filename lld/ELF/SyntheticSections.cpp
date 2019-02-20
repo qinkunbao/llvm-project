@@ -1194,9 +1194,9 @@ void StringTableSection::writeTo(uint8_t *Buf) {
 static unsigned getVerDefNum() { return Config->VersionDefinitions.size() + 1; }
 
 template <class ELFT>
-DynamicSection<ELFT>::DynamicSection()
+DynamicSection<ELFT>::DynamicSection(StringTableSection *StrTab)
     : SyntheticSection(SHF_ALLOC | SHF_WRITE, SHT_DYNAMIC, Config->Wordsize,
-                       ".dynamic") {
+                       ".dynamic"), StrTab(StrTab) {
   this->Entsize = ELFT::Is64Bits ? 16 : 8;
 
   // .dynamic section is not writable on MIPS and on Fuchsia OS
@@ -1209,21 +1209,21 @@ DynamicSection<ELFT>::DynamicSection()
   // Add strings to .dynstr early so that .dynstr's size will be
   // fixed early.
   for (StringRef S : Config->FilterList)
-    addInt(DT_FILTER, In.DynStrTab->addString(S));
+    addInt(DT_FILTER, StrTab->addString(S));
   for (StringRef S : Config->AuxiliaryList)
-    addInt(DT_AUXILIARY, In.DynStrTab->addString(S));
+    addInt(DT_AUXILIARY, StrTab->addString(S));
 
   if (!Config->Rpath.empty())
     addInt(Config->EnableNewDtags ? DT_RUNPATH : DT_RPATH,
-           In.DynStrTab->addString(Config->Rpath));
+           StrTab->addString(Config->Rpath));
 
   for (InputFile *File : SharedFiles) {
     SharedFile<ELFT> *F = cast<SharedFile<ELFT>>(File);
     if (F->IsNeeded)
-      addInt(DT_NEEDED, In.DynStrTab->addString(F->SoName));
+      addInt(DT_NEEDED, StrTab->addString(F->SoName));
   }
   if (!Config->SoName.empty())
-    addInt(DT_SONAME, In.DynStrTab->addString(Config->SoName));
+    addInt(DT_SONAME, StrTab->addString(Config->SoName));
 }
 
 template <class ELFT>
@@ -1323,7 +1323,7 @@ template <class ELFT> void DynamicSection<ELFT>::finalizeContents() {
   if (!Config->Shared && !Config->Relocatable && !Config->ZRodynamic)
     addInt(DT_DEBUG, 0);
 
-  if (OutputSection *Sec = In.DynStrTab->getParent())
+  if (OutputSection *Sec = StrTab->getParent())
     this->Link = Sec->SectionIndex;
 
   if (!In.RelaDyn->empty()) {
@@ -1376,8 +1376,8 @@ template <class ELFT> void DynamicSection<ELFT>::finalizeContents() {
 
   addInSec(DT_SYMTAB, In.DynSymTab);
   addInt(DT_SYMENT, sizeof(Elf_Sym));
-  addInSec(DT_STRTAB, In.DynStrTab);
-  addInt(DT_STRSZ, In.DynStrTab->getSize());
+  addInSec(DT_STRTAB, StrTab);
+  addInt(DT_STRSZ, StrTab->getSize());
   if (!Config->ZText)
     addInt(DT_TEXTREL, 0);
   if (In.GnuHashTab)
