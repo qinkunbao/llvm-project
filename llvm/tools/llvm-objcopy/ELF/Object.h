@@ -725,7 +725,7 @@ private:
   Object &Obj;
 
   void setParentSegment(Segment &Child);
-  void readProgramHeaders();
+  void readProgramHeaders(uint64_t PhdrOffset);
   void initGroupSection(GroupSection *GroupSec);
   void initSymbolTable(SymbolTableSection *SymTab);
   void readSectionHeaders();
@@ -735,7 +735,7 @@ public:
   ELFBuilder(const ELFObjectFile<ELFT> &ElfObj, Object &Obj)
       : ElfFile(*ElfObj.getELFFile()), Obj(Obj) {}
 
-  void build();
+  void build(uint64_t PhdrOffset);
 };
 
 class BinaryReader : public Reader {
@@ -752,6 +752,8 @@ class ELFReader : public Reader {
   Binary *Bin;
 
 public:
+  uint64_t PhdrOffset = 0;
+
   std::unique_ptr<Object> create() const override;
   explicit ELFReader(Binary *B) : Bin(B) {}
 };

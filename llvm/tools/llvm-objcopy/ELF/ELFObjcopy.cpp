@@ -449,6 +449,8 @@ static Error handleArgs(const CopyConfig &Config, Object &Obj,
     RemovePred = [RemovePred, &Obj](const SectionBase &Sec) {
       if (RemovePred(Sec))
         return true;
+      if (Sec.Name == ".mod.ehdr" || Sec.Name == ".mod.phdr")
+        return true;
       return (Sec.Flags & SHF_ALLOC) != 0 && !Sec.ParentSegment;
     };
   }
@@ -598,6 +600,26 @@ Error executeObjcopyOnRawBinary(const CopyConfig &Config, MemoryBuffer &In,
 Error executeObjcopyOnBinary(const CopyConfig &Config,
                              object::ELFObjectFileBase &In, Buffer &Out) {
   ELFReader Reader(&In);
+
+  if (Config.ExtractModule > 1) {
+    StringRef ModSlice;
+    unsigned ModuleIndex = 1;
+    for (auto Sec : In.sections()) {
+      StringRef Name;
+      Sec.getName(Name);
+      if (Name == ".mod.ehdr") {
+        ModuleIndex++;
+        if (ModuleIndex == Config.ExtractModule) {
+          ELFSectionRef ESec(Sec);
+          Reader.PhdrOffset = ESec.getOffset();
+          break;
+        }
+      }
+    }
+    if (!Reader.PhdrOffset)
+      error("couldn't find module");
+  }
+
   std::unique_ptr<Object> Obj = Reader.create();
   // Prefer OutputArch (-O<format>) if set, otherwise infer it from the input.
   const ElfType OutputElfType =

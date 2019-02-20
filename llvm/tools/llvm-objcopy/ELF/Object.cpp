@@ -883,16 +883,27 @@ template <class ELFT> void ELFBuilder<ELFT>::setParentSegment(Segment &Child) {
   }
 }
 
-template <class ELFT> void ELFBuilder<ELFT>::readProgramHeaders() {
+template <class ELFT>
+void ELFBuilder<ELFT>::readProgramHeaders(uint64_t PhdrOffset) {
   uint32_t Index = 0;
-  for (const auto &Phdr : unwrapOrError(ElfFile.program_headers())) {
+  ArrayRef<typename ELFT::Phdr> Phdrs;
+  if (!PhdrOffset) {
+    Phdrs = unwrapOrError(ElfFile.program_headers());
+  } else {
+    auto *Ehdr = reinterpret_cast<const typename ELFT::Ehdr *>(ElfFile.base() +
+                                                               PhdrOffset);
+    auto *FirstPhdr = reinterpret_cast<const typename ELFT::Phdr *>(
+        ElfFile.base() + PhdrOffset + Ehdr->e_phoff);
+    Phdrs = {FirstPhdr, Ehdr->e_phnum};
+  }
+  for (const auto &Phdr : Phdrs) {
     ArrayRef<uint8_t> Data{ElfFile.base() + Phdr.p_offset,
                            (size_t)Phdr.p_filesz};
     Segment &Seg = Obj.addSegment(Data);
     Seg.Type = Phdr.p_type;
     Seg.Flags = Phdr.p_flags;
-    Seg.OriginalOffset = Phdr.p_offset;
-    Seg.Offset = Phdr.p_offset;
+    Seg.OriginalOffset = Phdr.p_offset + PhdrOffset;
+    Seg.Offset = Phdr.p_offset + PhdrOffset;
     Seg.VAddr = Phdr.p_vaddr;
     Seg.PAddr = Phdr.p_paddr;
     Seg.FileSize = Phdr.p_filesz;
@@ -1172,7 +1183,7 @@ template <class ELFT> void ELFBuilder<ELFT>::readSectionHeaders() {
   }
 }
 
-template <class ELFT> void ELFBuilder<ELFT>::build() {
+template <class ELFT> void ELFBuilder<ELFT>::build(uint64_t PhdrOffset) {
   const auto &Ehdr = *ElfFile.getHeader();
 
   Obj.OSABI = Ehdr.e_ident[EI_OSABI];
@@ -1184,7 +1195,7 @@ template <class ELFT> void ELFBuilder<ELFT>::build() {
   Obj.Flags = Ehdr.e_flags;
 
   readSectionHeaders();
-  readProgramHeaders();
+  readProgramHeaders(PhdrOffset);
 
   uint32_t ShstrIndex = Ehdr.e_shstrndx;
   if (ShstrIndex == SHN_XINDEX)
@@ -1216,19 +1227,19 @@ std::unique_ptr<Object> ELFReader::create() const {
   auto Obj = llvm::make_unique<Object>();
   if (auto *O = dyn_cast<ELFObjectFile<ELF32LE>>(Bin)) {
     ELFBuilder<ELF32LE> Builder(*O, *Obj);
-    Builder.build();
+    Builder.build(PhdrOffset);
     return Obj;
   } else if (auto *O = dyn_cast<ELFObjectFile<ELF64LE>>(Bin)) {
     ELFBuilder<ELF64LE> Builder(*O, *Obj);
-    Builder.build();
+    Builder.build(PhdrOffset);
     return Obj;
   } else if (auto *O = dyn_cast<ELFObjectFile<ELF32BE>>(Bin)) {
     ELFBuilder<ELF32BE> Builder(*O, *Obj);
-    Builder.build();
+    Builder.build(PhdrOffset);
     return Obj;
   } else if (auto *O = dyn_cast<ELFObjectFile<ELF64BE>>(Bin)) {
     ELFBuilder<ELF64BE> Builder(*O, *Obj);
-    Builder.build();
+    Builder.build(PhdrOffset);
     return Obj;
   }
   error("Invalid file type");
