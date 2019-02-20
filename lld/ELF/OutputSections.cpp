@@ -294,8 +294,14 @@ template <class ELFT> void OutputSection::finalize() {
     // SHF_LINK_ORDER flag. The dependency is indicated by the sh_link field. We
     // need to translate the InputSection sh_link to the OutputSection sh_link,
     // all InputSections in the OutputSection have the same dependency.
-    if (auto *D = First->getLinkOrderDep())
-      Link = D->getParent()->SectionIndex;
+    if (auto *D = First->getLinkOrderDep()) {
+      // XXX none of this should be necessary, we should take more care to treat
+      // sections and linked sections as a unit
+      OutputSection *LinkSec = D->getParent();
+      for (OutputSection *S : OutputSections)
+        if (S->Name == LinkSec->Name && S->Live == Live)
+          Link = S->SectionIndex;
+    }
   }
 
   if (Type == SHT_GROUP) {
