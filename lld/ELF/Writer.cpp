@@ -94,6 +94,29 @@ private:
   uint64_t FileSize;
   uint64_t SectionHeaderOff;
 };
+
+template <typename ELFT>
+struct ModEhdrSection : SyntheticSection {
+  ModEhdrSection(unsigned ModIndex)
+      : SyntheticSection(SHF_ALLOC, SHT_PROGBITS, 1, ".mod.ehdr"),
+        ModIndex(ModIndex) {}
+  unsigned ModIndex;
+  size_t getSize() const { return sizeof(typename ELFT::Ehdr); }
+  void writeTo(uint8_t *Buf);
+};
+
+template <typename ELFT>
+struct ModPhdrSection : SyntheticSection {
+  ModPhdrSection(unsigned ModIndex)
+      : SyntheticSection(SHF_ALLOC, SHT_PROGBITS, 1, ".mod.phdr"),
+        ModIndex(ModIndex) {}
+  unsigned ModIndex;
+  size_t getSize() const {
+    return Mods[ModIndex].Phdrs.size() * sizeof(typename ELFT::Phdr);
+  }
+  void writeTo(uint8_t *Buf) {}
+};
+
 } // anonymous namespace
 
 static bool isSectionPrefix(StringRef Prefix, StringRef Name) {
@@ -468,6 +491,13 @@ template <class ELFT> static void createSyntheticSections() {
     Mod.ProgramHeaders->Live = 2 << I;
     Script->SectionCommands.push_back(Mod.ProgramHeaders);
     Mods.push_back(Mod);
+
+    auto *Ehdr = make<ModEhdrSection<ELFT>>(I + 1);
+    Ehdr->Live = 2 << I;
+    Add(Ehdr);
+    auto *Phdr = make<ModPhdrSection<ELFT>>(I + 1);
+    Phdr->Live = 2 << I;
+    Add(Phdr);
   }
 }
 
@@ -2516,6 +2546,10 @@ static void writeElfHeader(uint8_t *Buf, ArrayRef<PhdrEntry *> Phdrs) {
     HBuf->p_align = P->p_align;
     ++HBuf;
   }
+}
+
+template <class ELFT> void ModEhdrSection<ELFT>::writeTo(uint8_t *Buf) {
+  writeElfHeader<ELFT>(Buf, Mods[ModIndex].Phdrs);
 }
 
 template <class ELFT> void Writer<ELFT>::writeHeader() {
