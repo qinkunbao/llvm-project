@@ -33,6 +33,8 @@ namespace elf {
 class Defined;
 class GnuHashTableSection;
 class HashTableSection;
+class RelocationBaseSection;
+class RelrBaseSection;
 class SharedSymbol;
 class SymbolTableBaseSection;
 
@@ -455,13 +457,16 @@ template <class ELFT> class DynamicSection final : public SyntheticSection {
   SymbolTableBaseSection *SymTab;
   GnuHashTableSection *GnuHashTab;
   HashTableSection *HashTab;
+  RelocationBaseSection *RelaDyn;
+  RelrBaseSection *RelrDyn;
 
   // finalizeContents() fills this vector with the section contents.
   std::vector<std::pair<int32_t, std::function<uint64_t()>>> Entries;
 
 public:
   DynamicSection(StringTableSection *StrTab, SymbolTableBaseSection *SymTab,
-                 GnuHashTableSection *GnuHashTab, HashTableSection *HashTab);
+                 GnuHashTableSection *GnuHashTab, HashTableSection *HashTab,
+                 RelocationBaseSection *RelaDyn, RelrBaseSection *RelrDyn);
   void finalizeContents() override;
   void writeTo(uint8_t *Buf) override;
   size_t getSize() const override { return Size; }
@@ -480,7 +485,8 @@ private:
 
 class RelocationBaseSection : public SyntheticSection {
 public:
-  RelocationBaseSection(StringRef Name, uint32_t Type, int32_t DynamicTag,
+  RelocationBaseSection(SymbolTableBaseSection *SymTab, StringRef Name,
+                        uint32_t Type, int32_t DynamicTag,
                         int32_t SizeDynamicTag);
   void addReloc(RelType DynType, InputSectionBase *IS, uint64_t OffsetInSec,
                 Symbol *Sym);
@@ -508,7 +514,7 @@ class RelocationSection final : public RelocationBaseSection {
   typedef typename ELFT::Rela Elf_Rela;
 
 public:
-  RelocationSection(StringRef Name, bool Sort);
+  RelocationSection(SymbolTableBaseSection *SymTab, StringRef Name, bool Sort);
   unsigned getRelocOffset();
   void writeTo(uint8_t *Buf) override;
 
@@ -522,7 +528,8 @@ class AndroidPackedRelocationSection final : public RelocationBaseSection {
   typedef typename ELFT::Rela Elf_Rela;
 
 public:
-  AndroidPackedRelocationSection(StringRef Name);
+  AndroidPackedRelocationSection(SymbolTableBaseSection *SymTab,
+                                 StringRef Name);
 
   bool updateAllocSize() override;
   size_t getSize() const override { return RelocData.size(); }

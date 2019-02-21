@@ -1197,10 +1197,13 @@ template <class ELFT>
 DynamicSection<ELFT>::DynamicSection(StringTableSection *StrTab,
                                      SymbolTableBaseSection *SymTab,
                                      GnuHashTableSection *GnuHashTab,
-                                     HashTableSection *HashTab)
+                                     HashTableSection *HashTab,
+                                     RelocationBaseSection *RelaDyn,
+                                     RelrBaseSection *RelrDyn)
     : SyntheticSection(SHF_ALLOC | SHF_WRITE, SHT_DYNAMIC, Config->Wordsize,
                        ".dynamic"),
-      StrTab(StrTab), SymTab(SymTab), GnuHashTab(GnuHashTab), HashTab(HashTab) {
+      StrTab(StrTab), SymTab(SymTab), GnuHashTab(GnuHashTab), HashTab(HashTab),
+      RelaDyn(RelaDyn), RelrDyn(RelrDyn) {
   this->Entsize = ELFT::Is64Bits ? 16 : 8;
 
   // .dynamic section is not writable on MIPS and on Fuchsia OS
@@ -1332,9 +1335,9 @@ template <class ELFT> void DynamicSection<ELFT>::finalizeContents() {
   if (OutputSection *Sec = StrTab->getParent())
     this->Link = Sec->SectionIndex;
 
-  if (!In.RelaDyn->empty()) {
-    addInSec(In.RelaDyn->DynamicTag, In.RelaDyn);
-    addSize(In.RelaDyn->SizeDynamicTag, In.RelaDyn->getParent());
+  if (!RelaDyn->empty()) {
+    addInSec(RelaDyn->DynamicTag, RelaDyn);
+    addSize(RelaDyn->SizeDynamicTag, RelaDyn->getParent());
 
     bool IsRela = Config->IsRela;
     addInt(IsRela ? DT_RELAENT : DT_RELENT,
@@ -1344,16 +1347,16 @@ template <class ELFT> void DynamicSection<ELFT>::finalizeContents() {
     // The problem is in the tight relation between dynamic
     // relocations and GOT. So do not emit this tag on MIPS.
     if (Config->EMachine != EM_MIPS) {
-      size_t NumRelativeRels = In.RelaDyn->getRelativeRelocCount();
+      size_t NumRelativeRels = RelaDyn->getRelativeRelocCount();
       if (Config->ZCombreloc && NumRelativeRels)
         addInt(IsRela ? DT_RELACOUNT : DT_RELCOUNT, NumRelativeRels);
     }
   }
-  if (In.RelrDyn && !In.RelrDyn->Relocs.empty()) {
+  if (RelrDyn && !RelrDyn->Relocs.empty()) {
     addInSec(Config->UseAndroidRelrTags ? DT_ANDROID_RELR : DT_RELR,
-             In.RelrDyn);
+             RelrDyn);
     addSize(Config->UseAndroidRelrTags ? DT_ANDROID_RELRSZ : DT_RELRSZ,
-            In.RelrDyn->getParent());
+            RelrDyn->getParent());
     addInt(Config->UseAndroidRelrTags ? DT_ANDROID_RELRENT : DT_RELRENT,
            sizeof(Elf_Relr));
   }
@@ -1494,12 +1497,12 @@ uint32_t DynamicReloc::getSymIndex(SymbolTableBaseSection *SymTab) const {
   return 0;
 }
 
-RelocationBaseSection::RelocationBaseSection(StringRef Name, uint32_t Type,
+RelocationBaseSection::RelocationBaseSection(SymbolTableBaseSection *SymTab,
+                                             StringRef Name, uint32_t Type,
                                              int32_t DynamicTag,
                                              int32_t SizeDynamicTag)
     : SyntheticSection(SHF_ALLOC, Type, Config->Wordsize, Name),
-      DynamicTag(DynamicTag), SizeDynamicTag(SizeDynamicTag),
-      SymTab(In.DynSymTab) {}
+      DynamicTag(DynamicTag), SizeDynamicTag(SizeDynamicTag), SymTab(SymTab) {}
 
 void RelocationBaseSection::addReloc(RelType DynType, InputSectionBase *IS,
                                      uint64_t OffsetInSec, Symbol *Sym) {
@@ -1555,8 +1558,9 @@ static void encodeDynamicReloc(SymbolTableBaseSection *SymTab,
 }
 
 template <class ELFT>
-RelocationSection<ELFT>::RelocationSection(StringRef Name, bool Sort)
-    : RelocationBaseSection(Name, Config->IsRela ? SHT_RELA : SHT_REL,
+RelocationSection<ELFT>::RelocationSection(SymbolTableBaseSection *SymTab,
+                                           StringRef Name, bool Sort)
+    : RelocationBaseSection(SymTab, Name, Config->IsRela ? SHT_RELA : SHT_REL,
                             Config->IsRela ? DT_RELA : DT_REL,
                             Config->IsRela ? DT_RELASZ : DT_RELSZ),
       Sort(Sort) {
@@ -1587,9 +1591,9 @@ template <class ELFT> unsigned RelocationSection<ELFT>::getRelocOffset() {
 
 template <class ELFT>
 AndroidPackedRelocationSection<ELFT>::AndroidPackedRelocationSection(
-    StringRef Name)
+    SymbolTableBaseSection *SymTab, StringRef Name)
     : RelocationBaseSection(
-          Name, Config->IsRela ? SHT_ANDROID_RELA : SHT_ANDROID_REL,
+          SymTab, Name, Config->IsRela ? SHT_ANDROID_RELA : SHT_ANDROID_REL,
           Config->IsRela ? DT_ANDROID_RELA : DT_ANDROID_REL,
           Config->IsRela ? DT_ANDROID_RELASZ : DT_ANDROID_RELSZ) {
   this->Entsize = 1;

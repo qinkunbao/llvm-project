@@ -46,6 +46,8 @@ struct LoadableModule {
   SymbolTableBaseSection *DynSymTab = nullptr;
   GnuHashTableSection *GnuHashTab = nullptr;
   HashTableSection *HashTab = nullptr;
+  RelocationBaseSection *RelaDyn = nullptr;
+  RelrBaseSection *RelrDyn = nullptr;
 };
 
 std::vector<LoadableModule> Mods;
@@ -319,10 +321,11 @@ template <class ELFT> static void createSyntheticSections() {
     In.DynSymTab = make<SymbolTableSection<ELFT>>(*In.DynStrTab);
   if (Config->AndroidPackDynRelocs) {
     In.RelaDyn = make<AndroidPackedRelocationSection<ELFT>>(
-        Config->IsRela ? ".rela.dyn" : ".rel.dyn");
+        In.DynSymTab, Config->IsRela ? ".rela.dyn" : ".rel.dyn");
   } else {
     In.RelaDyn = make<RelocationSection<ELFT>>(
-        Config->IsRela ? ".rela.dyn" : ".rel.dyn", Config->ZCombreloc);
+        In.DynSymTab, Config->IsRela ? ".rela.dyn" : ".rel.dyn",
+        Config->ZCombreloc);
   }
   In.ShStrTab = make<StringTableSection>(".shstrtab", false);
 
@@ -398,8 +401,12 @@ template <class ELFT> static void createSyntheticSections() {
     }
   }
 
-  In.Dynamic = make<DynamicSection<ELFT>>(In.DynStrTab, In.DynSymTab,
-                                          In.GnuHashTab, In.HashTab);
+  if (Config->RelrPackDynRelocs)
+    In.RelrDyn = make<RelrSection<ELFT>>();
+
+  In.Dynamic =
+      make<DynamicSection<ELFT>>(In.DynStrTab, In.DynSymTab, In.GnuHashTab,
+                                 In.HashTab, In.RelaDyn, In.RelrDyn);
 
   if (Config->HasDynSymTab) {
     Add(In.Dynamic);
@@ -407,10 +414,8 @@ template <class ELFT> static void createSyntheticSections() {
     Add(In.RelaDyn);
   }
 
-  if (Config->RelrPackDynRelocs) {
-    In.RelrDyn = make<RelrSection<ELFT>>();
+  if (Config->RelrPackDynRelocs)
     Add(In.RelrDyn);
-  }
 
   // Add .got. MIPS' .got is so different from the other archs,
   // it has its own class.
@@ -440,7 +445,7 @@ template <class ELFT> static void createSyntheticSections() {
   // We always need to add rel[a].plt to output if it has entries.
   // Even for static linking it can contain R_[*]_IRELATIVE relocations.
   In.RelaPlt = make<RelocationSection<ELFT>>(
-      Config->IsRela ? ".rela.plt" : ".rel.plt", false /*Sort*/);
+      In.DynSymTab, Config->IsRela ? ".rela.plt" : ".rel.plt", false /*Sort*/);
   Add(In.RelaPlt);
 
   // The RelaIplt immediately follows .rel.plt (.rel.dyn for ARM) to ensure
@@ -450,6 +455,7 @@ template <class ELFT> static void createSyntheticSections() {
   // However, because the Android dynamic loader reads .rel.plt after .rel.dyn,
   // we can get the desired behaviour by placing the iplt section in .rel.plt.
   In.RelaIplt = make<RelocationSection<ELFT>>(
+      In.DynSymTab,
       (Config->EMachine == EM_ARM && !Config->AndroidPackDynRelocs)
           ? ".rel.dyn"
           : In.RelaPlt->Name,
@@ -540,13 +546,30 @@ template <class ELFT> static void createSyntheticSections() {
       }
     }
 
-    Mod.Dynamic = make<DynamicSection<ELFT>>(Mod.DynStrTab, Mod.DynSymTab,
-                                             Mod.GnuHashTab, Mod.HashTab);
+    if (Config->RelrPackDynRelocs) {
+      Mod.RelrDyn = make<RelrSection<ELFT>>();
+      Mod.RelrDyn->Live = 2 << I;
+      Add(Mod.RelrDyn);
+    }
+
+    if (Config->AndroidPackDynRelocs) {
+      Mod.RelaDyn = make<AndroidPackedRelocationSection<ELFT>>(
+          Mod.DynSymTab, Config->IsRela ? ".rela.dyn" : ".rel.dyn");
+    } else {
+      Mod.RelaDyn = make<RelocationSection<ELFT>>(
+          Mod.DynSymTab, Config->IsRela ? ".rela.dyn" : ".rel.dyn",
+          Config->ZCombreloc);
+    }
+    Mod.RelaDyn->Live = 2 << I;
+
+    Mod.Dynamic =
+        make<DynamicSection<ELFT>>(Mod.DynStrTab, Mod.DynSymTab, Mod.GnuHashTab,
+                                   Mod.HashTab, Mod.RelaDyn, Mod.RelrDyn);
     Mod.Dynamic->Live = 2 << I;
 
     if (Config->HasDynSymTab) {
       Add(Mod.Dynamic);
-      // XXX need rel[ar].dyn
+      Add(Mod.RelaDyn);
     }
 
     Mods.push_back(Mod);
