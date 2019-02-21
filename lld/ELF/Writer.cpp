@@ -41,8 +41,11 @@ struct LoadableModule {
   OutputSection *ElfHeader;
   OutputSection *ProgramHeaders;
   std::vector<PhdrEntry *> Phdrs;
-  SyntheticSection *Dynamic;
-  StringTableSection *DynStrTab;
+  SyntheticSection *Dynamic = nullptr;
+  StringTableSection *DynStrTab = nullptr;
+  SymbolTableBaseSection *DynSymTab = nullptr;
+  GnuHashTableSection *GnuHashTab = nullptr;
+  HashTableSection *HashTab = nullptr;
 };
 
 std::vector<LoadableModule> Mods;
@@ -312,7 +315,6 @@ template <class ELFT> static void createSyntheticSections() {
   auto Add = [](InputSectionBase *Sec) { InputSections.push_back(Sec); };
 
   In.DynStrTab = make<StringTableSection>(".dynstr", true);
-  In.Dynamic = make<DynamicSection<ELFT>>(In.DynStrTab);
   if (Config->AndroidPackDynRelocs) {
     In.RelaDyn = make<AndroidPackedRelocationSection<ELFT>>(
         Config->IsRela ? ".rela.dyn" : ".rel.dyn");
@@ -393,7 +395,12 @@ template <class ELFT> static void createSyntheticSections() {
       In.HashTab = make<HashTableSection>(In.DynSymTab);
       Add(In.HashTab);
     }
+  }
 
+  In.Dynamic = make<DynamicSection<ELFT>>(In.DynStrTab, In.DynSymTab,
+                                          In.GnuHashTab, In.HashTab);
+
+  if (Config->HasDynSymTab) {
     Add(In.Dynamic);
     Add(In.DynStrTab);
     Add(In.RelaDyn);
@@ -486,8 +493,11 @@ template <class ELFT> static void createSyntheticSections() {
   LoadableModule MainMod;
   MainMod.ElfHeader = Out::ElfHeader;
   MainMod.ProgramHeaders = Out::ProgramHeaders;
-  MainMod.DynStrTab = In.DynStrTab;
   MainMod.Dynamic = In.Dynamic;
+  MainMod.DynStrTab = In.DynStrTab;
+  MainMod.DynSymTab = In.DynSymTab;
+  MainMod.GnuHashTab = In.GnuHashTab;
+  MainMod.HashTab = In.HashTab;
   Mods.push_back(MainMod);
   for (uint64_t I = 0; I != Config->ModuleSymbol.size(); ++I) {
     LoadableModule Mod;
@@ -504,12 +514,39 @@ template <class ELFT> static void createSyntheticSections() {
     auto *Phdr = make<ModPhdrSection<ELFT>>(I + 1);
     Phdr->Live = 2 << I;
     Add(Phdr);
-    Mod.DynStrTab = make<StringTableSection>(".dynstr", true);
-    Mod.DynStrTab->Live = 2 << I;
-    Add(Mod.DynStrTab);
-    Mod.Dynamic = make<DynamicSection<ELFT>>(Mod.DynStrTab);
+
+    if (Config->HasDynSymTab) {
+      Mod.DynStrTab = make<StringTableSection>(".dynstr", true);
+      Mod.DynStrTab->Live = 2 << I;
+      Add(Mod.DynStrTab);
+
+      Mod.DynSymTab = make<SymbolTableSection<ELFT>>(*Mod.DynStrTab);
+      Mod.DynSymTab->Live = 2 << I;
+      Add(Mod.DynSymTab);
+
+      // XXX we'll probably need verneed at least
+
+      if (Config->GnuHash) {
+        Mod.GnuHashTab = make<GnuHashTableSection>(Mod.DynSymTab);
+        Mod.GnuHashTab->Live = 2 << I;
+        Add(Mod.GnuHashTab);
+      }
+
+      if (Config->SysvHash) {
+        Mod.HashTab = make<HashTableSection>(Mod.DynSymTab);
+        Mod.HashTab->Live = 2 << I;
+        Add(Mod.HashTab);
+      }
+    }
+
+    Mod.Dynamic = make<DynamicSection<ELFT>>(Mod.DynStrTab, Mod.DynSymTab,
+                                             Mod.GnuHashTab, Mod.HashTab);
     Mod.Dynamic->Live = 2 << I;
-    Add(Mod.Dynamic);
+
+    if (Config->HasDynSymTab) {
+      Add(Mod.Dynamic);
+      // XXX need rel[ar].dyn
+    }
 
     Mods.push_back(Mod);
   }
@@ -1868,11 +1905,14 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
 
   // Dynamic section must be the last one in this list and dynamic
   // symbol table section (DynSymTab) must be the first one.
-  finalizeSynthetic(In.DynSymTab);
+  for (auto &M : Mods)
+    finalizeSynthetic(M.DynSymTab);
   finalizeSynthetic(In.Bss);
   finalizeSynthetic(In.BssRelRo);
-  finalizeSynthetic(In.GnuHashTab);
-  finalizeSynthetic(In.HashTab);
+  for (auto &M : Mods) {
+    finalizeSynthetic(M.GnuHashTab);
+    finalizeSynthetic(M.HashTab);
+  }
   finalizeSynthetic(In.SymTabShndx);
   finalizeSynthetic(In.ShStrTab);
   finalizeSynthetic(In.StrTab);

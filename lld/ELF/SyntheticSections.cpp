@@ -1194,9 +1194,13 @@ void StringTableSection::writeTo(uint8_t *Buf) {
 static unsigned getVerDefNum() { return Config->VersionDefinitions.size() + 1; }
 
 template <class ELFT>
-DynamicSection<ELFT>::DynamicSection(StringTableSection *StrTab)
+DynamicSection<ELFT>::DynamicSection(StringTableSection *StrTab,
+                                     SymbolTableBaseSection *SymTab,
+                                     GnuHashTableSection *GnuHashTab,
+                                     HashTableSection *HashTab)
     : SyntheticSection(SHF_ALLOC | SHF_WRITE, SHT_DYNAMIC, Config->Wordsize,
-                       ".dynamic"), StrTab(StrTab) {
+                       ".dynamic"),
+      StrTab(StrTab), SymTab(SymTab), GnuHashTab(GnuHashTab), HashTab(HashTab) {
   this->Entsize = ELFT::Is64Bits ? 16 : 8;
 
   // .dynamic section is not writable on MIPS and on Fuchsia OS
@@ -1378,16 +1382,16 @@ template <class ELFT> void DynamicSection<ELFT>::finalizeContents() {
   }
   }
 
-  addInSec(DT_SYMTAB, In.DynSymTab);
+  addInSec(DT_SYMTAB, SymTab);
   addInt(DT_SYMENT, sizeof(Elf_Sym));
   addInSec(DT_STRTAB, StrTab);
   addInt(DT_STRSZ, StrTab->getSize());
   if (!Config->ZText)
     addInt(DT_TEXTREL, 0);
-  if (In.GnuHashTab)
-    addInSec(DT_GNU_HASH, In.GnuHashTab);
-  if (In.HashTab)
-    addInSec(DT_HASH, In.HashTab);
+  if (GnuHashTab)
+    addInSec(DT_GNU_HASH, GnuHashTab);
+  if (HashTab)
+    addInSec(DT_HASH, HashTab);
 
   if (StrTab == In.DynStrTab) {
   if (Out::PreinitArray) {
@@ -1426,14 +1430,14 @@ template <class ELFT> void DynamicSection<ELFT>::finalizeContents() {
     addInt(DT_MIPS_RLD_VERSION, 1);
     addInt(DT_MIPS_FLAGS, RHF_NOTPOT);
     addInt(DT_MIPS_BASE_ADDRESS, Target->getImageBase());
-    addInt(DT_MIPS_SYMTABNO, In.DynSymTab->getNumSymbols());
+    addInt(DT_MIPS_SYMTABNO, SymTab->getNumSymbols());
 
     add(DT_MIPS_LOCAL_GOTNO, [] { return In.MipsGot->getLocalEntriesNum(); });
 
     if (const Symbol *B = In.MipsGot->getFirstGlobalEntry())
       addInt(DT_MIPS_GOTSYM, B->DynsymIndex);
     else
-      addInt(DT_MIPS_GOTSYM, In.DynSymTab->getNumSymbols());
+      addInt(DT_MIPS_GOTSYM, SymTab->getNumSymbols());
     addInSec(DT_PLTGOT, In.MipsGot);
     if (In.MipsRldMap) {
       if (!Config->Pie)
