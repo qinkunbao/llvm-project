@@ -492,6 +492,8 @@ template <class ELFT> static void createSyntheticSections() {
   MainMod.DynSymTab = In.DynSymTab;
   MainMod.GnuHashTab = In.GnuHashTab;
   MainMod.HashTab = In.HashTab;
+  MainMod.RelaDyn = In.RelaDyn;
+  MainMod.RelrDyn = In.RelrDyn;
   Mods.push_back(MainMod);
   for (uint64_t I = 0; I != Config->ModuleSymbol.size(); ++I) {
     LoadableModule Mod;
@@ -1683,10 +1685,11 @@ template <class ELFT> void Writer<ELFT>::maybeAddThunks() {
     if (In.MipsGot)
       In.MipsGot->updateAllocSize();
 
-    Changed |= In.RelaDyn->updateAllocSize();
-
-    if (In.RelrDyn)
-      Changed |= In.RelrDyn->updateAllocSize();
+    for (auto &M : Mods) {
+      Changed |= M.RelaDyn->updateAllocSize();
+      if (M.RelrDyn)
+        Changed |= M.RelrDyn->updateAllocSize();
+    }
 
     if (!Changed)
       return;

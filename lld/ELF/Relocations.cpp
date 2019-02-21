@@ -759,22 +759,32 @@ private:
 };
 } // namespace
 
+static LoadableModule &getModuleFor(InputSectionBase *IS) {
+  if (auto *OS = dyn_cast_or_null<OutputSection>(IS->Parent)) {
+    unsigned ModIndex = OS->Live ? countTrailingZeros(OS->Live) : 0;
+    return Mods[ModIndex];
+  }
+  return Mods[0];
+}
+
 static void addRelativeReloc(InputSectionBase *IS, uint64_t OffsetInSec,
                              Symbol *Sym, int64_t Addend, RelExpr Expr,
                              RelType Type) {
+  LoadableModule &Mod = getModuleFor(IS);
+
   // Add a relative relocation. If RelrDyn section is enabled, and the
   // relocation offset is guaranteed to be even, add the relocation to
   // the RelrDyn section, otherwise add it to the RelaDyn section.
   // RelrDyn sections don't support odd offsets. Also, RelrDyn sections
   // don't store the addend values, so we must write it to the relocated
   // address.
-  if (In.RelrDyn && IS->Alignment >= 2 && OffsetInSec % 2 == 0) {
+  if (Mod.RelrDyn && IS->Alignment >= 2 && OffsetInSec % 2 == 0) {
     IS->Relocations.push_back({Expr, Type, OffsetInSec, Addend, Sym});
-    In.RelrDyn->Relocs.push_back({IS, OffsetInSec});
+    Mod.RelrDyn->Relocs.push_back({IS, OffsetInSec});
     return;
   }
-  In.RelaDyn->addReloc(Target->RelativeRel, IS, OffsetInSec, Sym, Addend, Expr,
-                       Type);
+  Mod.RelaDyn->addReloc(Target->RelativeRel, IS, OffsetInSec, Sym, Addend, Expr,
+                        Type);
 }
 
 template <class ELFT, class GotPltSection>
@@ -867,7 +877,8 @@ static void processRelocAux(InputSectionBase &Sec, RelExpr Expr, RelType Type,
       addRelativeReloc(&Sec, Offset, &Sym, Addend, Expr, Type);
       return;
     } else if (RelType Rel = Target->getDynRel(Type)) {
-      In.RelaDyn->addReloc(Rel, &Sec, Offset, &Sym, Addend, R_ADDEND, Type);
+      getModuleFor(&Sec).RelaDyn->addReloc(Rel, &Sec, Offset, &Sym, Addend,
+                                           R_ADDEND, Type);
 
       // MIPS ABI turns using of GOT and dynamic relocations inside out.
       // While regular ABI uses dynamic relocations to fill up GOT entries
