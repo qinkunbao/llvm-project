@@ -31,6 +31,7 @@
 namespace lld {
 namespace elf {
 class Defined;
+class GnuHashTableSection;
 class SharedSymbol;
 
 class SyntheticSection : public InputSection {
@@ -575,6 +576,8 @@ public:
   size_t getSymbolIndex(Symbol *Sym);
   ArrayRef<SymbolTableEntry> getSymbols() const { return Symbols; }
 
+  GnuHashTableSection *GnuHashTab = nullptr;
+
 protected:
   void sortSymTabSymbols();
 
@@ -611,7 +614,7 @@ public:
 // https://blogs.oracle.com/ali/entry/gnu_hash_elf_sections
 class GnuHashTableSection final : public SyntheticSection {
 public:
-  GnuHashTableSection();
+  GnuHashTableSection(SymbolTableBaseSection *SymTab);
   void finalizeContents() override;
   void writeTo(uint8_t *Buf) override;
   size_t getSize() const override { return Size; }
@@ -621,6 +624,8 @@ public:
   void addSymbols(std::vector<SymbolTableEntry> &Symbols);
 
 private:
+  SymbolTableBaseSection *SymTab;
+
   // See the comment in writeBloomFilter.
   enum { Shift2 = 26 };
 
@@ -642,12 +647,13 @@ private:
 
 class HashTableSection final : public SyntheticSection {
 public:
-  HashTableSection();
+  HashTableSection(SymbolTableBaseSection *SymTab);
   void finalizeContents() override;
   void writeTo(uint8_t *Buf) override;
   size_t getSize() const override { return Size; }
 
 private:
+  SymbolTableBaseSection *SymTab;
   size_t Size = 0;
 };
 

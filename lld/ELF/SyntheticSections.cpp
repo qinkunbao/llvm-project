@@ -1901,9 +1901,9 @@ void SymbolTableBaseSection::finalizeContents() {
   // Because the first symbol entry is a null entry, 1 is the first.
   getParent()->Info = 1;
 
-  if (In.GnuHashTab) {
+  if (GnuHashTab) {
     // NB: It also sorts Symbols to meet the GNU hash table requirements.
-    In.GnuHashTab->addSymbols(Symbols);
+    GnuHashTab->addSymbols(Symbols);
   } else if (Config->EMachine == EM_MIPS) {
     std::stable_sort(Symbols.begin(), Symbols.end(), sortMipsSymbols);
   }
@@ -2142,12 +2142,14 @@ size_t SymtabShndxSection::getSize() const {
 // DSOs very quickly. If you are sure that your dynamic linker knows
 // about .gnu.hash, you want to specify -hash-style=gnu. Otherwise, a
 // safe bet is to specify -hash-style=both for backward compatibilty.
-GnuHashTableSection::GnuHashTableSection()
-    : SyntheticSection(SHF_ALLOC, SHT_GNU_HASH, Config->Wordsize, ".gnu.hash") {
+GnuHashTableSection::GnuHashTableSection(SymbolTableBaseSection *SymTab)
+    : SyntheticSection(SHF_ALLOC, SHT_GNU_HASH, Config->Wordsize, ".gnu.hash"),
+      SymTab(SymTab) {
+  SymTab->GnuHashTab = this;
 }
 
 void GnuHashTableSection::finalizeContents() {
-  if (OutputSection *Sec = In.DynSymTab->getParent())
+  if (OutputSection *Sec = SymTab->getParent())
     getParent()->Link = Sec->SectionIndex;
 
   // Computes bloom filter size in word size. We want to allocate 12
@@ -2173,7 +2175,7 @@ void GnuHashTableSection::writeTo(uint8_t *Buf) {
 
   // Write a header.
   write32(Buf, NBuckets);
-  write32(Buf + 4, In.DynSymTab->getNumSymbols() - Symbols.size());
+  write32(Buf + 4, SymTab->getNumSymbols() - Symbols.size());
   write32(Buf + 8, MaskWords);
   write32(Buf + 12, Shift2);
   Buf += 16;
@@ -2274,20 +2276,20 @@ void GnuHashTableSection::addSymbols(std::vector<SymbolTableEntry> &V) {
     V.push_back({Ent.Sym, Ent.StrTabOffset});
 }
 
-HashTableSection::HashTableSection()
-    : SyntheticSection(SHF_ALLOC, SHT_HASH, 4, ".hash") {
+HashTableSection::HashTableSection(SymbolTableBaseSection *SymTab)
+    : SyntheticSection(SHF_ALLOC, SHT_HASH, 4, ".hash"), SymTab(SymTab) {
   this->Entsize = 4;
 }
 
 void HashTableSection::finalizeContents() {
-  if (OutputSection *Sec = In.DynSymTab->getParent())
+  if (OutputSection *Sec = SymTab->getParent())
     getParent()->Link = Sec->SectionIndex;
 
   unsigned NumEntries = 2;                       // nbucket and nchain.
-  NumEntries += In.DynSymTab->getNumSymbols();   // The chain entries.
+  NumEntries += SymTab->getNumSymbols();   // The chain entries.
 
   // Create as many buckets as there are symbols.
-  NumEntries += In.DynSymTab->getNumSymbols();
+  NumEntries += SymTab->getNumSymbols();
   this->Size = NumEntries * 4;
 }
 
@@ -2295,7 +2297,7 @@ void HashTableSection::writeTo(uint8_t *Buf) {
   // See comment in GnuHashTableSection::writeTo.
   memset(Buf, 0, Size);
 
-  unsigned NumSymbols = In.DynSymTab->getNumSymbols();
+  unsigned NumSymbols = SymTab->getNumSymbols();
 
   uint32_t *P = reinterpret_cast<uint32_t *>(Buf);
   write32(P++, NumSymbols); // nbucket
@@ -2304,7 +2306,7 @@ void HashTableSection::writeTo(uint8_t *Buf) {
   uint32_t *Buckets = P;
   uint32_t *Chains = P + NumSymbols;
 
-  for (const SymbolTableEntry &S : In.DynSymTab->getSymbols()) {
+  for (const SymbolTableEntry &S : SymTab->getSymbols()) {
     Symbol *Sym = S.Sym;
     StringRef Name = Sym->getName();
     unsigned I = Sym->DynsymIndex;

@@ -385,12 +385,12 @@ template <class ELFT> static void createSyntheticSections() {
     Add(InX<ELFT>::VerNeed);
 
     if (Config->GnuHash) {
-      In.GnuHashTab = make<GnuHashTableSection>();
+      In.GnuHashTab = make<GnuHashTableSection>(In.DynSymTab);
       Add(In.GnuHashTab);
     }
 
     if (Config->SysvHash) {
-      In.HashTab = make<HashTableSection>();
+      In.HashTab = make<HashTableSection>(In.DynSymTab);
       Add(In.HashTab);
     }
 
