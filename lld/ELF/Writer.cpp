@@ -315,6 +315,8 @@ template <class ELFT> static void createSyntheticSections() {
   auto Add = [](InputSectionBase *Sec) { InputSections.push_back(Sec); };
 
   In.DynStrTab = make<StringTableSection>(".dynstr", true);
+  if (Config->HasDynSymTab)
+    In.DynSymTab = make<SymbolTableSection<ELFT>>(*In.DynStrTab);
   if (Config->AndroidPackDynRelocs) {
     In.RelaDyn = make<AndroidPackedRelocationSection<ELFT>>(
         Config->IsRela ? ".rela.dyn" : ".rel.dyn");
@@ -372,7 +374,6 @@ template <class ELFT> static void createSyntheticSections() {
   }
 
   if (Config->HasDynSymTab) {
-    In.DynSymTab = make<SymbolTableSection<ELFT>>(*In.DynStrTab);
     Add(In.DynSymTab);
 
     InX<ELFT>::VerSym = make<VersionTableSection<ELFT>>();

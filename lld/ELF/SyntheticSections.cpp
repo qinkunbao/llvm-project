@@ -770,7 +770,7 @@ uint64_t MipsGotSection::getGlobalDynOffset(const InputFile *F,
   return G.DynTlsSymbols.lookup(Sym) * Config->Wordsize;
 }
 
-const Symbol *MipsGotSection::getFirstGlobalEntry() const {
+Symbol *MipsGotSection::getFirstGlobalEntry() const {
   if (Gots.empty())
     return nullptr;
   const FileGot &PrimGot = Gots.front();
@@ -1434,8 +1434,8 @@ template <class ELFT> void DynamicSection<ELFT>::finalizeContents() {
 
     add(DT_MIPS_LOCAL_GOTNO, [] { return In.MipsGot->getLocalEntriesNum(); });
 
-    if (const Symbol *B = In.MipsGot->getFirstGlobalEntry())
-      addInt(DT_MIPS_GOTSYM, B->DynsymIndex);
+    if (Symbol *B = In.MipsGot->getFirstGlobalEntry())
+      addInt(DT_MIPS_GOTSYM, SymTab->getSymIndex(B));
     else
       addInt(DT_MIPS_GOTSYM, SymTab->getNumSymbols());
     addInSec(DT_PLTGOT, In.MipsGot);
@@ -1488,9 +1488,9 @@ int64_t DynamicReloc::computeAddend() const {
   return getMipsPageAddr(OutputSec->Addr) + Addend;
 }
 
-uint32_t DynamicReloc::getSymIndex() const {
+uint32_t DynamicReloc::getSymIndex(SymbolTableBaseSection *SymTab) const {
   if (Sym && !UseSymVA)
-    return Sym->DynsymIndex;
+    return SymTab->getSymIndex(Sym);
   return 0;
 }
 
@@ -1498,7 +1498,8 @@ RelocationBaseSection::RelocationBaseSection(StringRef Name, uint32_t Type,
                                              int32_t DynamicTag,
                                              int32_t SizeDynamicTag)
     : SyntheticSection(SHF_ALLOC, Type, Config->Wordsize, Name),
-      DynamicTag(DynamicTag), SizeDynamicTag(SizeDynamicTag) {}
+      DynamicTag(DynamicTag), SizeDynamicTag(SizeDynamicTag),
+      SymTab(In.DynSymTab) {}
 
 void RelocationBaseSection::addReloc(RelType DynType, InputSectionBase *IS,
                                      uint64_t OffsetInSec, Symbol *Sym) {
@@ -1527,7 +1528,6 @@ void RelocationBaseSection::finalizeContents() {
   // When linking glibc statically, .rel{,a}.plt contains R_*_IRELATIVE
   // relocations due to IFUNC (e.g. strcpy). sh_link will be set to 0 in that
   // case.
-  InputSection *SymTab = Config->Relocatable ? In.SymTab : In.DynSymTab;
   if (SymTab && SymTab->getParent())
     getParent()->Link = SymTab->getParent()->SectionIndex;
   else
@@ -1545,12 +1545,13 @@ RelrBaseSection::RelrBaseSection()
                        Config->Wordsize, ".relr.dyn") {}
 
 template <class ELFT>
-static void encodeDynamicReloc(typename ELFT::Rela *P,
+static void encodeDynamicReloc(SymbolTableBaseSection *SymTab,
+                               typename ELFT::Rela *P,
                                const DynamicReloc &Rel) {
   if (Config->IsRela)
     P->r_addend = Rel.computeAddend();
   P->r_offset = Rel.getOffset();
-  P->setSymbolAndType(Rel.getSymIndex(), Rel.Type, Config->IsMips64EL);
+  P->setSymbolAndType(Rel.getSymIndex(SymTab), Rel.Type, Config->IsMips64EL);
 }
 
 template <class ELFT>
@@ -1562,20 +1563,20 @@ RelocationSection<ELFT>::RelocationSection(StringRef Name, bool Sort)
   this->Entsize = Config->IsRela ? sizeof(Elf_Rela) : sizeof(Elf_Rel);
 }
 
-static bool compRelocations(const DynamicReloc &A, const DynamicReloc &B) {
-  bool AIsRel = A.Type == Target->RelativeRel;
-  bool BIsRel = B.Type == Target->RelativeRel;
-  if (AIsRel != BIsRel)
-    return AIsRel;
-  return A.getSymIndex() < B.getSymIndex();
-}
-
 template <class ELFT> void RelocationSection<ELFT>::writeTo(uint8_t *Buf) {
-  if (Sort)
-    std::stable_sort(Relocs.begin(), Relocs.end(), compRelocations);
+  if (Sort) {
+    std::stable_sort(Relocs.begin(), Relocs.end(),
+                     [&](const DynamicReloc &A, const DynamicReloc &B) {
+                       bool AIsRel = A.Type == Target->RelativeRel;
+                       bool BIsRel = B.Type == Target->RelativeRel;
+                       if (AIsRel != BIsRel)
+                         return AIsRel;
+                       return A.getSymIndex(SymTab) < B.getSymIndex(SymTab);
+                     });
+  }
 
   for (const DynamicReloc &Rel : Relocs) {
-    encodeDynamicReloc<ELFT>(reinterpret_cast<Elf_Rela *>(Buf), Rel);
+    encodeDynamicReloc<ELFT>(SymTab, reinterpret_cast<Elf_Rela *>(Buf), Rel);
     Buf += Config->IsRela ? sizeof(Elf_Rela) : sizeof(Elf_Rel);
   }
 }
@@ -1657,7 +1658,7 @@ bool AndroidPackedRelocationSection<ELFT>::updateAllocSize() {
 
   for (const DynamicReloc &Rel : Relocs) {
     Elf_Rela R;
-    encodeDynamicReloc<ELFT>(&R, Rel);
+    encodeDynamicReloc<ELFT>(SymTab, &R, Rel);
 
     if (R.getType(Config->IsMips64EL) == Target->RelativeRel)
       Relatives.push_back(R);
@@ -1872,6 +1873,10 @@ SymbolTableBaseSection::SymbolTableBaseSection(StringTableSection &StrTabSec)
                        Config->Wordsize,
                        StrTabSec.isDynamic() ? ".dynsym" : ".symtab"),
       StrTabSec(StrTabSec) {}
+
+size_t SymbolTableBaseSection::getSymIndex(Symbol *Sym) {
+  return Sym->DynsymIndex;
+}
 
 // Orders symbols according to their positions in the GOT,
 // in compliance with MIPS ABI rules.
@@ -2227,7 +2232,7 @@ void GnuHashTableSection::writeHashTable(uint8_t *Buf) {
       continue;
     // Write a hash bucket. Hash buckets contain indices in the following hash
     // value table.
-    write32(Buckets + I->BucketIdx, I->Sym->DynsymIndex);
+    write32(Buckets + I->BucketIdx, SymTab->getSymIndex(I->Sym));
     OldBucket = I->BucketIdx;
   }
 }
@@ -2313,7 +2318,7 @@ void HashTableSection::writeTo(uint8_t *Buf) {
   for (const SymbolTableEntry &S : SymTab->getSymbols()) {
     Symbol *Sym = S.Sym;
     StringRef Name = Sym->getName();
-    unsigned I = Sym->DynsymIndex;
+    unsigned I = SymTab->getSymIndex(Sym);
     uint32_t Hash = hashSysV(Name) % NumSymbols;
     Chains[I] = Buckets[Hash];
     write32(Buckets + Hash, I);

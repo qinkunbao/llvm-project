@@ -210,7 +210,7 @@ public:
   // of GOT on MIPS platform. It is required to fill up MIPS-specific dynamic
   // table properties.
   // Returns nullptr if the global part is empty.
-  const Symbol *getFirstGlobalEntry() const;
+  Symbol *getFirstGlobalEntry() const;
 
   // Returns the number of entries in the local part of GOT including
   // the number of reserved entries.
@@ -420,7 +420,7 @@ public:
         UseSymVA(false), Addend(Addend), OutputSec(OutputSec) {}
 
   uint64_t getOffset() const;
-  uint32_t getSymIndex() const;
+  uint32_t getSymIndex(SymbolTableBaseSection *SymTab) const;
   const InputSectionBase *getInputSec() const { return InputSec; }
 
   // Computes the addend of the dynamic relocation. Note that this is not the
@@ -495,6 +495,7 @@ public:
   size_t getRelativeRelocCount() const { return NumRelativeRelocs; }
   void finalizeContents() override;
   int32_t DynamicTag, SizeDynamicTag;
+  SymbolTableBaseSection *SymTab;
 
 protected:
   std::vector<DynamicReloc> Relocs;
@@ -581,6 +582,7 @@ public:
   unsigned getNumSymbols() const { return Symbols.size() + 1; }
   size_t getSymbolIndex(Symbol *Sym);
   ArrayRef<SymbolTableEntry> getSymbols() const { return Symbols; }
+  size_t getSymIndex(Symbol *Sym);
 
   GnuHashTableSection *GnuHashTab = nullptr;
 
