@@ -1206,6 +1206,7 @@ DynamicSection<ELFT>::DynamicSection(StringTableSection *StrTab)
   if (Config->EMachine == EM_MIPS || Config->ZRodynamic)
     this->Flags = SHF_ALLOC;
 
+  if (StrTab == In.DynStrTab) {
   // Add strings to .dynstr early so that .dynstr's size will be
   // fixed early.
   for (StringRef S : Config->FilterList)
@@ -1224,6 +1225,7 @@ DynamicSection<ELFT>::DynamicSection(StringTableSection *StrTab)
   }
   if (!Config->SoName.empty())
     addInt(DT_SONAME, StrTab->addString(Config->SoName));
+  }
 }
 
 template <class ELFT>
@@ -1351,6 +1353,7 @@ template <class ELFT> void DynamicSection<ELFT>::finalizeContents() {
     addInt(Config->UseAndroidRelrTags ? DT_ANDROID_RELRENT : DT_RELRENT,
            sizeof(Elf_Relr));
   }
+  if (StrTab == In.DynStrTab) {
   // .rel[a].plt section usually consists of two parts, containing plt and
   // iplt relocations. It is possible to have only iplt relocations in the
   // output. In that case RelaPlt is empty and have zero offset, the same offset
@@ -1373,6 +1376,7 @@ template <class ELFT> void DynamicSection<ELFT>::finalizeContents() {
     }
     addInt(DT_PLTREL, Config->IsRela ? DT_RELA : DT_REL);
   }
+  }
 
   addInSec(DT_SYMTAB, In.DynSymTab);
   addInt(DT_SYMENT, sizeof(Elf_Sym));
@@ -1385,6 +1389,7 @@ template <class ELFT> void DynamicSection<ELFT>::finalizeContents() {
   if (In.HashTab)
     addInSec(DT_HASH, In.HashTab);
 
+  if (StrTab == In.DynStrTab) {
   if (Out::PreinitArray) {
     addOutSec(DT_PREINIT_ARRAY, Out::PreinitArray);
     addSize(DT_PREINIT_ARRAYSZ, Out::PreinitArray);
@@ -1447,6 +1452,7 @@ template <class ELFT> void DynamicSection<ELFT>::finalizeContents() {
                          unsigned Offset = Target->PltHeaderSize - 32;
                          return In.Plt->getVA(0) + Offset;
                        }});
+  }
   }
 
   addInt(DT_NULL, 0);
