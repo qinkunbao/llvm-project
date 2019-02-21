@@ -35,22 +35,9 @@ using namespace llvm::support::endian;
 using namespace lld;
 using namespace lld::elf;
 
+std::vector<LoadableModule> elf::Mods;
+
 namespace {
-
-struct LoadableModule {
-  OutputSection *ElfHeader;
-  OutputSection *ProgramHeaders;
-  std::vector<PhdrEntry *> Phdrs;
-  SyntheticSection *Dynamic = nullptr;
-  StringTableSection *DynStrTab = nullptr;
-  SymbolTableBaseSection *DynSymTab = nullptr;
-  GnuHashTableSection *GnuHashTab = nullptr;
-  HashTableSection *HashTab = nullptr;
-  RelocationBaseSection *RelaDyn = nullptr;
-  RelrBaseSection *RelrDyn = nullptr;
-};
-
-std::vector<LoadableModule> Mods;
 
 // The writer writes a SymbolTable result to a file.
 template <class ELFT> class Writer {

@@ -21,6 +21,14 @@ class OutputSection;
 class InputSectionBase;
 template <class ELFT> class ObjFile;
 class SymbolTable;
+class SyntheticSection;
+class StringTableSection;
+class SymbolTableBaseSection;
+class GnuHashTableSection;
+class HashTableSection;
+class RelocationBaseSection;
+class RelrBaseSection;
+
 template <class ELFT> void writeResult();
 
 // This describes a program header entry.
@@ -45,6 +53,21 @@ struct PhdrEntry {
 
   uint64_t LMAOffset = 0;
 };
+
+struct LoadableModule {
+  OutputSection *ElfHeader;
+  OutputSection *ProgramHeaders;
+  std::vector<PhdrEntry *> Phdrs;
+  SyntheticSection *Dynamic = nullptr;
+  StringTableSection *DynStrTab = nullptr;
+  SymbolTableBaseSection *DynSymTab = nullptr;
+  GnuHashTableSection *GnuHashTab = nullptr;
+  HashTableSection *HashTab = nullptr;
+  RelocationBaseSection *RelaDyn = nullptr;
+  RelrBaseSection *RelrDyn = nullptr;
+};
+
+extern std::vector<LoadableModule> Mods;
 
 void addReservedSymbols();
 llvm::StringRef getOutputSectionName(const InputSectionBase *S);
