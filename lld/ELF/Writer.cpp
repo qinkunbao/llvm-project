@@ -567,6 +567,17 @@ template <class ELFT> static void createSyntheticSections() {
 
     Mods.push_back(Mod);
   }
+
+  if (!Config->ModuleSymbol.empty()) {
+    // Add a dummy bss section that is always placed at the end, so that the
+    // dynamic loader reserves space for the modules. Also create a symbol so
+    // that the program can figure out how much space is reserved for the
+    // modules.
+    auto *ModEnd = make<BssSection>(".mod.end", Target->PageSize, 1);
+    ModEnd->Live = 1;
+    addOptionalRegular("__mod_end", ModEnd, 0);
+    Add(ModEnd);
+  }
 }
 
 // The main function of the writer.
@@ -886,6 +897,9 @@ static unsigned getSectionRank(const OutputSection *Sec) {
 
   if (Sec->Name == ".mod.ehdr" || Sec->Name == ".mod.phdr")
     return Rank;
+  if (Sec->Name == ".mod.end")
+    return Rank + ((Config->ModuleSymbol.size() + 1) << 18);
+
   Rank |= RF_NOT_MOD_HDR;
 
   // Allocatable sections go first to reduce the total PT_LOAD size and
@@ -2169,6 +2183,8 @@ template <class ELFT> std::vector<PhdrEntry *> Writer<ELFT>::createPhdrs() {
     if (((Sec->LMAExpr ||
           (Sec->LMARegion && (Sec->LMARegion != Load->FirstSec->LMARegion))) &&
          Load->LastSec != Out::ProgramHeaders) ||
+        (Sec->Live ? Sec->Live : 1) !=
+            (Load->FirstSec->Live ? Load->FirstSec->Live : 1) ||
         Sec->MemRegion != Load->FirstSec->MemRegion || Flags != NewFlags) {
 
       Load = AddHdr(PT_LOAD, NewFlags);
