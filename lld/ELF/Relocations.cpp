@@ -597,8 +597,10 @@ template <class ELFT> static void addCopyRelSymbol(SharedSymbol &SS) {
   // Look through the DSO's dynamic symbol table for aliases and create a
   // dynamic symbol for each one. This causes the copy relocation to correctly
   // interpose any aliases.
-  for (SharedSymbol *Sym : getSymbolsAt<ELFT>(SS))
+  for (SharedSymbol *Sym : getSymbolsAt<ELFT>(SS)) {
     replaceWithDefined(*Sym, Sec, 0, Sym->Size);
+    Mods[0].addSymbolToDynsym(Sym, true);
+  }
 
   In.RelaDyn->addReloc(Target->CopyRel, Sec, 0, &SS);
 }
@@ -984,8 +986,10 @@ static void processRelocAux(InputSectionBase &Sec, RelExpr Expr, RelType Type,
                   getLocation(Sec, Sym, Offset));
     if (!Sym.isInPlt())
       addPltEntry<ELFT>(In.Plt, In.GotPlt, In.RelaPlt, Target->PltRel, Sym);
-    if (!Sym.isDefined())
+    if (!Sym.isDefined()) {
       replaceWithDefined(Sym, In.Plt, getPltEntryOffset(Sym.PltIndex), 0);
+      Mods[0].addSymbolToDynsym(&Sym, true);
+    }
     Sym.NeedsPltAddr = true;
     Sec.Relocations.push_back({Expr, Type, Offset, Addend, &Sym});
     return;

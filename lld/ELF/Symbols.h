@@ -394,6 +394,7 @@ void replaceSymbol(Symbol *S, ArgT &&... Arg) {
   S->CanInline = Sym.CanInline;
   S->Traced = Sym.Traced;
   S->ScriptDefined = Sym.ScriptDefined;
+  S->DynsymIndex = Sym.DynsymIndex;
 
   // Symbols representing thread-local variables must be referenced by
   // TLS-aware relocations, and non-TLS symbols must be reference by

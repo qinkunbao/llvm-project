@@ -1492,7 +1492,7 @@ int64_t DynamicReloc::computeAddend() const {
 }
 
 uint32_t DynamicReloc::getSymIndex(SymbolTableBaseSection *SymTab) const {
-  if (Sym && !UseSymVA)
+  if (Sym && Sym->DynsymIndex && !UseSymVA)
     return SymTab->getSymIndex(Sym);
   return 0;
 }
@@ -1522,6 +1522,17 @@ void RelocationBaseSection::addReloc(RelType DynType,
 }
 
 void RelocationBaseSection::addReloc(const DynamicReloc &Reloc) {
+  if (!Reloc.UseSymVA && Reloc.Sym && Reloc.Sym->DynsymIndex != 0) {
+    unsigned ModIndex = 0;
+    for (unsigned I = 0; I != Mods.size(); ++I) {
+      if (Mods[I].RelaDyn == this) {
+        ModIndex = I;
+        break;
+      }
+    }
+    Mods[ModIndex].addSymbolToDynsym(Reloc.Sym, false);
+  }
+
   if (Reloc.Type == Target->RelativeRel)
     ++NumRelativeRelocs;
   Relocs.push_back(Reloc);
@@ -1879,7 +1890,7 @@ SymbolTableBaseSection::SymbolTableBaseSection(StringTableSection &StrTabSec)
       StrTabSec(StrTabSec) {}
 
 size_t SymbolTableBaseSection::getSymIndex(Symbol *Sym) {
-  return Sym->DynsymIndex;
+  return SymIndexes[Sym->DynsymIndex];
 }
 
 // Orders symbols according to their positions in the GOT,
@@ -1923,7 +1934,7 @@ void SymbolTableBaseSection::finalizeContents() {
 
   size_t I = 0;
   for (const SymbolTableEntry &S : Symbols)
-    S.Sym->DynsymIndex = ++I;
+    SymIndexes[S.Sym->DynsymIndex] = ++I;
 }
 
 // The ELF spec requires that all local symbols precede global symbols, so we
@@ -1957,12 +1968,26 @@ void SymbolTableBaseSection::sortSymTabSymbols() {
       *I++ = Entry;
 }
 
-void SymbolTableBaseSection::addSymbol(Symbol *B) {
+bool SymbolTableBaseSection::addSymbol(Symbol *B, bool IsDefined) {
   // Adding a local symbol to a .dynsym is a bug.
   assert(this->Type != SHT_DYNSYM || !B->isLocal());
 
+  if (this->Type == SHT_DYNSYM) {
+    if (SymIndexes.empty()) {
+      SymIndexes.resize(NumDynsyms);
+      for (unsigned I = 0; I != NumDynsyms; ++I)
+        SymIndexes[I] = 0;
+    }
+    if (SymIndexes[B->DynsymIndex]) {
+      Symbols[SymIndexes[B->DynsymIndex] - 1].IsDefined |= IsDefined;
+      return false;
+    }
+    SymIndexes[B->DynsymIndex] = Symbols.size() + 1;
+  }
+
   bool HashIt = B->isLocal();
-  Symbols.push_back({B, StrTabSec.addString(B->getName(), HashIt)});
+  Symbols.push_back({B, StrTabSec.addString(B->getName(), HashIt), IsDefined});
+  return true;
 }
 
 size_t SymbolTableBaseSection::getSymbolIndex(Symbol *Sym) {
@@ -1999,12 +2024,12 @@ static BssSection *getCommonSec(Symbol *Sym) {
   return nullptr;
 }
 
-static uint32_t getSymSectionIndex(Symbol *Sym) {
-  if (getCommonSec(Sym))
+static uint32_t getSymSectionIndex(const SymbolTableEntry &Ent) {
+  if (getCommonSec(Ent.Sym))
     return SHN_COMMON;
-  if (!isa<Defined>(Sym) || Sym->NeedsPltAddr)
+  if (!isa<Defined>(Ent.Sym) || Ent.Sym->NeedsPltAddr || !Ent.IsDefined)
     return SHN_UNDEF;
-  if (const OutputSection *OS = Sym->getOutputSection())
+  if (const OutputSection *OS = Ent.Sym->getOutputSection())
     return OS->SectionIndex >= SHN_LORESERVE ? (uint32_t)SHN_XINDEX
                                              : OS->SectionIndex;
   return SHN_ABS;
@@ -2031,7 +2056,7 @@ template <class ELFT> void SymbolTableSection<ELFT>::writeTo(uint8_t *Buf) {
     }
 
     ESym->st_name = Ent.StrTabOffset;
-    ESym->st_shndx = getSymSectionIndex(Ent.Sym);
+    ESym->st_shndx = getSymSectionIndex(Ent);
 
     // Copy symbol size if it is a defined symbol. st_size is not significant
     // for undefined symbols, so whether copying it or not is up to us if that's
@@ -2048,8 +2073,10 @@ template <class ELFT> void SymbolTableSection<ELFT>::writeTo(uint8_t *Buf) {
     // occur if -r is given).
     if (BssSection *CommonSec = getCommonSec(Ent.Sym))
       ESym->st_value = CommonSec->Alignment;
-    else
+    else if (Ent.IsDefined)
       ESym->st_value = Sym->getVA();
+    else
+      ESym->st_value = 0;
 
     ++ESym;
   }
@@ -2097,7 +2124,7 @@ void SymtabShndxSection::writeTo(uint8_t *Buf) {
   // we need to write actual index, otherwise, we must write SHN_UNDEF(0).
   Buf += 4; // Ignore .symtab[0] entry.
   for (const SymbolTableEntry &Entry : In.SymTab->getSymbols()) {
-    if (getSymSectionIndex(Entry.Sym) == SHN_XINDEX)
+    if (getSymSectionIndex(Entry) == SHN_XINDEX)
       write32(Buf, Entry.Sym->getOutputSection()->SectionIndex);
     Buf += 4;
   }
@@ -2256,7 +2283,7 @@ void GnuHashTableSection::addSymbols(std::vector<SymbolTableEntry> &V) {
   // its type correctly.
   std::vector<SymbolTableEntry>::iterator Mid =
       std::stable_partition(V.begin(), V.end(), [](const SymbolTableEntry &S) {
-        return !S.Sym->isDefined();
+        return !S.Sym->isDefined() || !S.IsDefined;
       });
 
   // We chose load factor 4 for the on-disk hash table. For each hash
@@ -2286,7 +2313,7 @@ void GnuHashTableSection::addSymbols(std::vector<SymbolTableEntry> &V) {
 
   V.erase(Mid, V.end());
   for (const Entry &Ent : Symbols)
-    V.push_back({Ent.Sym, Ent.StrTabOffset});
+    V.push_back({Ent.Sym, Ent.StrTabOffset, true});
 }
 
 HashTableSection::HashTableSection(SymbolTableBaseSection *SymTab)

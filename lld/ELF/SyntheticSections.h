@@ -432,15 +432,17 @@ public:
 
   RelType Type;
 
-private:
   Symbol *Sym;
+private:
   const InputSectionBase *InputSec = nullptr;
   uint64_t OffsetInSec;
+public:
   // If this member is true, the dynamic relocation will not be against the
   // symbol but will instead be a relative relocation that simply adds the
   // load address. This means we need to write the symbol virtual address
   // plus the original addend as the final relocation addend.
   bool UseSymVA;
+private:
   int64_t Addend;
   const OutputSection *OutputSec;
 };
@@ -578,6 +580,7 @@ private:
 struct SymbolTableEntry {
   Symbol *Sym;
   size_t StrTabOffset;
+  bool IsDefined;
 };
 
 class SymbolTableBaseSection : public SyntheticSection {
@@ -585,7 +588,7 @@ public:
   SymbolTableBaseSection(StringTableSection &StrTabSec);
   void finalizeContents() override;
   size_t getSize() const override { return getNumSymbols() * Entsize; }
-  void addSymbol(Symbol *Sym);
+  bool addSymbol(Symbol *Sym, bool IsDefined = true);
   unsigned getNumSymbols() const { return Symbols.size() + 1; }
   size_t getSymbolIndex(Symbol *Sym);
   ArrayRef<SymbolTableEntry> getSymbols() const { return Symbols; }
@@ -604,6 +607,8 @@ protected:
   llvm::once_flag OnceFlag;
   llvm::DenseMap<Symbol *, size_t> SymbolIndexMap;
   llvm::DenseMap<OutputSection *, size_t> SectionIndexMap;
+
+  std::vector<size_t> SymIndexes;
 };
 
 template <class ELFT>

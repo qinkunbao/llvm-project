@@ -36,6 +36,7 @@ using namespace lld;
 using namespace lld::elf;
 
 std::vector<LoadableModule> elf::Mods;
+uint64_t elf::NumDynsyms;
 
 namespace {
 
@@ -1765,6 +1766,31 @@ static bool computeIsPreemptible(const Symbol &B) {
   return true;
 }
 
+void LoadableModule::addSymbolToDynsym(Symbol *Sym, bool IsDefined) {
+  if (DynSymTab->addSymbol(Sym, IsDefined) && DynSymTab == In.DynSymTab) {
+    if (auto *File = dyn_cast_or_null<SharedFile<ELF32LE>>(Sym->File)) {
+      if (File->IsNeeded && !Sym->isUndefined()) {
+        switch (Config->EKind) {
+        default:
+          llvm_unreachable("ekind");
+        case ELF32LEKind:
+          InX<ELF32LE>::VerNeed->addSymbol(Sym);
+          break;
+        case ELF32BEKind:
+          InX<ELF32BE>::VerNeed->addSymbol(Sym);
+          break;
+        case ELF64LEKind:
+          InX<ELF64LE>::VerNeed->addSymbol(Sym);
+          break;
+        case ELF64BEKind:
+          InX<ELF64BE>::VerNeed->addSymbol(Sym);
+          break;
+        }
+      }
+    }
+  }
+}
+
 // Create output section objects and add them to OutputSections.
 template <class ELFT> void Writer<ELFT>::finalizeSections() {
   Out::PreinitArray = findSection(".preinit_array");
@@ -1803,9 +1829,24 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
   // earlier.
   finalizeSynthetic(In.EhFrame);
 
-  for (Symbol *S : Symtab->getSymbols())
+  std::vector<Symbol *> DefinedSyms;
+  NumDynsyms = 1;
+  for (Symbol *S : Symtab->getSymbols()) {
     if (!S->IsPreemptible)
       S->IsPreemptible = computeIsPreemptible(*S);
+    if (!S->includeInDynsym() && !isa<SharedSymbol>(S))
+      continue;
+    S->DynsymIndex = NumDynsyms++;
+    if (isa<Defined>(S))
+      DefinedSyms.push_back(S);
+  }
+
+  for (auto *Sym : DefinedSyms) {
+    if (Sym->getName().startswith("Java_") && Sym->getName().contains("_vr_"))
+      Mods[1].addSymbolToDynsym(Sym, true);
+    else
+      Mods[0].addSymbolToDynsym(Sym, true);
+  }
 
   // Scan relocations. This must be done after every symbol is declared so that
   // we can correctly decide if a dynamic relocation is needed.
@@ -1818,6 +1859,11 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
     In.Plt->addSymbols();
   if (In.Iplt && !In.Iplt->empty())
     In.Iplt->addSymbols();
+
+  if (In.SymTab)
+    for (Symbol *Sym : Symtab->getSymbols())
+      if (includeInSymtab(*Sym))
+        In.SymTab->addSymbol(Sym);
 
   if (!Config->AllowShlibUndefined) {
     // Error on undefined symbols in a shared object, if all of its DT_NEEDED
@@ -1838,22 +1884,6 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
         if (auto *F = dyn_cast_or_null<SharedFile<ELFT>>(Sym->File))
           if (F->AllNeededIsKnown)
             error(toString(F) + ": undefined reference to " + toString(*Sym));
-  }
-
-  // Now that we have defined all possible global symbols including linker-
-  // synthesized ones. Visit all symbols to give the finishing touches.
-  for (Symbol *Sym : Symtab->getSymbols()) {
-    if (!includeInSymtab(*Sym))
-      continue;
-    if (In.SymTab)
-      In.SymTab->addSymbol(Sym);
-
-    if (Sym->includeInDynsym()) {
-      In.DynSymTab->addSymbol(Sym);
-      if (auto *File = dyn_cast_or_null<SharedFile<ELFT>>(Sym->File))
-        if (File->IsNeeded && !Sym->isUndefined())
-          InX<ELFT>::VerNeed->addSymbol(Sym);
-    }
   }
 
   // Do not proceed if there was an undefined symbol.

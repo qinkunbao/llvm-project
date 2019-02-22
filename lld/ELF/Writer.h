@@ -20,6 +20,7 @@ class InputFile;
 class OutputSection;
 class InputSectionBase;
 template <class ELFT> class ObjFile;
+class Symbol;
 class SymbolTable;
 class SyntheticSection;
 class StringTableSection;
@@ -65,9 +66,12 @@ struct LoadableModule {
   HashTableSection *HashTab = nullptr;
   RelocationBaseSection *RelaDyn = nullptr;
   RelrBaseSection *RelrDyn = nullptr;
+
+  void addSymbolToDynsym(Symbol *S, bool IsDefined);
 };
 
 extern std::vector<LoadableModule> Mods;
+extern uint64_t NumDynsyms;
 
 void addReservedSymbols();
 llvm::StringRef getOutputSectionName(const InputSectionBase *S);
