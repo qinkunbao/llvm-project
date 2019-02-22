@@ -17,6 +17,7 @@
 #include "llvm/Support/CachePruning.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/Endian.h"
+#include "llvm/Support/Regex.h"
 #include <atomic>
 #include <vector>
 
@@ -109,7 +110,7 @@ struct Configuration {
   std::vector<VersionDefinition> VersionDefinitions;
   std::vector<llvm::StringRef> AuxiliaryList;
   std::vector<llvm::StringRef> FilterList;
-  std::vector<llvm::StringRef> ModuleSymbol;
+  std::vector<llvm::Regex> ModuleSymbol;
   std::vector<llvm::StringRef> SearchPaths;
   std::vector<llvm::StringRef> SymbolOrderingFile;
   std::vector<llvm::StringRef> Undefined;

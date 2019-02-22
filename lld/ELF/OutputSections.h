@@ -122,6 +122,8 @@ private:
 
 int getPriority(StringRef S);
 
+unsigned getModuleIndexFor(Symbol *S);
+
 std::vector<InputSection *> getInputSections(OutputSection* OS);
 
 // All output sections that are handled by the linker specially are

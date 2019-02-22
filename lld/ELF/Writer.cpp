@@ -1841,12 +1841,8 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
       DefinedSyms.push_back(S);
   }
 
-  for (auto *Sym : DefinedSyms) {
-    if (Sym->getName().startswith("Java_") && Sym->getName().contains("_vr_"))
-      Mods[1].addSymbolToDynsym(Sym, true);
-    else
-      Mods[0].addSymbolToDynsym(Sym, true);
-  }
+  for (auto *Sym : DefinedSyms)
+    Mods[getModuleIndexFor(Sym)].addSymbolToDynsym(Sym, true);
 
   // Scan relocations. This must be done after every symbol is declared so that
   // we can correctly decide if a dynamic relocation is needed.

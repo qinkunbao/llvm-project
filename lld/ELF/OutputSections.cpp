@@ -9,6 +9,7 @@
 #include "OutputSections.h"
 #include "Config.h"
 #include "LinkerScript.h"
+#include "Symbols.h"
 #include "SymbolTable.h"
 #include "SyntheticSections.h"
 #include "Target.h"
@@ -419,6 +420,13 @@ std::array<uint8_t, 4> OutputSection::getFiller() {
   if (Flags & SHF_EXECINSTR)
     return Target->TrapInstr;
   return {0, 0, 0, 0};
+}
+
+unsigned elf::getModuleIndexFor(Symbol *S) {
+  for (unsigned I = 0; I != Config->ModuleSymbol.size(); ++I)
+    if (Config->ModuleSymbol[I].match(S->getName()))
+      return I + 1;
+  return 0;
 }
 
 template void OutputSection::writeHeaderTo<ELF32LE>(ELF32LE::Shdr *Shdr);

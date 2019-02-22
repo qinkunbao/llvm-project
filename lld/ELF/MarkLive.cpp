@@ -229,17 +229,6 @@ template <class ELFT> static void doGcSections() {
   for (StringRef S : Script->ReferencedSymbols)
     MarkSymbol(Symtab->find(S));
 
-  std::vector<Symbol *> VRSymbols;
-  // Preserve externally-visible symbols if the symbols defined by this
-  // file can interrupt other ELF file's symbols at runtime.
-  for (Symbol *S : Symtab->getSymbols())
-    if (S->includeInDynsym()) {
-      if (S->getName().startswith("Java_") && S->getName().contains("_vr_"))
-        VRSymbols.push_back(S);
-      else
-        MarkSymbol(S);
-    }
-
   // Preserve special sections and those which are specified in linker
   // script KEEP command.
   for (InputSectionBase *Sec : InputSections) {
@@ -263,17 +252,18 @@ template <class ELFT> static void doGcSections() {
     }
   }
 
-  // Mark all reachable sections.
-  while (!Q.empty())
-    forEachSuccessor<ELFT>(*Q.pop_back_val(), Enqueue);
+  for (unsigned I = 0; I != Config->ModuleSymbol.size() + 1; ++I) {
+    // Preserve externally-visible symbols if the symbols defined by this
+    // file can interrupt other ELF file's symbols at runtime.
+    for (Symbol *S : Symtab->getSymbols())
+      if (S->includeInDynsym() && getModuleIndexFor(S) == I)
+        MarkSymbol(S);
 
-  for (StringRef S : Config->ModuleSymbol) {
-    QBit <<= 1;
-    MarkSymbol(Symtab->find(S));
-    for (Symbol *Sym : VRSymbols)
-      MarkSymbol(Sym);
+    // Mark all reachable sections.
     while (!Q.empty())
       forEachSuccessor<ELFT>(*Q.pop_back_val(), Enqueue);
+
+    QBit <<= 1;
   }
 }
 
