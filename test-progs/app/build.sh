@@ -9,15 +9,22 @@ set -eu
 CHROMIUM="${HOME}/c/src"
 
 SDK="${CHROMIUM}/third_party/android_tools/sdk"
-NDK="${CHROMIUM}/third_party/android_ndk"
+NDK="${HOME}/android-ndk-r19"
 
 BUILD_TOOLS="${SDK}/build-tools/27.0.3"
 PLATFORM="${SDK}/platforms/android-28"
 
 LLVM="${HOME}/l/ra"
 
+# TRIPLE=armv7-linux-android21
+# ABI=armeabi-v7a
+
+TRIPLE=aarch64-linux-android21
+ABI=arm64-v8a
+
+rm -rf build
 mkdir -p build/gen build/obj build/dbg
-mkdir -p build/apk build/apk/lib/arm64-v8a build/apk/lib/x86
+mkdir -p build/apk build/apk/lib/${ABI}
 
 "${BUILD_TOOLS}/aapt" package -f -m -J build/gen/ -S res \
     -M AndroidManifest.xml -I "${PLATFORM}/android.jar"
@@ -29,16 +36,14 @@ javac -source 1.7 -target 1.7 -bootclasspath "${JAVA_HOME}/jre/lib/rt.jar" \
 "${BUILD_TOOLS}/dx" --dex --output=build/apk/classes.dex build/obj/
 
 function clang() {
-  "${LLVM}"/bin/clang --target=aarch64-linux-android \
-      --sysroot="${NDK}/platforms/android-27/arch-arm64" \
-      -I"${NDK}/sysroot/usr/include" \
-      -I"${NDK}/sysroot/usr/include/aarch64-linux-android" \
-      -L"${NDK}/toolchains/aarch64-linux-android-4.9/prebuilt/linux-x86_64/lib/gcc/aarch64-linux-android/4.9.x" \
+  "${LLVM}"/bin/clang \
+      "--sysroot=${NDK}/toolchains/llvm/prebuilt/linux-x86_64/sysroot" \
+      "-B${NDK}/toolchains/llvm/prebuilt/linux-x86_64" \
       -fuse-ld=lld -z defs \
       -fPIC -shared "$@" -llog
 }
 
-clang -o build/libcombined.so \
+clang --target=${TRIPLE} -o build/libcombined.so \
   -g \
   -ffunction-sections \
   -fdata-sections \
@@ -51,8 +56,8 @@ clang -o build/libcombined.so \
 "${LLVM}"/bin/llvm-objcopy build/libcombined.so build/dbg/libloader.so --extract-module=1
 "${LLVM}"/bin/llvm-objcopy build/libcombined.so build/dbg/libhello.so --extract-module=2
 
-"${LLVM}"/bin/llvm-objcopy build/libcombined.so build/apk/lib/arm64-v8a/libloader.so --extract-module=1 --strip-all
-"${LLVM}"/bin/llvm-objcopy build/libcombined.so build/apk/lib/arm64-v8a/libhello.so --extract-module=2 --strip-all
+"${LLVM}"/bin/llvm-objcopy build/libcombined.so build/apk/lib/${ABI}/libloader.so --extract-module=1 --strip-all
+"${LLVM}"/bin/llvm-objcopy build/libcombined.so build/apk/lib/${ABI}/libhello.so --extract-module=2 --strip-all
 
 "${BUILD_TOOLS}/aapt" package -f -M AndroidManifest.xml -S res/ -0 .so \
     -I "${PLATFORM}/android.jar" \
