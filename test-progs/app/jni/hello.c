@@ -13,7 +13,7 @@ int (*rand_ptr)() = rand;
 extern void Java_net_hanshq_hello_MainActivity_loadDFM();
 void *loader_ptr = Java_net_hanshq_hello_MainActivity_loadDFM;
 
-jstring JNICALL
+JNIEXPORT jstring JNICALL
 Java_net_hanshq_hello_MainActivity_getMessage(JNIEnv *env, jobject obj)
 {
         int i;
@@ -25,15 +25,4 @@ Java_net_hanshq_hello_MainActivity_getMessage(JNIEnv *env, jobject obj)
 
 JNIEXPORT void init(JNIEnv *env) {
   volatile void *loader = loader_ptr;
-
-  jclass cls = (*env)->FindClass(env, "net/hanshq/hello/MainActivity");
-  if (!cls)
-    abort();
-
-  JNINativeMethod natives[] = {
-      {"getMessage", "()Ljava/lang/String;", Java_net_hanshq_hello_MainActivity_getMessage},
-  };
-  if ((*env)->RegisterNatives(env, cls, natives,
-                              sizeof(natives) / sizeof(natives[0])) != 0)
-    abort();
 }

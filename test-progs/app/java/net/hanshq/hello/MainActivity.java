@@ -10,6 +10,11 @@ public class MainActivity extends Activity {
     static {
         System.loadLibrary("loader");
         loadDFM();
+
+        // This doesn't actually load libhello.so (that was done in loadDFM), it
+        // just registers it with the Java runtime so that JNI calls work
+        // correctly.
+        System.loadLibrary("hello");
     }
 
     public native String getMessage();

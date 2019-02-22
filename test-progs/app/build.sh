@@ -44,7 +44,7 @@ clang -o build/libcombined.so \
   -fdata-sections \
   -fvisibility=hidden \
   -Wl,--gc-sections \
-  -Wl,--module-symbol,init \
+  '-Wl,--module-symbol,init|Java_net_hanshq_hello_MainActivity_getMessage' \
   -Wl,-soname,libloader.so \
   jni/hello.c jni/loader.c
 
