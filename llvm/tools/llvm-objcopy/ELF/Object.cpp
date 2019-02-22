@@ -887,11 +887,13 @@ template <class ELFT>
 void ELFBuilder<ELFT>::readProgramHeaders(uint64_t PhdrOffset) {
   uint32_t Index = 0;
   ArrayRef<typename ELFT::Phdr> Phdrs;
+  const typename ELFT::Ehdr *Ehdr;
   if (!PhdrOffset) {
+    Ehdr = ElfFile.getHeader();
     Phdrs = unwrapOrError(ElfFile.program_headers());
   } else {
-    auto *Ehdr = reinterpret_cast<const typename ELFT::Ehdr *>(ElfFile.base() +
-                                                               PhdrOffset);
+    Ehdr = reinterpret_cast<const typename ELFT::Ehdr *>(ElfFile.base() +
+                                                         PhdrOffset);
     auto *FirstPhdr = reinterpret_cast<const typename ELFT::Phdr *>(
         ElfFile.base() + PhdrOffset + Ehdr->e_phoff);
     Phdrs = {FirstPhdr, Ehdr->e_phnum};
@@ -923,8 +925,8 @@ void ELFBuilder<ELFT>::readProgramHeaders(uint64_t PhdrOffset) {
 
   auto &ElfHdr = Obj.ElfHdrSegment;
   ElfHdr.Index = Index++;
+  ElfHdr.OriginalOffset = ElfHdr.Offset = PhdrOffset;
 
-  const auto &Ehdr = *ElfFile.getHeader();
   auto &PrHdr = Obj.ProgramHdrSegment;
   PrHdr.Type = PT_PHDR;
   PrHdr.Flags = 0;
@@ -932,9 +934,9 @@ void ELFBuilder<ELFT>::readProgramHeaders(uint64_t PhdrOffset) {
   // Whereas this works automatically for ElfHdr, here OriginalOffset is
   // always non-zero and to ensure the equation we assign the same value to
   // VAddr as well.
-  PrHdr.OriginalOffset = PrHdr.Offset = PrHdr.VAddr = Ehdr.e_phoff;
+  PrHdr.OriginalOffset = PrHdr.Offset = PrHdr.VAddr = PhdrOffset + Ehdr->e_phoff;
   PrHdr.PAddr = 0;
-  PrHdr.FileSize = PrHdr.MemSize = Ehdr.e_phentsize * Ehdr.e_phnum;
+  PrHdr.FileSize = PrHdr.MemSize = Ehdr->e_phentsize * Ehdr->e_phnum;
   // The spec requires us to naturally align all the fields.
   PrHdr.Align = sizeof(Elf_Addr);
   PrHdr.Index = Index++;
@@ -1478,7 +1480,6 @@ template <class ELFT> void ELFWriter<ELFT>::initEhdrSegment() {
   auto &ElfHdr = Obj.ElfHdrSegment;
   ElfHdr.Type = PT_PHDR;
   ElfHdr.Flags = 0;
-  ElfHdr.OriginalOffset = ElfHdr.Offset = 0;
   ElfHdr.VAddr = 0;
   ElfHdr.PAddr = 0;
   ElfHdr.FileSize = ElfHdr.MemSize = sizeof(Elf_Ehdr);
