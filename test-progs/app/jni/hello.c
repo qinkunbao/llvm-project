@@ -10,6 +10,9 @@ static const char *const messages[] = {
 
 int (*rand_ptr)() = rand;
 
+extern void Java_net_hanshq_hello_MainActivity_loadDFM();
+void *loader_ptr = Java_net_hanshq_hello_MainActivity_loadDFM;
+
 jstring JNICALL
 Java_net_hanshq_hello_MainActivity_getMessage(JNIEnv *env, jobject obj)
 {
@@ -21,6 +24,8 @@ Java_net_hanshq_hello_MainActivity_getMessage(JNIEnv *env, jobject obj)
 }
 
 JNIEXPORT void init(JNIEnv *env) {
+  volatile void *loader = loader_ptr;
+
   jclass cls = (*env)->FindClass(env, "net/hanshq/hello/MainActivity");
   if (!cls)
     abort();
