@@ -501,6 +501,9 @@ template <class ELFT> static void createSyntheticSections() {
     Mod.ElfHeader = make<OutputSection>(".mod.ehdr", SHT_PROGBITS, SHF_ALLOC);
     Mod.ElfHeader->Live = 2 << I;
     Script->SectionCommands.push_back(Mod.ElfHeader);
+    addOptionalRegular(Saver.save("__mod" + utostr(I) + "_ehdr_start"),
+                       Mod.ElfHeader, 0);
+
     Mod.ProgramHeaders = make<OutputSection>(".mod.phdr", SHT_PROGBITS, SHF_ALLOC);
     Mod.ProgramHeaders->Live = 2 << I;
     Script->SectionCommands.push_back(Mod.ProgramHeaders);
