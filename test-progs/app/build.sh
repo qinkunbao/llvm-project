@@ -16,7 +16,7 @@ PLATFORM="${SDK}/platforms/android-28"
 
 LLVM="${HOME}/l/ra"
 
-mkdir -p build/gen build/obj
+mkdir -p build/gen build/obj build/dbg
 mkdir -p build/apk build/apk/lib/arm64-v8a build/apk/lib/x86
 
 "${BUILD_TOOLS}/aapt" package -f -m -J build/gen/ -S res \
@@ -38,7 +38,7 @@ function clang() {
       -fPIC -shared "$@" -llog
 }
 
-clang -o build/libloader.so \
+clang -o build/libcombined.so \
   -g \
   -ffunction-sections \
   -fdata-sections \
@@ -48,8 +48,11 @@ clang -o build/libloader.so \
   -Wl,-soname,libloader.so \
   jni/hello.c jni/loader.c
 
-"${LLVM}"/bin/llvm-objcopy build/libloader.so build/apk/lib/arm64-v8a/libloader.so --extract-module=1 --strip-all
-"${LLVM}"/bin/llvm-objcopy build/libloader.so build/apk/lib/arm64-v8a/libhello.so --extract-module=2 --strip-all
+"${LLVM}"/bin/llvm-objcopy build/libcombined.so build/dbg/libloader.so --extract-module=1
+"${LLVM}"/bin/llvm-objcopy build/libcombined.so build/dbg/libhello.so --extract-module=2
+
+"${LLVM}"/bin/llvm-objcopy build/libcombined.so build/apk/lib/arm64-v8a/libloader.so --extract-module=1 --strip-all
+"${LLVM}"/bin/llvm-objcopy build/libcombined.so build/apk/lib/arm64-v8a/libhello.so --extract-module=2 --strip-all
 
 "${BUILD_TOOLS}/aapt" package -f -M AndroidManifest.xml -S res/ -0 .so \
     -I "${PLATFORM}/android.jar" \
