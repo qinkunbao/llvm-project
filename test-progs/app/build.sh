@@ -38,17 +38,18 @@ function clang() {
       -fPIC -shared "$@" -llog
 }
 
-clang -o build/libcombined.so \
+clang -o build/libloader.so \
   -g \
   -ffunction-sections \
   -fdata-sections \
   -fvisibility=hidden \
   -Wl,--gc-sections \
   -Wl,--module-symbol,init \
+  -Wl,-soname,libloader.so \
   jni/hello.c jni/loader.c
 
-"${LLVM}"/bin/llvm-objcopy build/libcombined.so build/apk/lib/arm64-v8a/libloader.so --extract-module=1 --strip-all
-"${LLVM}"/bin/llvm-objcopy build/libcombined.so build/apk/lib/arm64-v8a/libhello.so --extract-module=2 --strip-all
+"${LLVM}"/bin/llvm-objcopy build/libloader.so build/apk/lib/arm64-v8a/libloader.so --extract-module=1 --strip-all
+"${LLVM}"/bin/llvm-objcopy build/libloader.so build/apk/lib/arm64-v8a/libhello.so --extract-module=2 --strip-all
 
 "${BUILD_TOOLS}/aapt" package -f -M AndroidManifest.xml -S res/ -0 .so \
     -I "${PLATFORM}/android.jar" \

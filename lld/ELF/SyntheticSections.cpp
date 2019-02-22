@@ -1213,7 +1213,6 @@ DynamicSection<ELFT>::DynamicSection(StringTableSection *StrTab,
   if (Config->EMachine == EM_MIPS || Config->ZRodynamic)
     this->Flags = SHF_ALLOC;
 
-  if (StrTab == In.DynStrTab) {
   // Add strings to .dynstr early so that .dynstr's size will be
   // fixed early.
   for (StringRef S : Config->FilterList)
@@ -1230,8 +1229,14 @@ DynamicSection<ELFT>::DynamicSection(StringTableSection *StrTab,
     if (F->IsNeeded)
       addInt(DT_NEEDED, StrTab->addString(F->SoName));
   }
-  if (!Config->SoName.empty())
-    addInt(DT_SONAME, StrTab->addString(Config->SoName));
+
+  if (!Config->SoName.empty()) {
+    if (StrTab != In.DynStrTab) {
+      addInt(DT_NEEDED, StrTab->addString(Config->SoName));
+      addInt(DT_SONAME, StrTab->addString(Saver.save(Config->SoName + ".mod")));
+    } else {
+      addInt(DT_SONAME, StrTab->addString(Config->SoName));
+    }
   }
 }
 

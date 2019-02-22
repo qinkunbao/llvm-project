@@ -1980,8 +1980,10 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
   finalizeSynthetic(In.MipsGot);
   finalizeSynthetic(In.IgotPlt);
   finalizeSynthetic(In.GotPlt);
-  finalizeSynthetic(In.RelaDyn);
-  finalizeSynthetic(In.RelrDyn);
+  for (auto &M : Mods) {
+    finalizeSynthetic(M.RelaDyn);
+    finalizeSynthetic(M.RelrDyn);
+  }
   finalizeSynthetic(In.RelaIplt);
   finalizeSynthetic(In.RelaPlt);
   finalizeSynthetic(In.Plt);

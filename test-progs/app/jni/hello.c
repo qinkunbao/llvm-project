@@ -8,12 +8,14 @@ static const char *const messages[] = {
         "Hallo Welt!"
 };
 
+int (*rand_ptr)() = rand;
+
 jstring JNICALL
 Java_net_hanshq_hello_MainActivity_getMessage(JNIEnv *env, jobject obj)
 {
         int i;
 
-        i = rand() % (sizeof(messages) / sizeof(messages[0]));
+        i = rand_ptr() % (sizeof(messages) / sizeof(messages[0]));
 
         return (*env)->NewStringUTF(env, messages[i]);
 }
