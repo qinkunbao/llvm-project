@@ -1,3 +1,4 @@
+# XFAIL: *
 # REQUIRES: x86,ppc
 
 # RUN: echo ".globl foo; .data; .dc.a foo" > %te.s

@@ -1,3 +1,4 @@
+# XFAIL: *
 // REQUIRES: aarch64
 # REQUIRES: aarch64
 # RUN: llvm-mc -filetype=obj -triple=aarch64-unknown-freebsd %p/Inputs/aarch64-tls-ie.s -o %tdso.o

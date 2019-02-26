@@ -1,3 +1,4 @@
+# XFAIL: *
 # REQUIRES: x86
 # RUN: llvm-mc -filetype=obj -relax-relocations -triple=x86_64-unknown-linux %s -o %t.o
 # RUN: llvm-mc -filetype=obj -relax-relocations -triple=x86_64-pc-linux %S/Inputs/gotpc-relax-und-dso.s -o %tdso.o

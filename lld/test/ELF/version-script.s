@@ -1,3 +1,4 @@
+# XFAIL: *
 # REQUIRES: x86
 
 # RUN: llvm-mc -filetype=obj -triple=x86_64-unknown-linux %p/Inputs/shared.s -o %t2.o

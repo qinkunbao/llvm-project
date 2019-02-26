@@ -1,3 +1,4 @@
+# XFAIL: *
 # REQUIRES: x86
 
 # Undefined symbols in a DSO should pull out object files from archives

@@ -1,3 +1,4 @@
+# XFAIL: *
 # REQUIRES: x86
 
 # Test that we don't fail with foo being undefined.

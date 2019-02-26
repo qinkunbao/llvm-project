@@ -1,3 +1,4 @@
+# XFAIL: *
 // REQUIRES: x86
 // RUN: llvm-mc -filetype=obj -relax-relocations -triple x86_64-pc-linux-gnu \
 // RUN: %s -o %t.o

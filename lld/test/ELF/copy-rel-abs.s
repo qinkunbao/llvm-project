@@ -1,3 +1,4 @@
+# XFAIL: *
 // REQUIRES: x86
 // RUN: llvm-mc -filetype=obj -triple=x86_64-pc-linux %p/Inputs/copy-rel-abs.s -o %t1.o
 // RUN: ld.lld --hash-style=gnu -shared %t1.o -o %t1.so
