@@ -15,4 +15,9 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="New message"/>
+    <Button
+        android:id="@+id/crash"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Crash"/>
 </LinearLayout>

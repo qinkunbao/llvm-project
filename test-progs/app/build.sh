@@ -48,11 +48,13 @@ clang --target=${TRIPLE} -o build/libcombined.so \
   -ffunction-sections \
   -fdata-sections \
   -fvisibility=hidden \
+  -funwind-tables \
   -Wl,--gc-sections \
-  '-Wl,--module-symbol,init|Java_net_hanshq_hello_MainActivity_getMessage' \
+  '-Wl,--module-symbol,init|Java_net_hanshq_hello_MainActivity_getMessage|Java_net_hanshq_hello_MainActivity_crash' \
   -Wl,-soname,libloader.so \
   -Wl,--pack-dyn-relocs=android+relr \
   -Wl,--use-android-relr-tags \
+  -Wl,--no-rosegment \
   jni/hello.c jni/loader.c
 
 "${LLVM}"/bin/llvm-objcopy build/libcombined.so build/dbg/libloader.so --extract-module=1

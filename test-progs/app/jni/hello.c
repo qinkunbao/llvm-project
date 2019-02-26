@@ -26,6 +26,15 @@ Java_net_hanshq_hello_MainActivity_getMessage(JNIEnv *env, jobject obj)
         return (*env)->NewStringUTF(env, messages[i]);
 }
 
+void do_crash() {
+  __builtin_trap();
+}
+
+JNIEXPORT void JNICALL
+Java_net_hanshq_hello_MainActivity_crash(JNIEnv *env) {
+  do_crash();
+}
+
 JNIEXPORT void init(JNIEnv *env) {
   volatile void *loader = loader_ptr;
 }

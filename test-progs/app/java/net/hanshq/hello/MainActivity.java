@@ -18,6 +18,7 @@ public class MainActivity extends Activity {
     }
 
     public native String getMessage();
+    public static native void crash();
     public static native void loadDFM();
 
     @Override
@@ -32,6 +33,13 @@ public class MainActivity extends Activity {
         button.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                text.setText(getMessage());
+            }
+        });
+
+        final Button crash = findViewById(R.id.crash);
+        crash.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+               crash();
             }
         });
     }
