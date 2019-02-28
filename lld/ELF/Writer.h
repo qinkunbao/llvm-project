@@ -20,6 +20,8 @@ class InputFile;
 class OutputSection;
 class InputSectionBase;
 template <class ELFT> class ObjFile;
+class EhFrameHeader;
+class EhFrameSection;
 class Symbol;
 class SymbolTable;
 class SyntheticSection;
@@ -62,6 +64,8 @@ struct LoadableModule {
   SyntheticSection *Dynamic = nullptr;
   StringTableSection *DynStrTab = nullptr;
   SymbolTableBaseSection *DynSymTab = nullptr;
+  EhFrameHeader *EhFrameHdr = nullptr;
+  EhFrameSection *EhFrame = nullptr;
   GnuHashTableSection *GnuHashTab = nullptr;
   HashTableSection *HashTab = nullptr;
   RelocationBaseSection *RelaDyn = nullptr;

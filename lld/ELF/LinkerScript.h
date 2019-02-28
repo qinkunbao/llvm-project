@@ -307,6 +307,8 @@ public:
 
 extern LinkerScript *Script;
 
+uint64_t getOutputSectionLiveness(SectionBase *IS);
+
 } // end namespace elf
 } // end namespace lld
 

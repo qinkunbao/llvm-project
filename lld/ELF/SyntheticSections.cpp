@@ -417,7 +417,8 @@ bool EhFrameSection::isFdeLive(EhSectionPiece &Fde, ArrayRef<RelTy> Rels) {
   // FDEs for garbage-collected or merged-by-ICF sections are dead.
   if (auto *D = dyn_cast<Defined>(&B))
     if (SectionBase *Sec = D->Section)
-      return Sec->Live;
+      return Sec->Live &&
+             getOutputSectionLiveness(this) == getOutputSectionLiveness(Sec);
   return false;
 }
 
@@ -508,11 +509,12 @@ void EhFrameSection::finalizeContents() {
 // Returns data for .eh_frame_hdr. .eh_frame_hdr is a binary search table
 // to get an FDE from an address to which FDE is applied. This function
 // returns a list of such pairs.
-std::vector<EhFrameSection::FdeData> EhFrameSection::getFdeData() const {
+std::vector<EhFrameSection::FdeData>
+EhFrameSection::getFdeData(EhFrameHeader *EhFrameHdr) const {
   uint8_t *Buf = getParent()->Loc + OutSecOff;
   std::vector<FdeData> Ret;
 
-  uint64_t VA = In.EhFrameHdr->getVA();
+  uint64_t VA = EhFrameHdr->getVA();
   for (CieRecord *Rec : CieRecords) {
     uint8_t Enc = getFdeEncoding(Rec->Cie);
     for (EhSectionPiece *Fde : Rec->Fdes) {
@@ -2713,8 +2715,9 @@ void GdbIndexSection::writeTo(uint8_t *Buf) {
 
 bool GdbIndexSection::empty() const { return Chunks.empty(); }
 
-EhFrameHeader::EhFrameHeader()
-    : SyntheticSection(SHF_ALLOC, SHT_PROGBITS, 4, ".eh_frame_hdr") {}
+EhFrameHeader::EhFrameHeader(EhFrameSection *EhFrame)
+    : SyntheticSection(SHF_ALLOC, SHT_PROGBITS, 4, ".eh_frame_hdr"),
+      EhFrame(EhFrame) {}
 
 // .eh_frame_hdr contains a binary search table of pointers to FDEs.
 // Each entry of the search table consists of two values,
@@ -2723,13 +2726,13 @@ EhFrameHeader::EhFrameHeader()
 void EhFrameHeader::writeTo(uint8_t *Buf) {
   typedef EhFrameSection::FdeData FdeData;
 
-  std::vector<FdeData> Fdes = In.EhFrame->getFdeData();
+  std::vector<FdeData> Fdes = EhFrame->getFdeData(this);
 
   Buf[0] = 1;
   Buf[1] = DW_EH_PE_pcrel | DW_EH_PE_sdata4;
   Buf[2] = DW_EH_PE_udata4;
   Buf[3] = DW_EH_PE_datarel | DW_EH_PE_sdata4;
-  write32(Buf + 4, In.EhFrame->getParent()->Addr - this->getVA() - 4);
+  write32(Buf + 4, EhFrame->getParent()->Addr - this->getVA() - 4);
   write32(Buf + 8, Fdes.size());
   Buf += 12;
 
@@ -2742,10 +2745,10 @@ void EhFrameHeader::writeTo(uint8_t *Buf) {
 
 size_t EhFrameHeader::getSize() const {
   // .eh_frame_hdr has a 12 bytes header followed by an array of FDEs.
-  return 12 + In.EhFrame->NumFdes * 8;
+  return 12 + EhFrame->NumFdes * 8;
 }
 
-bool EhFrameHeader::empty() const { return In.EhFrame->empty(); }
+bool EhFrameHeader::empty() const { return EhFrame->empty(); }
 
 VersionDefinitionSection::VersionDefinitionSection()
     : SyntheticSection(SHF_ALLOC, SHT_GNU_verdef, sizeof(uint32_t),

@@ -528,7 +528,7 @@ void LinkerScript::processSectionCommands() {
   Ctx = nullptr;
 }
 
-static uint64_t getOutputSectionLiveness(InputSectionBase *IS) {
+uint64_t elf::getOutputSectionLiveness(SectionBase *IS) {
   if (countPopulation(IS->Live) == 1)
     return IS->Live;
   return 1;

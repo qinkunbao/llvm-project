@@ -31,6 +31,7 @@
 namespace lld {
 namespace elf {
 class Defined;
+class EhFrameHeader;
 class GnuHashTableSection;
 class HashTableSection;
 class RelocationBaseSection;
@@ -85,7 +86,7 @@ public:
     uint32_t FdeVARel;
   };
 
-  std::vector<FdeData> getFdeData() const;
+  std::vector<FdeData> getFdeData(EhFrameHeader *EhFrameHdr) const;
   ArrayRef<CieRecord *> getCieRecords() const { return CieRecords; }
 
 private:
@@ -769,8 +770,10 @@ private:
 // http://www.airs.com/blog/archives/460 (".eh_frame")
 // http://www.airs.com/blog/archives/462 (".eh_frame_hdr")
 class EhFrameHeader final : public SyntheticSection {
+  EhFrameSection *EhFrame;
+
 public:
-  EhFrameHeader();
+  EhFrameHeader(EhFrameSection *EhFrame);
   void writeTo(uint8_t *Buf) override;
   size_t getSize() const override;
   bool empty() const override;

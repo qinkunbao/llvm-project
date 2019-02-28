@@ -103,6 +103,14 @@ public:
                    uint32_t Alignment, ArrayRef<uint8_t> Data, StringRef Name,
                    Kind SectionKind);
 
+  InputSectionBase(const InputSectionBase &Other)
+      : SectionBase(Other), File(Other.File), Assigned(Other.Assigned),
+        Parent(Other.Parent), FirstRelocation(Other.FirstRelocation),
+        NumRelocations(Other.NumRelocations),
+        AreRelocsRela(Other.AreRelocsRela), RawData(Other.RawData),
+        UncompressedBuf(Other.UncompressedBuf ? new char[1] : nullptr),
+        UncompressedSize(Other.UncompressedSize) {}
+
   static bool classof(const SectionBase *S) { return S->kind() != Output; }
 
   // The file which contains this section. Its dynamic type is always

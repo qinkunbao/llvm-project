@@ -188,6 +188,12 @@ template <class ELFT> static void combineEhFrameSections() {
       continue;
 
     In.EhFrame->addSection<ELFT>(ES);
+
+    for (unsigned I = 1; I != Mods.size(); ++I) {
+      auto *ESCopy = make<EhInputSection>(*ES);
+      Mods[I].EhFrame->addSection<ELFT>(ESCopy);
+    }
+
     S = nullptr;
   }
 
@@ -464,11 +470,11 @@ template <class ELFT> static void createSyntheticSections() {
     Add(make<GnuStackSection>());
 
   if (!Config->Relocatable) {
+    In.EhFrame = make<EhFrameSection>();
     if (Config->EhFrameHdr) {
-      In.EhFrameHdr = make<EhFrameHeader>();
+      In.EhFrameHdr = make<EhFrameHeader>(In.EhFrame);
       Add(In.EhFrameHdr);
     }
-    In.EhFrame = make<EhFrameSection>();
     Add(In.EhFrame);
   }
 
@@ -491,6 +497,8 @@ template <class ELFT> static void createSyntheticSections() {
   MainMod.Dynamic = In.Dynamic;
   MainMod.DynStrTab = In.DynStrTab;
   MainMod.DynSymTab = In.DynSymTab;
+  MainMod.EhFrame = In.EhFrame;
+  MainMod.EhFrameHdr = In.EhFrameHdr;
   MainMod.GnuHashTab = In.GnuHashTab;
   MainMod.HashTab = In.HashTab;
   MainMod.RelaDyn = In.RelaDyn;
@@ -544,6 +552,15 @@ template <class ELFT> static void createSyntheticSections() {
       Mod.RelrDyn->Live = 2 << I;
       Add(Mod.RelrDyn);
     }
+
+    Mod.EhFrame = make<EhFrameSection>();
+    Mod.EhFrame->Live = 2 << I;
+    if (Config->EhFrameHdr) {
+      Mod.EhFrameHdr = make<EhFrameHeader>(Mod.EhFrame);
+      Mod.EhFrameHdr->Live = 2 << I;
+      Add(Mod.EhFrameHdr);
+    }
+    Add(Mod.EhFrame);
 
     if (Config->AndroidPackDynRelocs) {
       Mod.RelaDyn = make<AndroidPackedRelocationSection<ELFT>>(
@@ -1084,8 +1101,9 @@ void Writer<ELFT>::forEachRelSec(
   for (InputSectionBase *IS : InputSections)
     if (IS->Live && isa<InputSection>(IS) && (IS->Flags & SHF_ALLOC))
       Fn(*IS);
-  for (EhInputSection *ES : In.EhFrame->Sections)
-    Fn(*ES);
+  for (auto &Mod : Mods)
+    for (EhInputSection *ES : Mod.EhFrame->Sections)
+      Fn(*ES);
 }
 
 // This function generates assignments for predefined symbols (e.g. _end or
@@ -1844,7 +1862,8 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
   // This responsible for splitting up .eh_frame section into
   // pieces. The relocation scan uses those pieces, so this has to be
   // earlier.
-  finalizeSynthetic(In.EhFrame);
+  for (auto &Mod : Mods)
+    finalizeSynthetic(Mod.EhFrame);
 
   std::vector<Symbol *> DefinedSyms;
   NumDynsyms = 1;
@@ -1988,7 +2007,8 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
   finalizeSynthetic(In.RelaPlt);
   finalizeSynthetic(In.Plt);
   finalizeSynthetic(In.Iplt);
-  finalizeSynthetic(In.EhFrameHdr);
+  for (auto &M : Mods)
+    finalizeSynthetic(M.EhFrameHdr);
   finalizeSynthetic(InX<ELFT>::VerSym);
   finalizeSynthetic(InX<ELFT>::VerNeed);
   for (auto &M : Mods)
@@ -2292,6 +2312,10 @@ void Writer<ELFT>::createPerModulePhdrs() {
         Mods[I].Phdrs.push_back(RelRo);
         Phdrs.push_back(RelRo);
       }
+      if (!Mods[I].EhFrame->empty() && Mods[I].EhFrameHdr &&
+          Mods[I].EhFrame->getParent() && Mods[I].EhFrameHdr->getParent())
+        AddHdr(PT_GNU_EH_FRAME, Mods[I].EhFrameHdr->getParent()->getPhdrFlags())
+            ->add(Mods[I].EhFrameHdr->getParent());
     }
   }
 }
@@ -2798,10 +2822,6 @@ template <class ELFT> void Writer<ELFT>::writeTrapInstr() {
 template <class ELFT> void Writer<ELFT>::writeSections() {
   uint8_t *Buf = Buffer->getBufferStart();
 
-  OutputSection *EhFrameHdr = nullptr;
-  if (In.EhFrameHdr && !In.EhFrameHdr->empty())
-    EhFrameHdr = In.EhFrameHdr->getParent();
-
   // In -r or -emit-relocs mode, write the relocation sections first as in
   // ELf_Rel targets we might find out that we need to modify the relocated
   // section while doing it.
@@ -2810,13 +2830,16 @@ template <class ELFT> void Writer<ELFT>::writeSections() {
       Sec->writeTo<ELFT>(Buf + Sec->Offset);
 
   for (OutputSection *Sec : OutputSections)
-    if (Sec != EhFrameHdr && Sec->Type != SHT_REL && Sec->Type != SHT_RELA)
+    if (Sec->Name != ".eh_frame_hdr" && Sec->Type != SHT_REL &&
+        Sec->Type != SHT_RELA)
       Sec->writeTo<ELFT>(Buf + Sec->Offset);
 
   // The .eh_frame_hdr depends on .eh_frame section contents, therefore
   // it should be written after .eh_frame is written.
-  if (EhFrameHdr)
-    EhFrameHdr->writeTo<ELFT>(Buf + EhFrameHdr->Offset);
+  for (auto &Mod : Mods)
+    if (Mod.EhFrameHdr && Mod.EhFrameHdr->getParent())
+      Mod.EhFrameHdr->getParent()->writeTo<ELFT>(
+          Buf + Mod.EhFrameHdr->getParent()->Offset);
 }
 
 template <class ELFT> void Writer<ELFT>::writeBuildId() {
