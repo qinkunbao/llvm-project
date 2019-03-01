@@ -370,8 +370,8 @@ void BuildIdSection::writeBuildId(ArrayRef<uint8_t> Buf) {
   }
 }
 
-EhFrameSection::EhFrameSection()
-    : SyntheticSection(SHF_ALLOC, SHT_PROGBITS, 1, ".eh_frame") {}
+EhFrameSection::EhFrameSection(Partition &Part)
+    : SyntheticSection(SHF_ALLOC, SHT_PROGBITS, 1, ".eh_frame"), Part(Part) {}
 
 // Search for an existing CIE record or create a new one.
 // CIE records from input object files are uniquified by their contents
@@ -512,7 +512,7 @@ std::vector<EhFrameSection::FdeData> EhFrameSection::getFdeData() const {
   uint8_t *Buf = Out::BufferStart + getParent()->Offset + OutSecOff;
   std::vector<FdeData> Ret;
 
-  uint64_t VA = Main.EhFrameHdr->getVA();
+  uint64_t VA = Part.EhFrameHdr->getVA();
   for (CieRecord *Rec : CieRecords) {
     uint8_t Enc = getFdeEncoding(Rec->Cie);
     for (EhSectionPiece *Fde : Rec->Fdes) {
@@ -596,8 +596,8 @@ void EhFrameSection::writeTo(uint8_t *Buf) {
   for (EhInputSection *S : Sections)
     S->relocateAlloc(Buf, nullptr);
 
-  if (Main.EhFrameHdr && Main.EhFrameHdr->getParent())
-    Main.EhFrameHdr->write();
+  if (Part.EhFrameHdr && Part.EhFrameHdr->getParent())
+    Part.EhFrameHdr->write();
 }
 
 GotSection::GotSection()
@@ -1194,9 +1194,9 @@ void StringTableSection::writeTo(uint8_t *Buf) {
 static unsigned getVerDefNum() { return Config->VersionDefinitions.size() + 1; }
 
 template <class ELFT>
-DynamicSection<ELFT>::DynamicSection()
+DynamicSection<ELFT>::DynamicSection(Partition &Part)
     : SyntheticSection(SHF_ALLOC | SHF_WRITE, SHT_DYNAMIC, Config->Wordsize,
-                       ".dynamic") {
+                       ".dynamic"), Part(Part) {
   this->Entsize = ELFT::Is64Bits ? 16 : 8;
 
   // .dynamic section is not writable on MIPS and on Fuchsia OS
@@ -1259,21 +1259,21 @@ static uint64_t addPltRelSz() {
 // Add remaining entries to complete .dynamic contents.
 template <class ELFT> void DynamicSection<ELFT>::finalizeContents() {
   for (StringRef S : Config->FilterList)
-    addInt(DT_FILTER, Main.DynStrTab->addString(S));
+    addInt(DT_FILTER, Part.DynStrTab->addString(S));
   for (StringRef S : Config->AuxiliaryList)
-    addInt(DT_AUXILIARY, Main.DynStrTab->addString(S));
+    addInt(DT_AUXILIARY, Part.DynStrTab->addString(S));
 
   if (!Config->Rpath.empty())
     addInt(Config->EnableNewDtags ? DT_RUNPATH : DT_RPATH,
-           Main.DynStrTab->addString(Config->Rpath));
+           Part.DynStrTab->addString(Config->Rpath));
 
   for (InputFile *File : SharedFiles) {
     SharedFile<ELFT> *F = cast<SharedFile<ELFT>>(File);
     if (F->IsNeeded)
-      addInt(DT_NEEDED, Main.DynStrTab->addString(F->SoName));
+      addInt(DT_NEEDED, Part.DynStrTab->addString(F->SoName));
   }
   if (!Config->SoName.empty())
-    addInt(DT_SONAME, Main.DynStrTab->addString(Config->SoName));
+    addInt(DT_SONAME, Part.DynStrTab->addString(Config->SoName));
 
   // Set DT_FLAGS and DT_FLAGS_1.
   uint32_t DtFlags = 0;
@@ -1321,12 +1321,12 @@ template <class ELFT> void DynamicSection<ELFT>::finalizeContents() {
   if (!Config->Shared && !Config->Relocatable && !Config->ZRodynamic)
     addInt(DT_DEBUG, 0);
 
-  if (OutputSection *Sec = Main.DynStrTab->getParent())
+  if (OutputSection *Sec = Part.DynStrTab->getParent())
     this->Link = Sec->SectionIndex;
 
-  if (!Main.RelaDyn->empty()) {
-    addInSec(Main.RelaDyn->DynamicTag, Main.RelaDyn);
-    addSize(Main.RelaDyn->SizeDynamicTag, Main.RelaDyn->getParent());
+  if (!Part.RelaDyn->empty()) {
+    addInSec(Part.RelaDyn->DynamicTag, Part.RelaDyn);
+    addSize(Part.RelaDyn->SizeDynamicTag, Part.RelaDyn->getParent());
 
     bool IsRela = Config->IsRela;
     addInt(IsRela ? DT_RELAENT : DT_RELENT,
@@ -1336,16 +1336,16 @@ template <class ELFT> void DynamicSection<ELFT>::finalizeContents() {
     // The problem is in the tight relation between dynamic
     // relocations and GOT. So do not emit this tag on MIPS.
     if (Config->EMachine != EM_MIPS) {
-      size_t NumRelativeRels = Main.RelaDyn->getRelativeRelocCount();
+      size_t NumRelativeRels = Part.RelaDyn->getRelativeRelocCount();
       if (Config->ZCombreloc && NumRelativeRels)
         addInt(IsRela ? DT_RELACOUNT : DT_RELCOUNT, NumRelativeRels);
     }
   }
-  if (Main.RelrDyn && !Main.RelrDyn->Relocs.empty()) {
+  if (Part.RelrDyn && !Part.RelrDyn->Relocs.empty()) {
     addInSec(Config->UseAndroidRelrTags ? DT_ANDROID_RELR : DT_RELR,
-             Main.RelrDyn);
+             Part.RelrDyn);
     addSize(Config->UseAndroidRelrTags ? DT_ANDROID_RELRSZ : DT_RELRSZ,
-            Main.RelrDyn->getParent());
+            Part.RelrDyn->getParent());
     addInt(Config->UseAndroidRelrTags ? DT_ANDROID_RELRENT : DT_RELRENT,
            sizeof(Elf_Relr));
   }
@@ -1372,16 +1372,16 @@ template <class ELFT> void DynamicSection<ELFT>::finalizeContents() {
     addInt(DT_PLTREL, Config->IsRela ? DT_RELA : DT_REL);
   }
 
-  addInSec(DT_SYMTAB, Main.DynSymTab);
+  addInSec(DT_SYMTAB, Part.DynSymTab);
   addInt(DT_SYMENT, sizeof(Elf_Sym));
-  addInSec(DT_STRTAB, Main.DynStrTab);
-  addInt(DT_STRSZ, Main.DynStrTab->getSize());
+  addInSec(DT_STRTAB, Part.DynStrTab);
+  addInt(DT_STRSZ, Part.DynStrTab->getSize());
   if (!Config->ZText)
     addInt(DT_TEXTREL, 0);
-  if (Main.GnuHashTab)
-    addInSec(DT_GNU_HASH, Main.GnuHashTab);
-  if (Main.HashTab)
-    addInSec(DT_HASH, Main.HashTab);
+  if (Part.GnuHashTab)
+    addInSec(DT_GNU_HASH, Part.GnuHashTab);
+  if (Part.HashTab)
+    addInSec(DT_HASH, Part.HashTab);
 
   if (Out::PreinitArray) {
     addOutSec(DT_PREINIT_ARRAY, Out::PreinitArray);
@@ -1419,14 +1419,14 @@ template <class ELFT> void DynamicSection<ELFT>::finalizeContents() {
     addInt(DT_MIPS_RLD_VERSION, 1);
     addInt(DT_MIPS_FLAGS, RHF_NOTPOT);
     addInt(DT_MIPS_BASE_ADDRESS, Target->getImageBase());
-    addInt(DT_MIPS_SYMTABNO, Main.DynSymTab->getNumSymbols());
+    addInt(DT_MIPS_SYMTABNO, Part.DynSymTab->getNumSymbols());
 
     add(DT_MIPS_LOCAL_GOTNO, [] { return In.MipsGot->getLocalEntriesNum(); });
 
     if (const Symbol *B = In.MipsGot->getFirstGlobalEntry())
       addInt(DT_MIPS_GOTSYM, B->DynsymIndex);
     else
-      addInt(DT_MIPS_GOTSYM, Main.DynSymTab->getNumSymbols());
+      addInt(DT_MIPS_GOTSYM, Part.DynSymTab->getNumSymbols());
     addInSec(DT_PLTGOT, In.MipsGot);
     if (In.MipsRldMap) {
       if (!Config->Pie)
@@ -1482,11 +1482,12 @@ uint32_t DynamicReloc::getSymIndex() const {
   return 0;
 }
 
-RelocationBaseSection::RelocationBaseSection(StringRef Name, uint32_t Type,
+RelocationBaseSection::RelocationBaseSection(SymbolTableBaseSection *SymTab,
+                                             StringRef Name, uint32_t Type,
                                              int32_t DynamicTag,
                                              int32_t SizeDynamicTag)
     : SyntheticSection(SHF_ALLOC, Type, Config->Wordsize, Name),
-      DynamicTag(DynamicTag), SizeDynamicTag(SizeDynamicTag) {}
+      DynamicTag(DynamicTag), SizeDynamicTag(SizeDynamicTag), SymTab(SymTab) {}
 
 void RelocationBaseSection::addReloc(RelType DynType, InputSectionBase *IS,
                                      uint64_t OffsetInSec, Symbol *Sym) {
@@ -1515,8 +1516,8 @@ void RelocationBaseSection::finalizeContents() {
   // When linking glibc statically, .rel{,a}.plt contains R_*_IRELATIVE
   // relocations due to IFUNC (e.g. strcpy). sh_link will be set to 0 in that
   // case.
-  if (Main.DynSymTab && Main.DynSymTab->getParent())
-    getParent()->Link = Main.DynSymTab->getParent()->SectionIndex;
+  if (SymTab && SymTab->getParent())
+    getParent()->Link = SymTab->getParent()->SectionIndex;
   else
     getParent()->Link = 0;
 
@@ -1541,8 +1542,9 @@ static void encodeDynamicReloc(typename ELFT::Rela *P,
 }
 
 template <class ELFT>
-RelocationSection<ELFT>::RelocationSection(StringRef Name, bool Sort)
-    : RelocationBaseSection(Name, Config->IsRela ? SHT_RELA : SHT_REL,
+RelocationSection<ELFT>::RelocationSection(SymbolTableBaseSection *SymTab,
+                                           StringRef Name, bool Sort)
+    : RelocationBaseSection(SymTab, Name, Config->IsRela ? SHT_RELA : SHT_REL,
                             Config->IsRela ? DT_RELA : DT_REL,
                             Config->IsRela ? DT_RELASZ : DT_RELSZ),
       Sort(Sort) {
@@ -1573,9 +1575,9 @@ template <class ELFT> unsigned RelocationSection<ELFT>::getRelocOffset() {
 
 template <class ELFT>
 AndroidPackedRelocationSection<ELFT>::AndroidPackedRelocationSection(
-    StringRef Name)
+    SymbolTableBaseSection *SymTab, StringRef Name)
     : RelocationBaseSection(
-          Name, Config->IsRela ? SHT_ANDROID_RELA : SHT_ANDROID_REL,
+          SymTab, Name, Config->IsRela ? SHT_ANDROID_RELA : SHT_ANDROID_REL,
           Config->IsRela ? DT_ANDROID_RELA : DT_ANDROID_REL,
           Config->IsRela ? DT_ANDROID_RELASZ : DT_ANDROID_RELSZ) {
   this->Entsize = 1;
@@ -1892,9 +1894,9 @@ void SymbolTableBaseSection::finalizeContents() {
   // Because the first symbol entry is a null entry, 1 is the first.
   getParent()->Info = 1;
 
-  if (Main.GnuHashTab) {
+  if (GnuHashTab) {
     // NB: It also sorts Symbols to meet the GNU hash table requirements.
-    Main.GnuHashTab->addSymbols(Symbols);
+    GnuHashTab->addSymbols(Symbols);
   } else if (Config->EMachine == EM_MIPS) {
     std::stable_sort(Symbols.begin(), Symbols.end(), sortMipsSymbols);
   }
@@ -2141,12 +2143,14 @@ size_t SymtabShndxSection::getSize() const {
 // DSOs very quickly. If you are sure that your dynamic linker knows
 // about .gnu.hash, you want to specify -hash-style=gnu. Otherwise, a
 // safe bet is to specify -hash-style=both for backward compatibilty.
-GnuHashTableSection::GnuHashTableSection()
-    : SyntheticSection(SHF_ALLOC, SHT_GNU_HASH, Config->Wordsize, ".gnu.hash") {
+GnuHashTableSection::GnuHashTableSection(SymbolTableBaseSection &SymTab)
+    : SyntheticSection(SHF_ALLOC, SHT_GNU_HASH, Config->Wordsize, ".gnu.hash"),
+      SymTab(SymTab) {
+  SymTab.GnuHashTab = this;
 }
 
 void GnuHashTableSection::finalizeContents() {
-  if (OutputSection *Sec = Main.DynSymTab->getParent())
+  if (OutputSection *Sec = SymTab.getParent())
     getParent()->Link = Sec->SectionIndex;
 
   // Computes bloom filter size in word size. We want to allocate 12
@@ -2172,7 +2176,7 @@ void GnuHashTableSection::writeTo(uint8_t *Buf) {
 
   // Write a header.
   write32(Buf, NBuckets);
-  write32(Buf + 4, Main.DynSymTab->getNumSymbols() - Symbols.size());
+  write32(Buf + 4, SymTab.getNumSymbols() - Symbols.size());
   write32(Buf + 8, MaskWords);
   write32(Buf + 12, Shift2);
   Buf += 16;
@@ -2273,20 +2277,20 @@ void GnuHashTableSection::addSymbols(std::vector<SymbolTableEntry> &V) {
     V.push_back({Ent.Sym, Ent.StrTabOffset});
 }
 
-HashTableSection::HashTableSection()
-    : SyntheticSection(SHF_ALLOC, SHT_HASH, 4, ".hash") {
+HashTableSection::HashTableSection(SymbolTableBaseSection &SymTab)
+    : SyntheticSection(SHF_ALLOC, SHT_HASH, 4, ".hash"), SymTab(SymTab) {
   this->Entsize = 4;
 }
 
 void HashTableSection::finalizeContents() {
-  if (OutputSection *Sec = Main.DynSymTab->getParent())
+  if (OutputSection *Sec = SymTab.getParent())
     getParent()->Link = Sec->SectionIndex;
 
   unsigned NumEntries = 2;                       // nbucket and nchain.
-  NumEntries += Main.DynSymTab->getNumSymbols(); // The chain entries.
+  NumEntries += SymTab.getNumSymbols(); // The chain entries.
 
   // Create as many buckets as there are symbols.
-  NumEntries += Main.DynSymTab->getNumSymbols();
+  NumEntries += SymTab.getNumSymbols();
   this->Size = NumEntries * 4;
 }
 
@@ -2294,7 +2298,7 @@ void HashTableSection::writeTo(uint8_t *Buf) {
   // See comment in GnuHashTableSection::writeTo.
   memset(Buf, 0, Size);
 
-  unsigned NumSymbols = Main.DynSymTab->getNumSymbols();
+  unsigned NumSymbols = SymTab.getNumSymbols();
 
   uint32_t *P = reinterpret_cast<uint32_t *>(Buf);
   write32(P++, NumSymbols); // nbucket
@@ -2303,7 +2307,7 @@ void HashTableSection::writeTo(uint8_t *Buf) {
   uint32_t *Buckets = P;
   uint32_t *Chains = P + NumSymbols;
 
-  for (const SymbolTableEntry &S : Main.DynSymTab->getSymbols()) {
+  for (const SymbolTableEntry &S : SymTab.getSymbols()) {
     Symbol *Sym = S.Sym;
     StringRef Name = Sym->getName();
     unsigned I = Sym->DynsymIndex;
@@ -2665,8 +2669,9 @@ void GdbIndexSection::writeTo(uint8_t *Buf) {
 
 bool GdbIndexSection::empty() const { return Chunks.empty(); }
 
-EhFrameHeader::EhFrameHeader()
-    : SyntheticSection(SHF_ALLOC, SHT_PROGBITS, 4, ".eh_frame_hdr") {}
+EhFrameHeader::EhFrameHeader(Partition &Part)
+    : SyntheticSection(SHF_ALLOC, SHT_PROGBITS, 4, ".eh_frame_hdr"),
+      Part(Part) {}
 
 void EhFrameHeader::writeTo(uint8_t *Buf) {
   // Unlike most sections, the EhFrameHeader section is written while writing
@@ -2684,13 +2689,13 @@ void EhFrameHeader::write() {
   uint8_t *Buf = Out::BufferStart + getParent()->Offset + OutSecOff;
   typedef EhFrameSection::FdeData FdeData;
 
-  std::vector<FdeData> Fdes = Main.EhFrame->getFdeData();
+  std::vector<FdeData> Fdes = Part.EhFrame->getFdeData();
 
   Buf[0] = 1;
   Buf[1] = DW_EH_PE_pcrel | DW_EH_PE_sdata4;
   Buf[2] = DW_EH_PE_udata4;
   Buf[3] = DW_EH_PE_datarel | DW_EH_PE_sdata4;
-  write32(Buf + 4, Main.EhFrame->getParent()->Addr - this->getVA() - 4);
+  write32(Buf + 4, Part.EhFrame->getParent()->Addr - this->getVA() - 4);
   write32(Buf + 8, Fdes.size());
   Buf += 12;
 
@@ -2703,10 +2708,10 @@ void EhFrameHeader::write() {
 
 size_t EhFrameHeader::getSize() const {
   // .eh_frame_hdr has a 12 bytes header followed by an array of FDEs.
-  return 12 + Main.EhFrame->NumFdes * 8;
+  return 12 + Part.EhFrame->NumFdes * 8;
 }
 
-bool EhFrameHeader::empty() const { return Main.EhFrame->empty(); }
+bool EhFrameHeader::empty() const { return Part.EhFrame->empty(); }
 
 VersionDefinitionSection::VersionDefinitionSection()
     : SyntheticSection(SHF_ALLOC, SHT_GNU_verdef, sizeof(uint32_t),
