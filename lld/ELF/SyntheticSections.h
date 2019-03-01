@@ -31,6 +31,7 @@
 namespace lld {
 namespace elf {
 class Defined;
+struct PhdrEntry;
 class SharedSymbol;
 
 class SyntheticSection : public InputSection {
@@ -1002,19 +1003,30 @@ void mergeSections();
 Defined *addSyntheticLocal(StringRef Name, uint8_t Type, uint64_t Value,
                            uint64_t Size, InputSectionBase &Section);
 
+// Linker generated sections which make up a partition.
+struct Partition {
+  OutputSection *ElfHeader;
+  OutputSection *ProgramHeaders;
+  std::vector<PhdrEntry *> Phdrs;
+  SyntheticSection *Dynamic;
+  StringTableSection *DynStrTab;
+  SymbolTableBaseSection *DynSymTab;
+  EhFrameHeader *EhFrameHdr;
+  EhFrameSection *EhFrame;
+  GnuHashTableSection *GnuHashTab;
+  HashTableSection *HashTab;
+  RelocationBaseSection *RelaDyn;
+  RelrBaseSection *RelrDyn;
+};
+
+extern Partition Main;
+
 // Linker generated sections which can be used as inputs.
 struct InStruct {
   InputSection *ARMAttributes;
   BssSection *Bss;
   BssSection *BssRelRo;
   BuildIdSection *BuildId;
-  EhFrameHeader *EhFrameHdr;
-  EhFrameSection *EhFrame;
-  SyntheticSection *Dynamic;
-  StringTableSection *DynStrTab;
-  SymbolTableBaseSection *DynSymTab;
-  GnuHashTableSection *GnuHashTab;
-  HashTableSection *HashTab;
   GotSection *Got;
   GotPltSection *GotPlt;
   IgotPltSection *IgotPlt;
@@ -1023,8 +1035,6 @@ struct InStruct {
   MipsRldMapSection *MipsRldMap;
   PltSection *Plt;
   PltSection *Iplt;
-  RelocationBaseSection *RelaDyn;
-  RelrBaseSection *RelrDyn;
   RelocationBaseSection *RelaPlt;
   RelocationBaseSection *RelaIplt;
   StringTableSection *ShStrTab;

@@ -414,16 +414,16 @@ LinkerScript::computeInputSections(const InputSectionDescription *Cmd) {
 
 void LinkerScript::discard(ArrayRef<InputSection *> V) {
   for (InputSection *S : V) {
-    if (S == In.ShStrTab || S == In.RelaDyn || S == In.RelrDyn)
+    if (S == In.ShStrTab || S == Main.RelaDyn || S == Main.RelrDyn)
       error("discarding " + S->Name + " section is not allowed");
 
     // You can discard .hash and .gnu.hash sections by linker scripts. Since
     // they are synthesized sections, we need to handle them differently than
     // other regular sections.
-    if (S == In.GnuHashTab)
-      In.GnuHashTab = nullptr;
-    if (S == In.HashTab)
-      In.HashTab = nullptr;
+    if (S == Main.GnuHashTab)
+      Main.GnuHashTab = nullptr;
+    if (S == Main.HashTab)
+      Main.HashTab = nullptr;
 
     S->Assigned = false;
     S->Live = false;
@@ -987,8 +987,8 @@ void LinkerScript::allocateHeaders(std::vector<PhdrEntry *> &Phdrs) {
   uint64_t HeaderSize = getHeaderSize();
   if (HeaderSize <= Min - computeBase(Min, HasExplicitHeaders)) {
     Min = alignDown(Min - HeaderSize, Config->MaxPageSize);
-    Out::ElfHeader->Addr = Min;
-    Out::ProgramHeaders->Addr = Min + Out::ElfHeader->Size;
+    Main.ElfHeader->Addr = Min;
+    Main.ProgramHeaders->Addr = Min + Main.ElfHeader->Size;
     return;
   }
 
@@ -996,8 +996,8 @@ void LinkerScript::allocateHeaders(std::vector<PhdrEntry *> &Phdrs) {
   if (HasExplicitHeaders)
     error("could not allocate headers");
 
-  Out::ElfHeader->PtLoad = nullptr;
-  Out::ProgramHeaders->PtLoad = nullptr;
+  Main.ElfHeader->PtLoad = nullptr;
+  Main.ProgramHeaders->PtLoad = nullptr;
   FirstPTLoad->FirstSec = findFirstSection(FirstPTLoad);
 
   llvm::erase_if(Phdrs,
@@ -1059,9 +1059,9 @@ std::vector<PhdrEntry *> LinkerScript::createPhdrs() {
     PhdrEntry *Phdr = make<PhdrEntry>(Cmd.Type, Cmd.Flags ? *Cmd.Flags : PF_R);
 
     if (Cmd.HasFilehdr)
-      Phdr->add(Out::ElfHeader);
+      Phdr->add(Main.ElfHeader);
     if (Cmd.HasPhdrs)
-      Phdr->add(Out::ProgramHeaders);
+      Phdr->add(Main.ProgramHeaders);
 
     if (Cmd.LMAExpr) {
       Phdr->p_paddr = Cmd.LMAExpr().getValue();

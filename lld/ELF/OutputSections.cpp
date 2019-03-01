@@ -33,8 +33,6 @@ using namespace lld::elf;
 uint8_t *Out::BufferStart;
 uint8_t Out::First;
 PhdrEntry *Out::TlsPhdr;
-OutputSection *Out::ElfHeader;
-OutputSection *Out::ProgramHeaders;
 OutputSection *Out::PreinitArray;
 OutputSection *Out::InitArray;
 OutputSection *Out::FiniArray;
@@ -153,7 +151,7 @@ static void sortByOrder(MutableArrayRef<InputSection *> In,
 uint64_t elf::getHeaderSize() {
   if (Config->OFormatBinary)
     return 0;
-  return Out::ElfHeader->Size + Out::ProgramHeaders->Size;
+  return Main.ElfHeader->Size + Main.ProgramHeaders->Size;
 }
 
 bool OutputSection::classof(const BaseCommand *C) {

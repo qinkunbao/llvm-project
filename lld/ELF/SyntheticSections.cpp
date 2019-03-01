@@ -512,7 +512,7 @@ std::vector<EhFrameSection::FdeData> EhFrameSection::getFdeData() const {
   uint8_t *Buf = Out::BufferStart + getParent()->Offset + OutSecOff;
   std::vector<FdeData> Ret;
 
-  uint64_t VA = In.EhFrameHdr->getVA();
+  uint64_t VA = Main.EhFrameHdr->getVA();
   for (CieRecord *Rec : CieRecords) {
     uint8_t Enc = getFdeEncoding(Rec->Cie);
     for (EhSectionPiece *Fde : Rec->Fdes) {
@@ -596,8 +596,8 @@ void EhFrameSection::writeTo(uint8_t *Buf) {
   for (EhInputSection *S : Sections)
     S->relocateAlloc(Buf, nullptr);
 
-  if (In.EhFrameHdr && In.EhFrameHdr->getParent())
-    In.EhFrameHdr->write();
+  if (Main.EhFrameHdr && Main.EhFrameHdr->getParent())
+    Main.EhFrameHdr->write();
 }
 
 GotSection::GotSection()
@@ -950,7 +950,7 @@ void MipsGotSection::build() {
       Symbol *S = P.first;
       uint64_t Offset = P.second * Config->Wordsize;
       if (S->IsPreemptible)
-        In.RelaDyn->addReloc(Target->TlsGotRel, this, Offset, S);
+        Main.RelaDyn->addReloc(Target->TlsGotRel, this, Offset, S);
     }
     for (std::pair<Symbol *, size_t> &P : Got.DynTlsSymbols) {
       Symbol *S = P.first;
@@ -958,7 +958,7 @@ void MipsGotSection::build() {
       if (S == nullptr) {
         if (!Config->Pic)
           continue;
-        In.RelaDyn->addReloc(Target->TlsModuleIndexRel, this, Offset, S);
+        Main.RelaDyn->addReloc(Target->TlsModuleIndexRel, this, Offset, S);
       } else {
         // When building a shared library we still need a dynamic relocation
         // for the module index. Therefore only checking for
@@ -966,13 +966,13 @@ void MipsGotSection::build() {
         // thread-locals that have been marked as local through a linker script)
         if (!S->IsPreemptible && !Config->Pic)
           continue;
-        In.RelaDyn->addReloc(Target->TlsModuleIndexRel, this, Offset, S);
+        Main.RelaDyn->addReloc(Target->TlsModuleIndexRel, this, Offset, S);
         // However, we can skip writing the TLS offset reloc for non-preemptible
         // symbols since it is known even in shared libraries
         if (!S->IsPreemptible)
           continue;
         Offset += Config->Wordsize;
-        In.RelaDyn->addReloc(Target->TlsOffsetRel, this, Offset, S);
+        Main.RelaDyn->addReloc(Target->TlsOffsetRel, this, Offset, S);
       }
     }
 
@@ -984,7 +984,7 @@ void MipsGotSection::build() {
     // Dynamic relocations for "global" entries.
     for (const std::pair<Symbol *, size_t> &P : Got.Global) {
       uint64_t Offset = P.second * Config->Wordsize;
-      In.RelaDyn->addReloc(Target->RelativeRel, this, Offset, P.first);
+      Main.RelaDyn->addReloc(Target->RelativeRel, this, Offset, P.first);
     }
     if (!Config->Pic)
       continue;
@@ -994,14 +994,14 @@ void MipsGotSection::build() {
       size_t PageCount = L.second.Count;
       for (size_t PI = 0; PI < PageCount; ++PI) {
         uint64_t Offset = (L.second.FirstIndex + PI) * Config->Wordsize;
-        In.RelaDyn->addReloc({Target->RelativeRel, this, Offset, L.first,
-                              int64_t(PI * 0x10000)});
+        Main.RelaDyn->addReloc({Target->RelativeRel, this, Offset, L.first,
+                                int64_t(PI * 0x10000)});
       }
     }
     for (const std::pair<GotEntry, size_t> &P : Got.Local16) {
       uint64_t Offset = P.second * Config->Wordsize;
-      In.RelaDyn->addReloc({Target->RelativeRel, this, Offset, true,
-                            P.first.first, P.first.second});
+      Main.RelaDyn->addReloc({Target->RelativeRel, this, Offset, true,
+                              P.first.first, P.first.second});
     }
   }
 }
@@ -1259,21 +1259,21 @@ static uint64_t addPltRelSz() {
 // Add remaining entries to complete .dynamic contents.
 template <class ELFT> void DynamicSection<ELFT>::finalizeContents() {
   for (StringRef S : Config->FilterList)
-    addInt(DT_FILTER, In.DynStrTab->addString(S));
+    addInt(DT_FILTER, Main.DynStrTab->addString(S));
   for (StringRef S : Config->AuxiliaryList)
-    addInt(DT_AUXILIARY, In.DynStrTab->addString(S));
+    addInt(DT_AUXILIARY, Main.DynStrTab->addString(S));
 
   if (!Config->Rpath.empty())
     addInt(Config->EnableNewDtags ? DT_RUNPATH : DT_RPATH,
-           In.DynStrTab->addString(Config->Rpath));
+           Main.DynStrTab->addString(Config->Rpath));
 
   for (InputFile *File : SharedFiles) {
     SharedFile<ELFT> *F = cast<SharedFile<ELFT>>(File);
     if (F->IsNeeded)
-      addInt(DT_NEEDED, In.DynStrTab->addString(F->SoName));
+      addInt(DT_NEEDED, Main.DynStrTab->addString(F->SoName));
   }
   if (!Config->SoName.empty())
-    addInt(DT_SONAME, In.DynStrTab->addString(Config->SoName));
+    addInt(DT_SONAME, Main.DynStrTab->addString(Config->SoName));
 
   // Set DT_FLAGS and DT_FLAGS_1.
   uint32_t DtFlags = 0;
@@ -1321,12 +1321,12 @@ template <class ELFT> void DynamicSection<ELFT>::finalizeContents() {
   if (!Config->Shared && !Config->Relocatable && !Config->ZRodynamic)
     addInt(DT_DEBUG, 0);
 
-  if (OutputSection *Sec = In.DynStrTab->getParent())
+  if (OutputSection *Sec = Main.DynStrTab->getParent())
     this->Link = Sec->SectionIndex;
 
-  if (!In.RelaDyn->empty()) {
-    addInSec(In.RelaDyn->DynamicTag, In.RelaDyn);
-    addSize(In.RelaDyn->SizeDynamicTag, In.RelaDyn->getParent());
+  if (!Main.RelaDyn->empty()) {
+    addInSec(Main.RelaDyn->DynamicTag, Main.RelaDyn);
+    addSize(Main.RelaDyn->SizeDynamicTag, Main.RelaDyn->getParent());
 
     bool IsRela = Config->IsRela;
     addInt(IsRela ? DT_RELAENT : DT_RELENT,
@@ -1336,16 +1336,16 @@ template <class ELFT> void DynamicSection<ELFT>::finalizeContents() {
     // The problem is in the tight relation between dynamic
     // relocations and GOT. So do not emit this tag on MIPS.
     if (Config->EMachine != EM_MIPS) {
-      size_t NumRelativeRels = In.RelaDyn->getRelativeRelocCount();
+      size_t NumRelativeRels = Main.RelaDyn->getRelativeRelocCount();
       if (Config->ZCombreloc && NumRelativeRels)
         addInt(IsRela ? DT_RELACOUNT : DT_RELCOUNT, NumRelativeRels);
     }
   }
-  if (In.RelrDyn && !In.RelrDyn->Relocs.empty()) {
+  if (Main.RelrDyn && !Main.RelrDyn->Relocs.empty()) {
     addInSec(Config->UseAndroidRelrTags ? DT_ANDROID_RELR : DT_RELR,
-             In.RelrDyn);
+             Main.RelrDyn);
     addSize(Config->UseAndroidRelrTags ? DT_ANDROID_RELRSZ : DT_RELRSZ,
-            In.RelrDyn->getParent());
+            Main.RelrDyn->getParent());
     addInt(Config->UseAndroidRelrTags ? DT_ANDROID_RELRENT : DT_RELRENT,
            sizeof(Elf_Relr));
   }
@@ -1372,16 +1372,16 @@ template <class ELFT> void DynamicSection<ELFT>::finalizeContents() {
     addInt(DT_PLTREL, Config->IsRela ? DT_RELA : DT_REL);
   }
 
-  addInSec(DT_SYMTAB, In.DynSymTab);
+  addInSec(DT_SYMTAB, Main.DynSymTab);
   addInt(DT_SYMENT, sizeof(Elf_Sym));
-  addInSec(DT_STRTAB, In.DynStrTab);
-  addInt(DT_STRSZ, In.DynStrTab->getSize());
+  addInSec(DT_STRTAB, Main.DynStrTab);
+  addInt(DT_STRSZ, Main.DynStrTab->getSize());
   if (!Config->ZText)
     addInt(DT_TEXTREL, 0);
-  if (In.GnuHashTab)
-    addInSec(DT_GNU_HASH, In.GnuHashTab);
-  if (In.HashTab)
-    addInSec(DT_HASH, In.HashTab);
+  if (Main.GnuHashTab)
+    addInSec(DT_GNU_HASH, Main.GnuHashTab);
+  if (Main.HashTab)
+    addInSec(DT_HASH, Main.HashTab);
 
   if (Out::PreinitArray) {
     addOutSec(DT_PREINIT_ARRAY, Out::PreinitArray);
@@ -1419,14 +1419,14 @@ template <class ELFT> void DynamicSection<ELFT>::finalizeContents() {
     addInt(DT_MIPS_RLD_VERSION, 1);
     addInt(DT_MIPS_FLAGS, RHF_NOTPOT);
     addInt(DT_MIPS_BASE_ADDRESS, Target->getImageBase());
-    addInt(DT_MIPS_SYMTABNO, In.DynSymTab->getNumSymbols());
+    addInt(DT_MIPS_SYMTABNO, Main.DynSymTab->getNumSymbols());
 
     add(DT_MIPS_LOCAL_GOTNO, [] { return In.MipsGot->getLocalEntriesNum(); });
 
     if (const Symbol *B = In.MipsGot->getFirstGlobalEntry())
       addInt(DT_MIPS_GOTSYM, B->DynsymIndex);
     else
-      addInt(DT_MIPS_GOTSYM, In.DynSymTab->getNumSymbols());
+      addInt(DT_MIPS_GOTSYM, Main.DynSymTab->getNumSymbols());
     addInSec(DT_PLTGOT, In.MipsGot);
     if (In.MipsRldMap) {
       if (!Config->Pie)
@@ -1515,8 +1515,8 @@ void RelocationBaseSection::finalizeContents() {
   // When linking glibc statically, .rel{,a}.plt contains R_*_IRELATIVE
   // relocations due to IFUNC (e.g. strcpy). sh_link will be set to 0 in that
   // case.
-  if (In.DynSymTab && In.DynSymTab->getParent())
-    getParent()->Link = In.DynSymTab->getParent()->SectionIndex;
+  if (Main.DynSymTab && Main.DynSymTab->getParent())
+    getParent()->Link = Main.DynSymTab->getParent()->SectionIndex;
   else
     getParent()->Link = 0;
 
@@ -1892,9 +1892,9 @@ void SymbolTableBaseSection::finalizeContents() {
   // Because the first symbol entry is a null entry, 1 is the first.
   getParent()->Info = 1;
 
-  if (In.GnuHashTab) {
+  if (Main.GnuHashTab) {
     // NB: It also sorts Symbols to meet the GNU hash table requirements.
-    In.GnuHashTab->addSymbols(Symbols);
+    Main.GnuHashTab->addSymbols(Symbols);
   } else if (Config->EMachine == EM_MIPS) {
     std::stable_sort(Symbols.begin(), Symbols.end(), sortMipsSymbols);
   }
@@ -2146,7 +2146,7 @@ GnuHashTableSection::GnuHashTableSection()
 }
 
 void GnuHashTableSection::finalizeContents() {
-  if (OutputSection *Sec = In.DynSymTab->getParent())
+  if (OutputSection *Sec = Main.DynSymTab->getParent())
     getParent()->Link = Sec->SectionIndex;
 
   // Computes bloom filter size in word size. We want to allocate 12
@@ -2172,7 +2172,7 @@ void GnuHashTableSection::writeTo(uint8_t *Buf) {
 
   // Write a header.
   write32(Buf, NBuckets);
-  write32(Buf + 4, In.DynSymTab->getNumSymbols() - Symbols.size());
+  write32(Buf + 4, Main.DynSymTab->getNumSymbols() - Symbols.size());
   write32(Buf + 8, MaskWords);
   write32(Buf + 12, Shift2);
   Buf += 16;
@@ -2279,14 +2279,14 @@ HashTableSection::HashTableSection()
 }
 
 void HashTableSection::finalizeContents() {
-  if (OutputSection *Sec = In.DynSymTab->getParent())
+  if (OutputSection *Sec = Main.DynSymTab->getParent())
     getParent()->Link = Sec->SectionIndex;
 
   unsigned NumEntries = 2;                       // nbucket and nchain.
-  NumEntries += In.DynSymTab->getNumSymbols();   // The chain entries.
+  NumEntries += Main.DynSymTab->getNumSymbols(); // The chain entries.
 
   // Create as many buckets as there are symbols.
-  NumEntries += In.DynSymTab->getNumSymbols();
+  NumEntries += Main.DynSymTab->getNumSymbols();
   this->Size = NumEntries * 4;
 }
 
@@ -2294,7 +2294,7 @@ void HashTableSection::writeTo(uint8_t *Buf) {
   // See comment in GnuHashTableSection::writeTo.
   memset(Buf, 0, Size);
 
-  unsigned NumSymbols = In.DynSymTab->getNumSymbols();
+  unsigned NumSymbols = Main.DynSymTab->getNumSymbols();
 
   uint32_t *P = reinterpret_cast<uint32_t *>(Buf);
   write32(P++, NumSymbols); // nbucket
@@ -2303,7 +2303,7 @@ void HashTableSection::writeTo(uint8_t *Buf) {
   uint32_t *Buckets = P;
   uint32_t *Chains = P + NumSymbols;
 
-  for (const SymbolTableEntry &S : In.DynSymTab->getSymbols()) {
+  for (const SymbolTableEntry &S : Main.DynSymTab->getSymbols()) {
     Symbol *Sym = S.Sym;
     StringRef Name = Sym->getName();
     unsigned I = Sym->DynsymIndex;
@@ -2684,13 +2684,13 @@ void EhFrameHeader::write() {
   uint8_t *Buf = Out::BufferStart + getParent()->Offset + OutSecOff;
   typedef EhFrameSection::FdeData FdeData;
 
-  std::vector<FdeData> Fdes = In.EhFrame->getFdeData();
+  std::vector<FdeData> Fdes = Main.EhFrame->getFdeData();
 
   Buf[0] = 1;
   Buf[1] = DW_EH_PE_pcrel | DW_EH_PE_sdata4;
   Buf[2] = DW_EH_PE_udata4;
   Buf[3] = DW_EH_PE_datarel | DW_EH_PE_sdata4;
-  write32(Buf + 4, In.EhFrame->getParent()->Addr - this->getVA() - 4);
+  write32(Buf + 4, Main.EhFrame->getParent()->Addr - this->getVA() - 4);
   write32(Buf + 8, Fdes.size());
   Buf += 12;
 
@@ -2703,10 +2703,10 @@ void EhFrameHeader::write() {
 
 size_t EhFrameHeader::getSize() const {
   // .eh_frame_hdr has a 12 bytes header followed by an array of FDEs.
-  return 12 + In.EhFrame->NumFdes * 8;
+  return 12 + Main.EhFrame->NumFdes * 8;
 }
 
-bool EhFrameHeader::empty() const { return In.EhFrame->empty(); }
+bool EhFrameHeader::empty() const { return Main.EhFrame->empty(); }
 
 VersionDefinitionSection::VersionDefinitionSection()
     : SyntheticSection(SHF_ALLOC, SHT_GNU_verdef, sizeof(uint32_t),
@@ -2719,11 +2719,11 @@ static StringRef getFileDefName() {
 }
 
 void VersionDefinitionSection::finalizeContents() {
-  FileDefNameOff = In.DynStrTab->addString(getFileDefName());
+  FileDefNameOff = Main.DynStrTab->addString(getFileDefName());
   for (VersionDefinition &V : Config->VersionDefinitions)
-    V.NameOff = In.DynStrTab->addString(V.Name);
+    V.NameOff = Main.DynStrTab->addString(V.Name);
 
-  if (OutputSection *Sec = In.DynStrTab->getParent())
+  if (OutputSection *Sec = Main.DynStrTab->getParent())
     getParent()->Link = Sec->SectionIndex;
 
   // sh_info should be set to the number of definitions. This fact is missed in
@@ -2776,16 +2776,16 @@ VersionTableSection::VersionTableSection()
 void VersionTableSection::finalizeContents() {
   // At the moment of june 2016 GNU docs does not mention that sh_link field
   // should be set, but Sun docs do. Also readelf relies on this field.
-  getParent()->Link = In.DynSymTab->getParent()->SectionIndex;
+  getParent()->Link = Main.DynSymTab->getParent()->SectionIndex;
 }
 
 size_t VersionTableSection::getSize() const {
-  return (In.DynSymTab->getSymbols().size() + 1) * 2;
+  return (Main.DynSymTab->getSymbols().size() + 1) * 2;
 }
 
 void VersionTableSection::writeTo(uint8_t *Buf) {
   Buf += 2;
-  for (const SymbolTableEntry &S : In.DynSymTab->getSymbols()) {
+  for (const SymbolTableEntry &S : Main.DynSymTab->getSymbols()) {
     write16(Buf, S.Sym->VersionId);
     Buf += 2;
   }
@@ -2815,7 +2815,7 @@ template <class ELFT> void VersionNeedSection<ELFT>::addSymbol(Symbol *SS) {
   // to create one by adding it to our needed list and creating a dynstr entry
   // for the soname.
   if (File.VerdefMap.empty())
-    Needed.push_back({&File, In.DynStrTab->addString(File.SoName)});
+    Needed.push_back({&File, Main.DynStrTab->addString(File.SoName)});
   const typename ELFT::Verdef *Ver = File.Verdefs[SS->VerdefIndex];
   typename SharedFile<ELFT>::NeededVer &NV = File.VerdefMap[Ver];
 
@@ -2823,8 +2823,8 @@ template <class ELFT> void VersionNeedSection<ELFT>::addSymbol(Symbol *SS) {
   // prepare to create one by allocating a version identifier and creating a
   // dynstr entry for the version name.
   if (NV.Index == 0) {
-    NV.StrTab = In.DynStrTab->addString(File.getStringTable().data() +
-                                        Ver->getAux()->vda_name);
+    NV.StrTab = Main.DynStrTab->addString(File.getStringTable().data() +
+                                          Ver->getAux()->vda_name);
     NV.Index = NextIndex++;
   }
   SS->VersionId = NV.Index;
@@ -2866,7 +2866,7 @@ template <class ELFT> void VersionNeedSection<ELFT>::writeTo(uint8_t *Buf) {
 }
 
 template <class ELFT> void VersionNeedSection<ELFT>::finalizeContents() {
-  if (OutputSection *Sec = In.DynStrTab->getParent())
+  if (OutputSection *Sec = Main.DynStrTab->getParent())
     getParent()->Link = Sec->SectionIndex;
   getParent()->Info = Needed.size();
 }
@@ -3169,6 +3169,7 @@ bool PPC64LongBranchTargetSection::empty() const {
 }
 
 InStruct elf::In;
+Partition elf::Main;
 
 template GdbIndexSection *GdbIndexSection::create<ELF32LE>();
 template GdbIndexSection *GdbIndexSection::create<ELF32BE>();
