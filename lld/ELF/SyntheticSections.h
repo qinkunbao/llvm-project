@@ -795,8 +795,10 @@ private:
 // The values 0 and 1 are reserved. All other values are used for versions in
 // the own object or in any of the dependencies.
 class VersionTableSection final : public SyntheticSection {
+  Partition &Part;
+
 public:
-  VersionTableSection();
+  VersionTableSection(Partition &Part);
   void finalizeContents() override;
   size_t getSize() const override;
   void writeTo(uint8_t *Buf) override;
@@ -1019,7 +1021,7 @@ void mergeSections();
 Defined *addSyntheticLocal(StringRef Name, uint8_t Type, uint64_t Value,
                            uint64_t Size, InputSectionBase &Section);
 
-// Linker generated sections which make up a partition.
+// Linker generated per-partition sections.
 struct Partition {
   OutputSection *ElfHeader;
   OutputSection *ProgramHeaders;
@@ -1033,6 +1035,9 @@ struct Partition {
   HashTableSection *HashTab;
   RelocationBaseSection *RelaDyn;
   RelrBaseSection *RelrDyn;
+  VersionDefinitionSection *VerDef;
+  VersionNeedBaseSection *VerNeed;
+  VersionTableSection *VerSym;
 };
 
 extern Partition Main;
@@ -1057,9 +1062,6 @@ struct InStruct {
   StringTableSection *StrTab;
   SymbolTableBaseSection *SymTab;
   SymtabShndxSection *SymTabShndx;
-  VersionDefinitionSection *VerDef;
-  VersionNeedBaseSection *VerNeed;
-  VersionTableSection *VerSym;
 };
 
 extern InStruct In;

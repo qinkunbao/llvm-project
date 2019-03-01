@@ -331,16 +331,16 @@ template <class ELFT> static void createSyntheticSections() {
   if (Config->HasDynSymTab) {
     Add(Main.DynSymTab);
 
-    In.VerSym = make<VersionTableSection>();
-    Add(In.VerSym);
+    Main.VerSym = make<VersionTableSection>(Main);
+    Add(Main.VerSym);
 
     if (!Config->VersionDefinitions.empty()) {
-      In.VerDef = make<VersionDefinitionSection>();
-      Add(In.VerDef);
+      Main.VerDef = make<VersionDefinitionSection>();
+      Add(Main.VerDef);
     }
 
-    In.VerNeed = make<VersionNeedSection<ELFT>>();
-    Add(In.VerNeed);
+    Main.VerNeed = make<VersionNeedSection<ELFT>>();
+    Add(Main.VerNeed);
 
     if (Config->GnuHash) {
       Main.GnuHashTab = make<GnuHashTableSection>(*Main.DynSymTab);
@@ -1715,7 +1715,7 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
       Main.DynSymTab->addSymbol(Sym);
       if (auto *File = dyn_cast_or_null<SharedFile<ELFT>>(Sym->File))
         if (File->IsNeeded && !Sym->isUndefined())
-          In.VerNeed->addSymbol(Sym);
+          Main.VerNeed->addSymbol(Sym);
     }
   }
 
@@ -1793,7 +1793,7 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
   finalizeSynthetic(In.SymTabShndx);
   finalizeSynthetic(In.ShStrTab);
   finalizeSynthetic(In.StrTab);
-  finalizeSynthetic(In.VerDef);
+  finalizeSynthetic(Main.VerDef);
   finalizeSynthetic(In.Got);
   finalizeSynthetic(In.MipsGot);
   finalizeSynthetic(In.IgotPlt);
@@ -1805,8 +1805,8 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
   finalizeSynthetic(In.Plt);
   finalizeSynthetic(In.Iplt);
   finalizeSynthetic(Main.EhFrameHdr);
-  finalizeSynthetic(In.VerSym);
-  finalizeSynthetic(In.VerNeed);
+  finalizeSynthetic(Main.VerSym);
+  finalizeSynthetic(Main.VerNeed);
   finalizeSynthetic(Main.Dynamic);
 
   if (!Script->HasSectionsCommand && !Config->Relocatable)

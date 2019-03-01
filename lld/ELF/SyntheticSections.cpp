@@ -1403,16 +1403,16 @@ template <class ELFT> void DynamicSection<ELFT>::finalizeContents() {
     if (B->isDefined())
       addSym(DT_FINI, B);
 
-  bool HasVerNeed = In.VerNeed->getNeedNum() != 0;
-  if (HasVerNeed || In.VerDef)
-    addInSec(DT_VERSYM, In.VerSym);
-  if (In.VerDef) {
-    addInSec(DT_VERDEF, In.VerDef);
+  bool HasVerNeed = Part.VerNeed->getNeedNum() != 0;
+  if (HasVerNeed || Part.VerDef)
+    addInSec(DT_VERSYM, Part.VerSym);
+  if (Part.VerDef) {
+    addInSec(DT_VERDEF, Part.VerDef);
     addInt(DT_VERDEFNUM, getVerDefNum());
   }
   if (HasVerNeed) {
-    addInSec(DT_VERNEED, In.VerNeed);
-    addInt(DT_VERNEEDNUM, In.VerNeed->getNeedNum());
+    addInSec(DT_VERNEED, Part.VerNeed);
+    addInt(DT_VERNEEDNUM, Part.VerNeed->getNeedNum());
   }
 
   if (Config->EMachine == EM_MIPS) {
@@ -2772,20 +2772,20 @@ size_t VersionDefinitionSection::getSize() const {
 }
 
 // .gnu.version is a table where each entry is 2 byte long.
-VersionTableSection::VersionTableSection()
+VersionTableSection::VersionTableSection(Partition &Part)
     : SyntheticSection(SHF_ALLOC, SHT_GNU_versym, sizeof(uint16_t),
-                       ".gnu.version") {
+                       ".gnu.version"), Part(Part) {
   this->Entsize = 2;
 }
 
 void VersionTableSection::finalizeContents() {
   // At the moment of june 2016 GNU docs does not mention that sh_link field
   // should be set, but Sun docs do. Also readelf relies on this field.
-  getParent()->Link = Main.DynSymTab->getParent()->SectionIndex;
+  getParent()->Link = Part.DynSymTab->getParent()->SectionIndex;
 }
 
 size_t VersionTableSection::getSize() const {
-  return (Main.DynSymTab->getSymbols().size() + 1) * 2;
+  return (Part.DynSymTab->getSymbols().size() + 1) * 2;
 }
 
 void VersionTableSection::writeTo(uint8_t *Buf) {
@@ -2797,7 +2797,7 @@ void VersionTableSection::writeTo(uint8_t *Buf) {
 }
 
 bool VersionTableSection::empty() const {
-  return !In.VerDef && In.VerNeed->empty();
+  return !Part.VerDef && Part.VerNeed->empty();
 }
 
 VersionNeedBaseSection::VersionNeedBaseSection()
