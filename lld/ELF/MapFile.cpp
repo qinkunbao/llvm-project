@@ -57,7 +57,7 @@ static std::vector<Defined *> getSymbols() {
   for (InputFile *File : ObjectFiles)
     for (Symbol *B : File->getSymbols())
       if (auto *DR = dyn_cast<Defined>(B))
-        if (!DR->isSection() && DR->Section && DR->Section->Live &&
+        if (!DR->isSection() && DR->Section && DR->Section->isLive() &&
             (DR->File == File || DR->NeedsPltAddr || DR->Section->Bss))
           V.push_back(DR);
   return V;
@@ -125,7 +125,7 @@ static void printEhFrame(raw_ostream &OS, OutputSection *OSec) {
   };
 
   // Gather section pieces.
-  for (const CieRecord *Rec : In.EhFrame->getCieRecords()) {
+  for (const CieRecord *Rec : Main.EhFrame->getCieRecords()) {
     Add(*Rec->Cie);
     for (const EhSectionPiece *Fde : Rec->Fdes)
       Add(*Fde);
@@ -175,13 +175,16 @@ void elf::writeMapFile() {
 
     OSec = cast<OutputSection>(Base);
     writeHeader(OS, OSec->Addr, OSec->getLMA(), OSec->Size, OSec->Alignment);
-    OS << OSec->Name << '\n';
+    OS << OSec->Name;
+    if (OSec->Part > 1 && OSec->Part != 255)
+      OS << " [" << OSec->getPartition().Name << ']';
+    OS << '\n';
 
     // Dump symbols for each input section.
     for (BaseCommand *Base : OSec->SectionCommands) {
       if (auto *ISD = dyn_cast<InputSectionDescription>(Base)) {
         for (InputSection *IS : ISD->Sections) {
-          if (IS == In.EhFrame) {
+          if (IS == Main.EhFrame) {
             printEhFrame(OS, OSec);
             continue;
           }
@@ -240,7 +243,7 @@ void elf::writeCrossReferenceTable() {
       if (isa<SharedSymbol>(Sym))
         Map[Sym].insert(File);
       if (auto *D = dyn_cast<Defined>(Sym))
-        if (!D->isLocal() && (!D->Section || D->Section->Live))
+        if (!D->isLocal() && (!D->Section || D->Section->isLive()))
           Map[D].insert(File);
     }
   }

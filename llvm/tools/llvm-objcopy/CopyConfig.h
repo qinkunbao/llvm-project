@@ -111,6 +111,7 @@ struct CopyConfig {
   StringRef BuildIdLinkDir;
   Optional<StringRef> BuildIdLinkInput;
   Optional<StringRef> BuildIdLinkOutput;
+  StringRef ExtractPartition;
   StringRef SplitDWO;
   StringRef SymbolsPrefix;
   DiscardType DiscardMode = DiscardType::None;
@@ -144,6 +145,7 @@ struct CopyConfig {
   // Boolean options
   bool DeterministicArchives = true;
   bool ExtractDWO = false;
+  bool ExtractMainPartition = false;
   bool KeepFileSymbols = false;
   bool LocalizeHidden = false;
   bool OnlyKeepDebug = false;

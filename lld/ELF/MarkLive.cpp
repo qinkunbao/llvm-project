@@ -25,6 +25,7 @@
 #include "OutputSections.h"
 #include "SymbolTable.h"
 #include "Symbols.h"
+#include "SyntheticSections.h"
 #include "Target.h"
 #include "lld/Common/Memory.h"
 #include "lld/Common/Strings.h"
@@ -44,17 +45,24 @@ using namespace lld::elf;
 namespace {
 template <class ELFT> class MarkLive {
 public:
+  MarkLive(unsigned Partition) : Partition(Partition) {}
+
   void run();
+  void moveSymbolsToMainPartition();
 
 private:
   void enqueue(InputSectionBase *Sec, uint64_t Offset);
   void markSymbol(Symbol *Sym);
+  void mark();
 
   template <class RelTy>
   void resolveReloc(InputSectionBase &Sec, RelTy &Rel, bool IsLSDA);
 
   template <class RelTy>
   void scanEhFrameSection(EhInputSection &EH, ArrayRef<RelTy> Rels);
+
+  // The index of the partition that we are currently processing.
+  unsigned Partition;
 
   // A list of sections to visit.
   SmallVector<InputSection *, 256> Queue;
@@ -183,9 +191,12 @@ void MarkLive<ELFT>::enqueue(InputSectionBase *Sec, uint64_t Offset) {
   if (auto *MS = dyn_cast<MergeInputSection>(Sec))
     MS->getSectionPiece(Offset)->Live = true;
 
-  if (Sec->Live)
+  // Set Sec->Part to the minimum of Partition and Sec->Part in the following
+  // lattice: 1 < other < 0. If Sec->Part doesn't change, we don't need to do
+  // anything.
+  if (Sec->Part == 1 || Sec->Part == Partition)
     return;
-  Sec->Live = true;
+  Sec->Part = Sec->Part ? 1 : Partition;
 
   // Add input section to the queue.
   if (InputSection *S = dyn_cast<InputSection>(Sec))
@@ -202,7 +213,18 @@ template <class ELFT> void MarkLive<ELFT>::markSymbol(Symbol *Sym) {
 // Starting from GC-root sections, this function visits all reachable
 // sections to set their "Live" bits.
 template <class ELFT> void MarkLive<ELFT>::run() {
-  // Add GC root symbols.
+  // Preserve externally-visible symbols if the symbols defined by this
+  // file can interrupt other ELF file's symbols at runtime.
+  for (Symbol *S : Symtab->getSymbols())
+    if (S->includeInDynsym() && S->Part == Partition)
+      markSymbol(S);
+
+  // If this isn't the main partition, that's all we need to preserve.
+  if (Partition != 1) {
+    mark();
+    return;
+  }
+
   markSymbol(Symtab->find(Config->Entry));
   markSymbol(Symtab->find(Config->Init));
   markSymbol(Symtab->find(Config->Fini));
@@ -210,12 +232,6 @@ template <class ELFT> void MarkLive<ELFT>::run() {
     markSymbol(Symtab->find(S));
   for (StringRef S : Script->ReferencedSymbols)
     markSymbol(Symtab->find(S));
-
-  // Preserve externally-visible symbols if the symbols defined by this
-  // file can interrupt other ELF file's symbols at runtime.
-  for (Symbol *S : Symtab->getSymbols())
-    if (S->includeInDynsym())
-      markSymbol(S);
 
   // Preserve special sections and those which are specified in linker
   // script KEEP command.
@@ -225,7 +241,7 @@ template <class ELFT> void MarkLive<ELFT>::run() {
     // all of them. We also want to preserve personality routines and LSDA
     // referenced by .eh_frame sections, so we scan them for that here.
     if (auto *EH = dyn_cast<EhInputSection>(Sec)) {
-      EH->Live = true;
+      EH->Part = 1;
       if (!EH->NumRelocations)
         continue;
 
@@ -246,6 +262,27 @@ template <class ELFT> void MarkLive<ELFT>::run() {
     }
   }
 
+  mark();
+}
+
+// Some symbols always need to live in the main partition, specifically
+// ifuncs (because they can result in an IRELATIVE being added to the main
+// partition's GOT, which means that the ifunc must be available when the
+// main partition is loaded) and TLS symbols (because we only know how to
+// correctly process TLS relocations for the main partition). Here we move
+// any such symbols to the main partition.
+template <class ELFT> void MarkLive<ELFT>::moveSymbolsToMainPartition() {
+  for (InputFile *File : ObjectFiles)
+    for (Symbol *S : File->getSymbols())
+      if (auto *D = dyn_cast<Defined>(S))
+        if (D->Section && D->Section->isLive() &&
+            (S->Type == STT_GNU_IFUNC || S->Type == STT_TLS))
+          markSymbol(S);
+
+  mark();
+}
+
+template <class ELFT> void MarkLive<ELFT>::mark() {
   // Mark all reachable sections.
   while (!Queue.empty()) {
     InputSectionBase &Sec = *Queue.pop_back_val();
@@ -270,7 +307,7 @@ template <class ELFT> void elf::markLive() {
   // If -gc-sections is not given, no sections are removed.
   if (!Config->GcSections) {
     for (InputSectionBase *Sec : InputSections)
-      Sec->Live = true;
+      Sec->Part = 1;
 
     // If a DSO defines a symbol referenced in a regular object, it is needed.
     for (Symbol *Sym : Symtab->getSymbols())
@@ -307,16 +344,20 @@ template <class ELFT> void elf::markLive() {
     bool IsRel = (Sec->Type == SHT_REL || Sec->Type == SHT_RELA);
 
     if (!IsAlloc && !IsLinkOrder && !IsRel)
-      Sec->Live = true;
+      Sec->Part = 1;
   }
 
   // Follow the graph to mark all live sections.
-  MarkLive<ELFT>().run();
+  for (unsigned CurPart = 1; CurPart != NumPartitions + 1; ++CurPart)
+    MarkLive<ELFT>(CurPart).run();
+
+  if (NumPartitions != 1)
+    MarkLive<ELFT>(1).moveSymbolsToMainPartition();
 
   // Report garbage-collected sections.
   if (Config->PrintGcSections)
     for (InputSectionBase *Sec : InputSections)
-      if (!Sec->Live)
+      if (!Sec->isLive())
         message("removing unused section " + toString(Sec));
 }
 

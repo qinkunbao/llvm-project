@@ -242,6 +242,10 @@ public:
   /// records.
   std::string OptRecordPasses;
 
+  /// The name of the partition in which the symbols defined by this translation
+  /// unit should appear.
+  std::string SymbolPartition;
+
   /// Regular expression to select optimizations for which we should enable
   /// optimization remarks. Transformation passes whose name matches this
   /// expression (and support this feature), will emit a diagnostic
