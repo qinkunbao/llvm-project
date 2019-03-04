@@ -1,0 +1,57 @@
+#!/bin/sh -xe
+
+# Run from monorepo root.
+
+# Path to your android root directory.
+androiddir=~/2/a
+
+# Name of build directory in monorepo root.
+builddir=ra
+
+# git clone https://android.googlesource.com/toolchain/llvm_android
+llvm_androiddir=~/src/android-llvm/toolchain/llvm_android
+
+if ! [ -e $builddir ] ; then
+  echo "not in the right directory"
+  exit 1
+fi
+
+treename=$(basename $(pwd))
+treepath=$androiddir/prebuilts/clang/host/linux-x86/${treename}.new
+treepath_dest=$androiddir/prebuilts/clang/host/linux-x86/${treename}
+builddirver=$(grep CLANG_VERSION_STRING $builddir/gen/clang/include/clang/Basic/Version.inc | cut -d\" -f2)
+
+ver=$(grep 'ClangDefaultVersion.*=' $androiddir/build/soong/cc/config/global.go | cut -d\" -f2)
+shortver=$(grep 'ClangDefaultShortVersion.*=' $androiddir/build/soong/cc/config/global.go | cut -d\" -f2)
+origpath=$androiddir/prebuilts/clang/host/linux-x86/$ver
+
+rm -rf $treepath
+cp -r $origpath $treepath
+mkdir $treepath/bin.real
+cp $builddir/bin/clang $treepath/bin.real/clang
+ln -sf clang $treepath/bin.real/clang++
+ln -sf ../bin/ld.lld $treepath/bin.real/ld.lld
+echo '#!/bin/sh
+exec '$treepath_dest'/bin.real/clang "$@" -w -Wno-invalid-partial-specialization' > $treepath/bin/clang
+echo '#!/bin/sh
+exec '$treepath_dest'/bin.real/clang++ "$@" -w -Wno-invalid-partial-specialization' > $treepath/bin/clang++
+
+cp $builddir/bin/lld $treepath/bin/lld
+cp $builddir/bin/llvm-ar $treepath/bin/llvm-ar
+
+rm -rf $treepath/lib64/clang/$shortver/include
+cp -r $builddir/lib/clang/$builddirver/include $treepath/lib64/clang/$shortver/
+
+cp $builddir/lib/clang/$builddirver/lib/linux/libclang_rt.* $treepath/lib64/clang/$shortver/lib/linux/
+python $llvm_androiddir/mapfile.py $treepath/lib64/clang/$shortver/lib/linux/libclang_rt.hwasan-aarch64-android.so $treepath/lib64/clang/$shortver/lib/linux/libclang_rt.hwasan-aarch64-android.map.txt
+
+if [ -e $treepath/lib ] ; then
+  mv $treepath/lib/* $treepath/lib64/
+  rmdir $treepath/lib
+fi
+
+ln -s lib64 $treepath/lib
+ln -s $shortver $treepath/lib64/clang/$builddirver
+
+rsync -vcrl --delete $treepath/ $treepath_dest
+rm -rf $treepath
