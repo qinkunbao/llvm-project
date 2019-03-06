@@ -82,10 +82,11 @@ static bool canMergeToProgbits(unsigned Type) {
 }
 
 void OutputSection::addSection(InputSection *IS) {
-  if (!Live) {
+  if (!isLive()) {
     // If IS is the first section to be added to this section,
-    // initialize Type, Entsize and flags from IS.
-    Live = true;
+    // initialize Part, Type, Entsize and flags from IS.
+    assert(IS->Part);
+    Part = IS->Part;
     Type = IS->Type;
     Entsize = IS->Entsize;
     Flags = IS->Flags;
@@ -159,7 +160,7 @@ bool OutputSection::classof(const BaseCommand *C) {
 }
 
 void OutputSection::sort(llvm::function_ref<int(InputSectionBase *S)> Order) {
-  assert(Live);
+  assert(isLive());
   for (BaseCommand *B : SectionCommands)
     if (auto *ISD = dyn_cast<InputSectionDescription>(B))
       sortByOrder(ISD->Sections, Order);

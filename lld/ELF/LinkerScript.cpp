@@ -381,7 +381,7 @@ LinkerScript::computeInputSections(const InputSectionDescription *Cmd) {
     size_t SizeBefore = Ret.size();
 
     for (InputSectionBase *Sec : InputSections) {
-      if (!Sec->Live || Sec->Assigned)
+      if (!Sec->isLive() || Sec->Assigned)
         continue;
 
       // For -emit-relocs we have to ignore entries like
@@ -426,7 +426,7 @@ void LinkerScript::discard(ArrayRef<InputSection *> V) {
       Main.HashTab = nullptr;
 
     S->Assigned = false;
-    S->Live = false;
+    S->Part = 0;
     discard(S->DependentSections);
   }
 }
@@ -640,7 +640,7 @@ void LinkerScript::addOrphanSections() {
   std::vector<OutputSection *> V;
 
   auto Add = [&](InputSectionBase *S) {
-    if (!S->Live || S->Parent)
+    if (!S->isLive() || S->Parent)
       return;
 
     StringRef Name = getOutputSectionName(S);
@@ -879,7 +879,7 @@ void LinkerScript::adjustSectionsBeforeSorting() {
     // A live output section means that some input section was added to it. It
     // might have been removed (if it was empty synthetic section), but we at
     // least know the flags.
-    if (Sec->Live)
+    if (Sec->isLive())
       Flags = Sec->Flags;
 
     // We do not want to keep any special flags for output section
@@ -889,7 +889,7 @@ void LinkerScript::adjustSectionsBeforeSorting() {
       Sec->Flags = Flags & (SHF_ALLOC | SHF_WRITE | SHF_EXECINSTR);
 
     if (IsEmpty && isDiscardable(*Sec)) {
-      Sec->Live = false;
+      Sec->Part = 0;
       Cmd = nullptr;
     }
   }

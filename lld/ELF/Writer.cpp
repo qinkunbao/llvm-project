@@ -153,7 +153,7 @@ template <class ELFT> void Writer<ELFT>::removeEmptyPTLoad() {
 template <class ELFT> static void combineEhFrameSections() {
   for (InputSectionBase *&S : InputSections) {
     EhInputSection *ES = dyn_cast<EhInputSection>(S);
-    if (!ES || !ES->Live)
+    if (!ES || !ES->isLive())
       continue;
 
     Main.EhFrame->addSection<ELFT>(ES);
@@ -570,7 +570,7 @@ static bool includeInSymtab(const Symbol &B) {
     Sec = Sec->Repl;
 
     // Exclude symbols pointing to garbage-collected sections.
-    if (isa<InputSectionBase>(Sec) && !Sec->Live)
+    if (isa<InputSectionBase>(Sec) && !Sec->isLive())
       return false;
 
     if (auto *S = dyn_cast<MergeInputSection>(Sec))
@@ -930,7 +930,7 @@ void Writer<ELFT>::forEachRelSec(
   // Note that relocations for non-alloc sections are directly
   // processed by InputSection::relocateNonAlloc.
   for (InputSectionBase *IS : InputSections)
-    if (IS->Live && isa<InputSection>(IS) && (IS->Flags & SHF_ALLOC))
+    if (IS->isLive() && isa<InputSection>(IS) && (IS->Flags & SHF_ALLOC))
       Fn(*IS);
   for (EhInputSection *ES : Main.EhFrame->Sections)
     Fn(*ES);

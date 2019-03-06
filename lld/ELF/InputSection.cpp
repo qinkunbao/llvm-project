@@ -440,7 +440,7 @@ void InputSection::copyRelocations(uint8_t *Buf, ArrayRef<RelTy> Rels) {
         continue;
       }
       SectionBase *Section = D->Section->Repl;
-      if (!Section->Live) {
+      if (!Section->isLive()) {
         P->setSymbolAndType(0, 0, false);
         continue;
       }
@@ -1087,8 +1087,10 @@ template <class ELFT> void InputSection::writeTo(uint8_t *Buf) {
 
 void InputSection::replace(InputSection *Other) {
   Alignment = std::max(Alignment, Other->Alignment);
+  if (Part != Other->Part)
+    Part = 1;
   Other->Repl = Repl;
-  Other->Live = false;
+  Other->Part = 0;
 }
 
 template <class ELFT>

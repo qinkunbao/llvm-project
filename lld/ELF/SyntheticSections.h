@@ -43,7 +43,7 @@ public:
                    StringRef Name)
       : InputSection(nullptr, Flags, Type, Alignment, {}, Name,
                      InputSectionBase::Synthetic) {
-    this->Live = true;
+    this->Part = 1;
   }
 
   virtual ~SyntheticSection() = default;

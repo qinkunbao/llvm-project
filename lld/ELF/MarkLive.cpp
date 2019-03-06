@@ -190,6 +190,7 @@ template <class ELFT> static void doGcSections() {
   SmallVector<InputSection *, 256> Q;
   CNamedSections.clear();
 
+  uint8_t Part = 1;
   auto Enqueue = [&](InputSectionBase *Sec, uint64_t Offset) {
     // Skip over discarded sections. This in theory shouldn't happen, because
     // the ELF spec doesn't allow a relocation to point to a deduplicated
@@ -205,9 +206,12 @@ template <class ELFT> static void doGcSections() {
     if (auto *MS = dyn_cast<MergeInputSection>(Sec))
       MS->getSectionPiece(Offset)->Live = true;
 
-    if (Sec->Live)
+    // Set Sec->Part to the minimum of Part and Sec->Part in the following
+    // lattice: 1 < other < 0. If Sec->Part doesn't change, we don't need to do
+    // anything.
+    if (Sec->Part == 1 || Sec->Part == Part)
       return;
-    Sec->Live = true;
+    Sec->Part = Sec->Part ? 1 : Part;
 
     // Add input section to the queue.
     if (InputSection *S = dyn_cast<InputSection>(Sec))
@@ -243,7 +247,7 @@ template <class ELFT> static void doGcSections() {
     // all of them. We also want to preserve personality routines and LSDA
     // referenced by .eh_frame sections, so we scan them for that here.
     if (auto *EH = dyn_cast<EhInputSection>(Sec)) {
-      EH->Live = true;
+      EH->Part = 1;
       scanEhFrameSection<ELFT>(*EH, Enqueue);
     }
 
@@ -270,7 +274,7 @@ template <class ELFT> void elf::markLive() {
   if (!Config->GcSections) {
     // If -gc-sections is missing, no sections are removed.
     for (InputSectionBase *Sec : InputSections)
-      Sec->Live = true;
+      Sec->Part = 1;
 
     // If a DSO defines a symbol referenced in a regular object, it is needed.
     for (Symbol *Sym : Symtab->getSymbols())
@@ -304,7 +308,7 @@ template <class ELFT> void elf::markLive() {
     bool IsLinkOrder = (Sec->Flags & SHF_LINK_ORDER);
     bool IsRel = (Sec->Type == SHT_REL || Sec->Type == SHT_RELA);
     if (!IsAlloc && !IsLinkOrder && !IsRel)
-      Sec->Live = true;
+      Sec->Part = 1;
   }
 
   // Follow the graph to mark all live sections.
@@ -313,7 +317,7 @@ template <class ELFT> void elf::markLive() {
   // Report garbage-collected sections.
   if (Config->PrintGcSections)
     for (InputSectionBase *Sec : InputSections)
-      if (!Sec->Live)
+      if (!Sec->isLive())
         message("removing unused section " + toString(Sec));
 }
 
