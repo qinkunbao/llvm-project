@@ -68,7 +68,7 @@ struct CieRecord {
 // Section for .eh_frame.
 class EhFrameSection final : public SyntheticSection {
 public:
-  EhFrameSection(Partition &Part);
+  EhFrameSection(Partition &PartInfo);
   void writeTo(uint8_t *Buf) override;
   void finalizeContents() override;
   bool empty() const override { return Sections.empty(); }
@@ -88,7 +88,7 @@ public:
   ArrayRef<CieRecord *> getCieRecords() const { return CieRecords; }
 
 private:
-  Partition &Part;
+  Partition &PartInfo;
 
   // This is used only when parsing EhInputSection. We keep it here to avoid
   // allocating one for each EhInputSection.
@@ -458,7 +458,7 @@ template <class ELFT> class DynamicSection final : public SyntheticSection {
   std::vector<std::pair<int32_t, std::function<uint64_t()>>> Entries;
 
 public:
-  DynamicSection(Partition &Part);
+  DynamicSection(Partition &PartInfo);
   void finalizeContents() override;
   void writeTo(uint8_t *Buf) override;
   size_t getSize() const override { return Size; }
@@ -472,7 +472,7 @@ private:
   void addSize(int32_t Tag, OutputSection *Sec);
   void addSym(int32_t Tag, Symbol *Sym);
 
-  Partition &Part;
+  Partition &PartInfo;
   uint64_t Size = 0;
 };
 
@@ -756,10 +756,10 @@ private:
 // http://www.airs.com/blog/archives/460 (".eh_frame")
 // http://www.airs.com/blog/archives/462 (".eh_frame_hdr")
 class EhFrameHeader final : public SyntheticSection {
-  Partition &Part;
+  Partition &PartInfo;
 
 public:
-  EhFrameHeader(Partition &Part);
+  EhFrameHeader(Partition &PartInfo);
   void write();
   void writeTo(uint8_t *Buf) override;
   size_t getSize() const override;
@@ -795,10 +795,10 @@ private:
 // The values 0 and 1 are reserved. All other values are used for versions in
 // the own object or in any of the dependencies.
 class VersionTableSection final : public SyntheticSection {
-  Partition &Part;
+  Partition &PartInfo;
 
 public:
-  VersionTableSection(Partition &Part);
+  VersionTableSection(Partition &PartInfo);
   void finalizeContents() override;
   size_t getSize() const override;
   void writeTo(uint8_t *Buf) override;

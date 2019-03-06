@@ -370,8 +370,9 @@ void BuildIdSection::writeBuildId(ArrayRef<uint8_t> Buf) {
   }
 }
 
-EhFrameSection::EhFrameSection(Partition &Part)
-    : SyntheticSection(SHF_ALLOC, SHT_PROGBITS, 1, ".eh_frame"), Part(Part) {}
+EhFrameSection::EhFrameSection(Partition &PartInfo)
+    : SyntheticSection(SHF_ALLOC, SHT_PROGBITS, 1, ".eh_frame"),
+      PartInfo(PartInfo) {}
 
 // Search for an existing CIE record or create a new one.
 // CIE records from input object files are uniquified by their contents
@@ -512,7 +513,7 @@ std::vector<EhFrameSection::FdeData> EhFrameSection::getFdeData() const {
   uint8_t *Buf = Out::BufferStart + getParent()->Offset + OutSecOff;
   std::vector<FdeData> Ret;
 
-  uint64_t VA = Part.EhFrameHdr->getVA();
+  uint64_t VA = PartInfo.EhFrameHdr->getVA();
   for (CieRecord *Rec : CieRecords) {
     uint8_t Enc = getFdeEncoding(Rec->Cie);
     for (EhSectionPiece *Fde : Rec->Fdes) {
@@ -596,8 +597,8 @@ void EhFrameSection::writeTo(uint8_t *Buf) {
   for (EhInputSection *S : Sections)
     S->relocateAlloc(Buf, nullptr);
 
-  if (Part.EhFrameHdr && Part.EhFrameHdr->getParent())
-    Part.EhFrameHdr->write();
+  if (PartInfo.EhFrameHdr && PartInfo.EhFrameHdr->getParent())
+    PartInfo.EhFrameHdr->write();
 }
 
 GotSection::GotSection()
@@ -1194,9 +1195,9 @@ void StringTableSection::writeTo(uint8_t *Buf) {
 static unsigned getVerDefNum() { return Config->VersionDefinitions.size() + 1; }
 
 template <class ELFT>
-DynamicSection<ELFT>::DynamicSection(Partition &Part)
+DynamicSection<ELFT>::DynamicSection(Partition &PartInfo)
     : SyntheticSection(SHF_ALLOC | SHF_WRITE, SHT_DYNAMIC, Config->Wordsize,
-                       ".dynamic"), Part(Part) {
+                       ".dynamic"), PartInfo(PartInfo) {
   this->Entsize = ELFT::Is64Bits ? 16 : 8;
 
   // .dynamic section is not writable on MIPS and on Fuchsia OS
@@ -1259,21 +1260,21 @@ static uint64_t addPltRelSz() {
 // Add remaining entries to complete .dynamic contents.
 template <class ELFT> void DynamicSection<ELFT>::finalizeContents() {
   for (StringRef S : Config->FilterList)
-    addInt(DT_FILTER, Part.DynStrTab->addString(S));
+    addInt(DT_FILTER, PartInfo.DynStrTab->addString(S));
   for (StringRef S : Config->AuxiliaryList)
-    addInt(DT_AUXILIARY, Part.DynStrTab->addString(S));
+    addInt(DT_AUXILIARY, PartInfo.DynStrTab->addString(S));
 
   if (!Config->Rpath.empty())
     addInt(Config->EnableNewDtags ? DT_RUNPATH : DT_RPATH,
-           Part.DynStrTab->addString(Config->Rpath));
+           PartInfo.DynStrTab->addString(Config->Rpath));
 
   for (InputFile *File : SharedFiles) {
     SharedFile<ELFT> *F = cast<SharedFile<ELFT>>(File);
     if (F->IsNeeded)
-      addInt(DT_NEEDED, Part.DynStrTab->addString(F->SoName));
+      addInt(DT_NEEDED, PartInfo.DynStrTab->addString(F->SoName));
   }
   if (!Config->SoName.empty())
-    addInt(DT_SONAME, Part.DynStrTab->addString(Config->SoName));
+    addInt(DT_SONAME, PartInfo.DynStrTab->addString(Config->SoName));
 
   // Set DT_FLAGS and DT_FLAGS_1.
   uint32_t DtFlags = 0;
@@ -1321,12 +1322,12 @@ template <class ELFT> void DynamicSection<ELFT>::finalizeContents() {
   if (!Config->Shared && !Config->Relocatable && !Config->ZRodynamic)
     addInt(DT_DEBUG, 0);
 
-  if (OutputSection *Sec = Part.DynStrTab->getParent())
+  if (OutputSection *Sec = PartInfo.DynStrTab->getParent())
     this->Link = Sec->SectionIndex;
 
-  if (!Part.RelaDyn->empty()) {
-    addInSec(Part.RelaDyn->DynamicTag, Part.RelaDyn);
-    addSize(Part.RelaDyn->SizeDynamicTag, Part.RelaDyn->getParent());
+  if (!PartInfo.RelaDyn->empty()) {
+    addInSec(PartInfo.RelaDyn->DynamicTag, PartInfo.RelaDyn);
+    addSize(PartInfo.RelaDyn->SizeDynamicTag, PartInfo.RelaDyn->getParent());
 
     bool IsRela = Config->IsRela;
     addInt(IsRela ? DT_RELAENT : DT_RELENT,
@@ -1336,16 +1337,16 @@ template <class ELFT> void DynamicSection<ELFT>::finalizeContents() {
     // The problem is in the tight relation between dynamic
     // relocations and GOT. So do not emit this tag on MIPS.
     if (Config->EMachine != EM_MIPS) {
-      size_t NumRelativeRels = Part.RelaDyn->getRelativeRelocCount();
+      size_t NumRelativeRels = PartInfo.RelaDyn->getRelativeRelocCount();
       if (Config->ZCombreloc && NumRelativeRels)
         addInt(IsRela ? DT_RELACOUNT : DT_RELCOUNT, NumRelativeRels);
     }
   }
-  if (Part.RelrDyn && !Part.RelrDyn->Relocs.empty()) {
+  if (PartInfo.RelrDyn && !PartInfo.RelrDyn->Relocs.empty()) {
     addInSec(Config->UseAndroidRelrTags ? DT_ANDROID_RELR : DT_RELR,
-             Part.RelrDyn);
+             PartInfo.RelrDyn);
     addSize(Config->UseAndroidRelrTags ? DT_ANDROID_RELRSZ : DT_RELRSZ,
-            Part.RelrDyn->getParent());
+            PartInfo.RelrDyn->getParent());
     addInt(Config->UseAndroidRelrTags ? DT_ANDROID_RELRENT : DT_RELRENT,
            sizeof(Elf_Relr));
   }
@@ -1372,16 +1373,16 @@ template <class ELFT> void DynamicSection<ELFT>::finalizeContents() {
     addInt(DT_PLTREL, Config->IsRela ? DT_RELA : DT_REL);
   }
 
-  addInSec(DT_SYMTAB, Part.DynSymTab);
+  addInSec(DT_SYMTAB, PartInfo.DynSymTab);
   addInt(DT_SYMENT, sizeof(Elf_Sym));
-  addInSec(DT_STRTAB, Part.DynStrTab);
-  addInt(DT_STRSZ, Part.DynStrTab->getSize());
+  addInSec(DT_STRTAB, PartInfo.DynStrTab);
+  addInt(DT_STRSZ, PartInfo.DynStrTab->getSize());
   if (!Config->ZText)
     addInt(DT_TEXTREL, 0);
-  if (Part.GnuHashTab)
-    addInSec(DT_GNU_HASH, Part.GnuHashTab);
-  if (Part.HashTab)
-    addInSec(DT_HASH, Part.HashTab);
+  if (PartInfo.GnuHashTab)
+    addInSec(DT_GNU_HASH, PartInfo.GnuHashTab);
+  if (PartInfo.HashTab)
+    addInSec(DT_HASH, PartInfo.HashTab);
 
   if (Out::PreinitArray) {
     addOutSec(DT_PREINIT_ARRAY, Out::PreinitArray);
@@ -1403,30 +1404,30 @@ template <class ELFT> void DynamicSection<ELFT>::finalizeContents() {
     if (B->isDefined())
       addSym(DT_FINI, B);
 
-  bool HasVerNeed = Part.VerNeed->getNeedNum() != 0;
-  if (HasVerNeed || Part.VerDef)
-    addInSec(DT_VERSYM, Part.VerSym);
-  if (Part.VerDef) {
-    addInSec(DT_VERDEF, Part.VerDef);
+  bool HasVerNeed = PartInfo.VerNeed->getNeedNum() != 0;
+  if (HasVerNeed || PartInfo.VerDef)
+    addInSec(DT_VERSYM, PartInfo.VerSym);
+  if (PartInfo.VerDef) {
+    addInSec(DT_VERDEF, PartInfo.VerDef);
     addInt(DT_VERDEFNUM, getVerDefNum());
   }
   if (HasVerNeed) {
-    addInSec(DT_VERNEED, Part.VerNeed);
-    addInt(DT_VERNEEDNUM, Part.VerNeed->getNeedNum());
+    addInSec(DT_VERNEED, PartInfo.VerNeed);
+    addInt(DT_VERNEEDNUM, PartInfo.VerNeed->getNeedNum());
   }
 
   if (Config->EMachine == EM_MIPS) {
     addInt(DT_MIPS_RLD_VERSION, 1);
     addInt(DT_MIPS_FLAGS, RHF_NOTPOT);
     addInt(DT_MIPS_BASE_ADDRESS, Target->getImageBase());
-    addInt(DT_MIPS_SYMTABNO, Part.DynSymTab->getNumSymbols());
+    addInt(DT_MIPS_SYMTABNO, PartInfo.DynSymTab->getNumSymbols());
 
     add(DT_MIPS_LOCAL_GOTNO, [] { return In.MipsGot->getLocalEntriesNum(); });
 
     if (const Symbol *B = In.MipsGot->getFirstGlobalEntry())
       addInt(DT_MIPS_GOTSYM, B->DynsymIndex);
     else
-      addInt(DT_MIPS_GOTSYM, Part.DynSymTab->getNumSymbols());
+      addInt(DT_MIPS_GOTSYM, PartInfo.DynSymTab->getNumSymbols());
     addInSec(DT_PLTGOT, In.MipsGot);
     if (In.MipsRldMap) {
       if (!Config->Pie)
@@ -2669,9 +2670,9 @@ void GdbIndexSection::writeTo(uint8_t *Buf) {
 
 bool GdbIndexSection::empty() const { return Chunks.empty(); }
 
-EhFrameHeader::EhFrameHeader(Partition &Part)
+EhFrameHeader::EhFrameHeader(Partition &PartInfo)
     : SyntheticSection(SHF_ALLOC, SHT_PROGBITS, 4, ".eh_frame_hdr"),
-      Part(Part) {}
+      PartInfo(PartInfo) {}
 
 void EhFrameHeader::writeTo(uint8_t *Buf) {
   // Unlike most sections, the EhFrameHeader section is written while writing
@@ -2689,13 +2690,13 @@ void EhFrameHeader::write() {
   uint8_t *Buf = Out::BufferStart + getParent()->Offset + OutSecOff;
   typedef EhFrameSection::FdeData FdeData;
 
-  std::vector<FdeData> Fdes = Part.EhFrame->getFdeData();
+  std::vector<FdeData> Fdes = PartInfo.EhFrame->getFdeData();
 
   Buf[0] = 1;
   Buf[1] = DW_EH_PE_pcrel | DW_EH_PE_sdata4;
   Buf[2] = DW_EH_PE_udata4;
   Buf[3] = DW_EH_PE_datarel | DW_EH_PE_sdata4;
-  write32(Buf + 4, Part.EhFrame->getParent()->Addr - this->getVA() - 4);
+  write32(Buf + 4, PartInfo.EhFrame->getParent()->Addr - this->getVA() - 4);
   write32(Buf + 8, Fdes.size());
   Buf += 12;
 
@@ -2708,10 +2709,10 @@ void EhFrameHeader::write() {
 
 size_t EhFrameHeader::getSize() const {
   // .eh_frame_hdr has a 12 bytes header followed by an array of FDEs.
-  return 12 + Part.EhFrame->NumFdes * 8;
+  return 12 + PartInfo.EhFrame->NumFdes * 8;
 }
 
-bool EhFrameHeader::empty() const { return Part.EhFrame->empty(); }
+bool EhFrameHeader::empty() const { return PartInfo.EhFrame->empty(); }
 
 VersionDefinitionSection::VersionDefinitionSection()
     : SyntheticSection(SHF_ALLOC, SHT_GNU_verdef, sizeof(uint32_t),
@@ -2772,20 +2773,20 @@ size_t VersionDefinitionSection::getSize() const {
 }
 
 // .gnu.version is a table where each entry is 2 byte long.
-VersionTableSection::VersionTableSection(Partition &Part)
+VersionTableSection::VersionTableSection(Partition &PartInfo)
     : SyntheticSection(SHF_ALLOC, SHT_GNU_versym, sizeof(uint16_t),
-                       ".gnu.version"), Part(Part) {
+                       ".gnu.version"), PartInfo(PartInfo) {
   this->Entsize = 2;
 }
 
 void VersionTableSection::finalizeContents() {
   // At the moment of june 2016 GNU docs does not mention that sh_link field
   // should be set, but Sun docs do. Also readelf relies on this field.
-  getParent()->Link = Part.DynSymTab->getParent()->SectionIndex;
+  getParent()->Link = PartInfo.DynSymTab->getParent()->SectionIndex;
 }
 
 size_t VersionTableSection::getSize() const {
-  return (Part.DynSymTab->getSymbols().size() + 1) * 2;
+  return (PartInfo.DynSymTab->getSymbols().size() + 1) * 2;
 }
 
 void VersionTableSection::writeTo(uint8_t *Buf) {
@@ -2797,7 +2798,7 @@ void VersionTableSection::writeTo(uint8_t *Buf) {
 }
 
 bool VersionTableSection::empty() const {
-  return !Part.VerDef && Part.VerNeed->empty();
+  return !PartInfo.VerDef && PartInfo.VerNeed->empty();
 }
 
 VersionNeedBaseSection::VersionNeedBaseSection()
