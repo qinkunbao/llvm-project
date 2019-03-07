@@ -273,25 +273,7 @@ template <class ELFT> static void createSyntheticSections() {
 
   auto Add = [](InputSectionBase *Sec) { InputSections.push_back(Sec); };
 
-  Main.DynStrTab = make<StringTableSection>(".dynstr", true);
-  Main.DynSymTab = make<SymbolTableSection<ELFT>>(*Main.DynStrTab);
-  Main.Dynamic = make<DynamicSection<ELFT>>(Main);
-  if (Config->AndroidPackDynRelocs) {
-    Main.RelaDyn = make<AndroidPackedRelocationSection<ELFT>>(
-        Main.DynSymTab, Config->IsRela ? ".rela.dyn" : ".rel.dyn");
-  } else {
-    Main.RelaDyn = make<RelocationSection<ELFT>>(
-        Main.DynSymTab, Config->IsRela ? ".rela.dyn" : ".rel.dyn",
-        Config->ZCombreloc);
-  }
   In.ShStrTab = make<StringTableSection>(".shstrtab", false);
-
-  Main.ProgramHeaders = make<OutputSection>("", 0, SHF_ALLOC);
-  Main.ProgramHeaders->Alignment = Config->Wordsize;
-
-  if (needsInterpSection())
-    Add(createInterpSection());
-
   if (Config->Strip != StripPolicy::All) {
     In.StrTab = make<StringTableSection>(".strtab", false);
     In.SymTab = make<SymbolTableSection<ELFT>>(*In.StrTab);
@@ -328,6 +310,24 @@ template <class ELFT> static void createSyntheticSections() {
       Add(Sec);
   }
 
+  Main.DynStrTab = make<StringTableSection>(".dynstr", true);
+  Main.DynSymTab = make<SymbolTableSection<ELFT>>(*Main.DynStrTab);
+  Main.Dynamic = make<DynamicSection<ELFT>>(Main);
+  if (Config->AndroidPackDynRelocs) {
+    Main.RelaDyn = make<AndroidPackedRelocationSection<ELFT>>(
+        Main.DynSymTab, Config->IsRela ? ".rela.dyn" : ".rel.dyn");
+  } else {
+    Main.RelaDyn = make<RelocationSection<ELFT>>(
+        Main.DynSymTab, Config->IsRela ? ".rela.dyn" : ".rel.dyn",
+        Config->ZCombreloc);
+  }
+
+  Main.ProgramHeaders = make<OutputSection>("", 0, SHF_ALLOC);
+  Main.ProgramHeaders->Alignment = Config->Wordsize;
+
+  if (needsInterpSection())
+    Add(createInterpSection());
+
   if (Config->HasDynSymTab) {
     Add(Main.DynSymTab);
 
@@ -361,6 +361,11 @@ template <class ELFT> static void createSyntheticSections() {
     Main.RelrDyn = make<RelrSection<ELFT>>();
     Add(Main.RelrDyn);
   }
+
+  if (Config->EMachine == EM_ARM && !Config->Relocatable)
+    // Add a sentinel to terminate .ARM.exidx. It helps an unwinder
+    // to find the exact address range of the last entry.
+    Add(make<ARMExidxSentinelSection>());
 
   // Add .got. MIPS' .got is so different from the other archs,
   // it has its own class.
@@ -435,11 +440,6 @@ template <class ELFT> static void createSyntheticSections() {
   Add(In.ShStrTab);
   if (In.StrTab)
     Add(In.StrTab);
-
-  if (Config->EMachine == EM_ARM && !Config->Relocatable)
-    // Add a sentinel to terminate .ARM.exidx. It helps an unwinder
-    // to find the exact address range of the last entry.
-    Add(make<ARMExidxSentinelSection>());
 }
 
 // The main function of the writer.
