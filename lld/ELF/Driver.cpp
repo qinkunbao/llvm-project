@@ -1356,6 +1356,32 @@ static void findKeepUniqueSections(opt::InputArgList &Args) {
   }
 }
 
+template <typename ELFT>
+static void readSymbolPartitionSection(InputSectionBase *S) {
+  Symbol *Sym;
+  if (S->AreRelocsRela)
+    Sym = &S->getFile<ELFT>()->getRelocTargetSym(S->template relas<ELFT>()[0]);
+  else
+    Sym = &S->getFile<ELFT>()->getRelocTargetSym(S->template rels<ELFT>()[0]);
+  if (!isa<Defined>(Sym) || !Sym->includeInDynsym())
+    return;
+
+  StringRef PartName = reinterpret_cast<const char *>(S->data().data());
+  for (unsigned I = 1; I != Partitions.size(); ++I) {
+    if (Partitions[I]->Name != PartName)
+      continue;
+    Sym->Part = I;
+    return;
+  }
+
+  if (Partitions.size() == 256)
+    fatal("may not have more than 255 partitions");
+  auto *NewPart = make<Partition>();
+  NewPart->Name = PartName;
+  Sym->Part = Partitions.size();
+  Partitions.push_back(NewPart);
+}
+
 template <class ELFT> static Symbol *addUndefined(StringRef Name) {
   return Symtab->addUndefined<ELFT>(Name, STB_GLOBAL, STV_DEFAULT, 0, false,
                                     nullptr);
@@ -1604,12 +1630,17 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &Args) {
     for (InputSectionBase *S : F->getSections())
       InputSections.push_back(cast<InputSection>(S));
 
-  // We do not want to emit debug sections if --strip-all
-  // or -strip-debug are given.
-  if (Config->Strip != StripPolicy::None)
-    llvm::erase_if(InputSections, [](InputSectionBase *S) {
-      return S->Name.startswith(".debug") || S->Name.startswith(".zdebug");
-    });
+  Partitions = { nullptr, &Main };
+  llvm::erase_if(InputSections, [](InputSectionBase *S) {
+    if (S->Type == SHT_LLVM_SYMPART) {
+      readSymbolPartitionSection<ELFT>(S);
+      return true;
+    }
+    // We do not want to emit debug sections if --strip-all
+    // or -strip-debug are given.
+    return Config->Strip != StripPolicy::None &&
+           (S->Name.startswith(".debug") || S->Name.startswith(".zdebug"));
+  });
 
   Config->EFlags = Target->calcEFlags();
 

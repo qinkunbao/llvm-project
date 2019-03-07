@@ -1023,6 +1023,7 @@ Defined *addSyntheticLocal(StringRef Name, uint8_t Type, uint64_t Value,
 
 // Linker generated per-partition sections.
 struct Partition {
+  StringRef Name;
   OutputSection *ElfHeader;
   OutputSection *ProgramHeaders;
   std::vector<PhdrEntry *> Phdrs;
@@ -1041,6 +1042,7 @@ struct Partition {
 };
 
 extern Partition Main;
+extern std::vector<Partition *> Partitions;
 
 // Linker generated sections which can be used as inputs.
 struct InStruct {

@@ -3176,6 +3176,7 @@ bool PPC64LongBranchTargetSection::empty() const {
 
 InStruct elf::In;
 Partition elf::Main;
+std::vector<Partition *> elf::Partitions;
 
 template GdbIndexSection *GdbIndexSection::create<ELF32LE>();
 template GdbIndexSection *GdbIndexSection::create<ELF32BE>();

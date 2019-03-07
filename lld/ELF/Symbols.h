@@ -211,6 +211,9 @@ public:
   // True if this symbol is defined by a linker script.
   unsigned ScriptDefined : 1;
 
+  // The partition whose dynamic symbol table contains this symbol's definition.
+  uint8_t Part = 1;
+
   bool isSection() const { return Type == llvm::ELF::STT_SECTION; }
   bool isTls() const { return Type == llvm::ELF::STT_TLS; }
   bool isFunc() const { return Type == llvm::ELF::STT_FUNC; }
@@ -394,6 +397,7 @@ void replaceSymbol(Symbol *S, ArgT &&... Arg) {
   S->CanInline = Sym.CanInline;
   S->Traced = Sym.Traced;
   S->ScriptDefined = Sym.ScriptDefined;
+  S->Part = Sym.Part;
 
   // Symbols representing thread-local variables must be referenced by
   // TLS-aware relocations, and non-TLS symbols must be reference by
