@@ -25,6 +25,7 @@
 #include "OutputSections.h"
 #include "SymbolTable.h"
 #include "Symbols.h"
+#include "SyntheticSections.h"
 #include "Target.h"
 #include "lld/Common/Memory.h"
 #include "lld/Common/Strings.h"
@@ -190,7 +191,7 @@ template <class ELFT> static void doGcSections() {
   SmallVector<InputSection *, 256> Q;
   CNamedSections.clear();
 
-  uint8_t Part = 1;
+  uint8_t CurPart = 1;
   auto Enqueue = [&](InputSectionBase *Sec, uint64_t Offset) {
     // Skip over discarded sections. This in theory shouldn't happen, because
     // the ELF spec doesn't allow a relocation to point to a deduplicated
@@ -209,9 +210,9 @@ template <class ELFT> static void doGcSections() {
     // Set Sec->Part to the minimum of Part and Sec->Part in the following
     // lattice: 1 < other < 0. If Sec->Part doesn't change, we don't need to do
     // anything.
-    if (Sec->Part == 1 || Sec->Part == Part)
+    if (Sec->Part == 1 || Sec->Part == CurPart)
       return;
-    Sec->Part = Sec->Part ? 1 : Part;
+    Sec->Part = Sec->Part ? 1 : CurPart;
 
     // Add input section to the queue.
     if (InputSection *S = dyn_cast<InputSection>(Sec))
@@ -232,12 +233,6 @@ template <class ELFT> static void doGcSections() {
     MarkSymbol(Symtab->find(S));
   for (StringRef S : Script->ReferencedSymbols)
     MarkSymbol(Symtab->find(S));
-
-  // Preserve externally-visible symbols if the symbols defined by this
-  // file can interrupt other ELF file's symbols at runtime.
-  for (Symbol *S : Symtab->getSymbols())
-    if (S->includeInDynsym())
-      MarkSymbol(S);
 
   // Preserve special sections and those which are specified in linker
   // script KEEP command.
@@ -262,9 +257,17 @@ template <class ELFT> static void doGcSections() {
     }
   }
 
-  // Mark all reachable sections.
-  while (!Q.empty())
-    forEachSuccessor<ELFT>(*Q.pop_back_val(), Enqueue);
+  for (CurPart = 1; CurPart != Partitions.size(); ++CurPart) {
+    // Preserve externally-visible symbols for this partition if the symbols
+    // defined by this file can interrupt other ELF file's symbols at runtime.
+    for (Symbol *S : Symtab->getSymbols())
+      if (S->includeInDynsym() && S->Part == CurPart)
+        MarkSymbol(S);
+
+    // Mark all reachable sections.
+    while (!Q.empty())
+      forEachSuccessor<ELFT>(*Q.pop_back_val(), Enqueue);
+  }
 }
 
 // Before calling this function, Live bits are off for all

@@ -215,6 +215,7 @@ std::pair<Symbol *, bool> SymbolTable::insertName(StringRef Name) {
   Sym->CanInline = true;
   Sym->Traced = Traced;
   Sym->VersionId = Config->DefaultSymbolVersion;
+  Sym->Part = 1;
   SymVector.push_back(Sym);
   return {Sym, true};
 }
