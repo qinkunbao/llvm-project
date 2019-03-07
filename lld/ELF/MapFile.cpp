@@ -175,7 +175,10 @@ void elf::writeMapFile() {
 
     OSec = cast<OutputSection>(Base);
     writeHeader(OS, OSec->Addr, OSec->getLMA(), OSec->Size, OSec->Alignment);
-    OS << OSec->Name << '\n';
+    OS << OSec->Name;
+    if (OSec->Part > 1)
+      OS << " [" << Partitions[OSec->Part]->Name << ']';
+    OS << '\n';
 
     // Dump symbols for each input section.
     for (BaseCommand *Base : OSec->SectionCommands) {

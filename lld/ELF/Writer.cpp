@@ -726,8 +726,9 @@ static bool isRelroSection(const OutputSection *Sec) {
 // * It is easy to check if a give branch was taken.
 // * It is easy two see how similar two ranks are (see getRankProximity).
 enum RankFlags {
-  RF_NOT_ADDR_SET = 1 << 18,
-  RF_NOT_ALLOC = 1 << 17,
+  RF_NOT_ADDR_SET = 1 << 26,
+  RF_NOT_ALLOC = 1 << 25,
+  RF_PARTITION = 1 << 17, // 8 bits
   RF_NOT_INTERP = 1 << 16,
   RF_NOT_NOTE = 1 << 15,
   RF_WRITE = 1 << 14,
@@ -748,7 +749,7 @@ enum RankFlags {
 };
 
 static unsigned getSectionRank(const OutputSection *Sec) {
-  unsigned Rank = 0;
+  unsigned Rank = Sec->Part * RF_PARTITION;
 
   // We want to put section specified by -T option first, so we
   // can start assigning VA starting from them later.

@@ -1642,6 +1642,20 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &Args) {
            (S->Name.startswith(".debug") || S->Name.startswith(".zdebug"));
   });
 
+  // Forbid partitions from being used together with various linker features
+  // that assume a single set of output sections.
+  if (Partitions.size() != 2) {
+    if (Script->HasSectionsCommand)
+      error("partitions cannot be used with the SECTIONS command");
+
+    if (Script->hasPhdrsCommands())
+      error("partitions cannot be used with the PHDRS command");
+
+    if (!Config->SectionStartMap.empty())
+      error("partitions cannot be used with --section-start, -Ttext, -Tdata or "
+            "-Tbss");
+  }
+
   Config->EFlags = Target->calcEFlags();
 
   if (Config->EMachine == EM_ARM) {
