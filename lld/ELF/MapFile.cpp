@@ -188,7 +188,7 @@ void elf::writeMapFile() {
 
           writeHeader(OS, IS->getVA(0), OSec->getLMA() + IS->getOffset(0),
                       IS->getSize(), IS->Alignment);
-          OS << Indent8 << toString(IS) << '\n';
+          OS << Indent8 << toString(IS) << ' ' << IS->Part << '\n';
           for (Symbol *Sym : SectionSyms[IS])
             OS << SymStr[Sym] << '\n';
         }
