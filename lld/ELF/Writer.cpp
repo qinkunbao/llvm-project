@@ -310,62 +310,80 @@ template <class ELFT> static void createSyntheticSections() {
       Add(Sec);
   }
 
-  Main.DynStrTab = make<StringTableSection>(".dynstr", true);
-  Main.DynSymTab = make<SymbolTableSection<ELFT>>(*Main.DynStrTab);
-  Main.Dynamic = make<DynamicSection<ELFT>>(Main);
-  if (Config->AndroidPackDynRelocs) {
-    Main.RelaDyn = make<AndroidPackedRelocationSection<ELFT>>(
-        Main.DynSymTab, Config->IsRela ? ".rela.dyn" : ".rel.dyn");
-  } else {
-    Main.RelaDyn = make<RelocationSection<ELFT>>(
-        Main.DynSymTab, Config->IsRela ? ".rela.dyn" : ".rel.dyn",
-        Config->ZCombreloc);
-  }
+  for (unsigned I = 1; I != Partitions.size(); ++I) {
+    auto Add = [&](InputSectionBase *Sec) {
+      Sec->Part = I;
+      InputSections.push_back(Sec);
+    };
 
-  Main.ProgramHeaders = make<OutputSection>("", 0, SHF_ALLOC);
-  Main.ProgramHeaders->Alignment = Config->Wordsize;
+    Partition &Part = *Partitions[I];
 
-  if (needsInterpSection())
-    Add(createInterpSection());
-
-  if (Config->HasDynSymTab) {
-    Add(Main.DynSymTab);
-
-    Main.VerSym = make<VersionTableSection>(Main);
-    Add(Main.VerSym);
-
-    if (!Config->VersionDefinitions.empty()) {
-      Main.VerDef = make<VersionDefinitionSection>();
-      Add(Main.VerDef);
+    Part.DynStrTab = make<StringTableSection>(".dynstr", true);
+    Part.DynSymTab = make<SymbolTableSection<ELFT>>(*Main.DynStrTab);
+    Part.Dynamic = make<DynamicSection<ELFT>>(Part);
+    if (Config->AndroidPackDynRelocs) {
+      Part.RelaDyn = make<AndroidPackedRelocationSection<ELFT>>(
+          Part.DynSymTab, Config->IsRela ? ".rela.dyn" : ".rel.dyn");
+    } else {
+      Part.RelaDyn = make<RelocationSection<ELFT>>(
+          Part.DynSymTab, Config->IsRela ? ".rela.dyn" : ".rel.dyn",
+          Config->ZCombreloc);
     }
 
-    Main.VerNeed = make<VersionNeedSection<ELFT>>();
-    Add(Main.VerNeed);
+    Part.ProgramHeaders = make<OutputSection>("", 0, SHF_ALLOC);
+    Part.ProgramHeaders->Alignment = Config->Wordsize;
 
-    if (Config->GnuHash) {
-      Main.GnuHashTab = make<GnuHashTableSection>(*Main.DynSymTab);
-      Add(Main.GnuHashTab);
+    if (needsInterpSection())
+      Add(createInterpSection());
+
+    if (Config->HasDynSymTab) {
+      Add(Part.DynSymTab);
+
+      Part.VerSym = make<VersionTableSection>(Part);
+      Add(Part.VerSym);
+
+      if (!Config->VersionDefinitions.empty()) {
+        Part.VerDef = make<VersionDefinitionSection>();
+        Add(Part.VerDef);
+      }
+
+      Part.VerNeed = make<VersionNeedSection<ELFT>>();
+      Add(Part.VerNeed);
+
+      if (Config->GnuHash) {
+        Part.GnuHashTab = make<GnuHashTableSection>(*Part.DynSymTab);
+        Add(Part.GnuHashTab);
+      }
+
+      if (Config->SysvHash) {
+        Part.HashTab = make<HashTableSection>(*Part.DynSymTab);
+        Add(Part.HashTab);
+      }
+
+      Add(Part.Dynamic);
+      Add(Part.DynStrTab);
+      Add(Part.RelaDyn);
     }
 
-    if (Config->SysvHash) {
-      Main.HashTab = make<HashTableSection>(*Main.DynSymTab);
-      Add(Main.HashTab);
+    if (Config->RelrPackDynRelocs) {
+      Part.RelrDyn = make<RelrSection<ELFT>>();
+      Add(Part.RelrDyn);
     }
 
-    Add(Main.Dynamic);
-    Add(Main.DynStrTab);
-    Add(Main.RelaDyn);
-  }
+    if (!Config->Relocatable) {
+      if (Config->EhFrameHdr) {
+        Part.EhFrameHdr = make<EhFrameHeader>(Part);
+        Add(Part.EhFrameHdr);
+      }
+      Part.EhFrame = make<EhFrameSection>(Part);
+      Add(Part.EhFrame);
+    }
 
-  if (Config->RelrPackDynRelocs) {
-    Main.RelrDyn = make<RelrSection<ELFT>>();
-    Add(Main.RelrDyn);
+    if (Config->EMachine == EM_ARM && !Config->Relocatable)
+      // Add a sentinel to terminate .ARM.exidx. It helps an unwinder
+      // to find the exact address range of the last entry.
+      Add(make<ARMExidxSentinelSection>());
   }
-
-  if (Config->EMachine == EM_ARM && !Config->Relocatable)
-    // Add a sentinel to terminate .ARM.exidx. It helps an unwinder
-    // to find the exact address range of the last entry.
-    Add(make<ARMExidxSentinelSection>());
 
   // Add .got. MIPS' .got is so different from the other archs,
   // it has its own class.
@@ -423,15 +441,6 @@ template <class ELFT> static void createSyntheticSections() {
   // by default. So we emit this section unconditionally.
   if (Config->Relocatable)
     Add(make<GnuStackSection>());
-
-  if (!Config->Relocatable) {
-    if (Config->EhFrameHdr) {
-      Main.EhFrameHdr = make<EhFrameHeader>(Main);
-      Add(Main.EhFrameHdr);
-    }
-    Main.EhFrame = make<EhFrameSection>(Main);
-    Add(Main.EhFrame);
-  }
 
   if (In.SymTab)
     Add(In.SymTab);
@@ -1784,31 +1793,36 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
   // have the headers, we can find out which sections they point to.
   setReservedSymbolSections();
 
-  // Dynamic section must be the last one in this list and dynamic
-  // symbol table section (DynSymTab) must be the first one.
-  finalizeSynthetic(Main.DynSymTab);
   finalizeSynthetic(In.Bss);
   finalizeSynthetic(In.BssRelRo);
-  finalizeSynthetic(Main.GnuHashTab);
-  finalizeSynthetic(Main.HashTab);
   finalizeSynthetic(In.SymTabShndx);
   finalizeSynthetic(In.ShStrTab);
   finalizeSynthetic(In.StrTab);
-  finalizeSynthetic(Main.VerDef);
   finalizeSynthetic(In.Got);
   finalizeSynthetic(In.MipsGot);
   finalizeSynthetic(In.IgotPlt);
   finalizeSynthetic(In.GotPlt);
-  finalizeSynthetic(Main.RelaDyn);
-  finalizeSynthetic(Main.RelrDyn);
   finalizeSynthetic(In.RelaIplt);
   finalizeSynthetic(In.RelaPlt);
   finalizeSynthetic(In.Plt);
   finalizeSynthetic(In.Iplt);
-  finalizeSynthetic(Main.EhFrameHdr);
-  finalizeSynthetic(Main.VerSym);
-  finalizeSynthetic(Main.VerNeed);
-  finalizeSynthetic(Main.Dynamic);
+
+  // Dynamic section must be the last one in this list and dynamic
+  // symbol table section (DynSymTab) must be the first one.
+  for (unsigned I = 1; I != Partitions.size(); ++I) {
+    Partition &Part = *Partitions[I];
+
+    finalizeSynthetic(Part.DynSymTab);
+    finalizeSynthetic(Part.GnuHashTab);
+    finalizeSynthetic(Part.HashTab);
+    finalizeSynthetic(Part.VerDef);
+    finalizeSynthetic(Part.RelaDyn);
+    finalizeSynthetic(Part.RelrDyn);
+    finalizeSynthetic(Part.EhFrameHdr);
+    finalizeSynthetic(Part.VerSym);
+    finalizeSynthetic(Part.VerNeed);
+    finalizeSynthetic(Part.Dynamic);
+  }
 
   if (!Script->HasSectionsCommand && !Config->Relocatable)
     fixSectionAlignments();
