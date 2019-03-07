@@ -1560,6 +1560,26 @@ bool AsmPrinter::doFinalization(Module &M) {
         OutStreamer->EmitAddrsigSym(getSymbol(&GV));
   }
 
+  // Emit symbol partition specifications (ELF only).
+  if (TM.getTargetTriple().isOSBinFormatELF()) {
+    unsigned UniqueID = 0;
+    for (const Function &F : M) {
+      if (F.getVisibility() != GlobalValue::DefaultVisibility)
+        continue;
+      StringRef SymPart =
+              F.getFnAttribute("symbol-partition").getValueAsString();
+      if (SymPart.empty())
+        continue;
+
+      OutStreamer->SwitchSection(OutContext.getELFSection(
+          ".llvm_sympart", ELF::SHT_LLVM_SYMPART, 0, 0, "", ++UniqueID));
+      OutStreamer->EmitBytes(SymPart);
+      OutStreamer->EmitZeros(1);
+      OutStreamer->EmitValue(MCSymbolRefExpr::create(getSymbol(&F), OutContext),
+                             MAI->getCodePointerSize());
+    }
+  }
+
   // Allow the target to emit any magic that it wants at the end of the file,
   // after everything else has gone out.
   EmitEndOfAsmFile(M);
