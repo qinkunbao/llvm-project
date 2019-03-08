@@ -768,18 +768,20 @@ private:
 static void addRelativeReloc(InputSectionBase *IS, uint64_t OffsetInSec,
                              Symbol *Sym, int64_t Addend, RelExpr Expr,
                              RelType Type) {
+  Partition &Part = *Partitions[IS->Part];
+
   // Add a relative relocation. If RelrDyn section is enabled, and the
   // relocation offset is guaranteed to be even, add the relocation to
   // the RelrDyn section, otherwise add it to the RelaDyn section.
   // RelrDyn sections don't support odd offsets. Also, RelrDyn sections
   // don't store the addend values, so we must write it to the relocated
   // address.
-  if (Main.RelrDyn && IS->Alignment >= 2 && OffsetInSec % 2 == 0) {
+  if (Part.RelrDyn && IS->Alignment >= 2 && OffsetInSec % 2 == 0) {
     IS->Relocations.push_back({Expr, Type, OffsetInSec, Addend, Sym});
-    Main.RelrDyn->Relocs.push_back({IS, OffsetInSec});
+    Part.RelrDyn->Relocs.push_back({IS, OffsetInSec});
     return;
   }
-  Main.RelaDyn->addReloc(Target->RelativeRel, IS, OffsetInSec, Sym, Addend,
+  Part.RelaDyn->addReloc(Target->RelativeRel, IS, OffsetInSec, Sym, Addend,
                          Expr, Type);
 }
 
@@ -873,7 +875,8 @@ static void processRelocAux(InputSectionBase &Sec, RelExpr Expr, RelType Type,
       addRelativeReloc(&Sec, Offset, &Sym, Addend, Expr, Type);
       return;
     } else if (RelType Rel = Target->getDynRel(Type)) {
-      Main.RelaDyn->addReloc(Rel, &Sec, Offset, &Sym, Addend, R_ADDEND, Type);
+      Partitions[Sec.Part]->RelaDyn->addReloc(Rel, &Sec, Offset, &Sym, Addend,
+                                              R_ADDEND, Type);
 
       // MIPS ABI turns using of GOT and dynamic relocations inside out.
       // While regular ABI uses dynamic relocations to fill up GOT entries

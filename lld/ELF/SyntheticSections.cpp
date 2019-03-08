@@ -2256,8 +2256,8 @@ void GnuHashTableSection::addSymbols(std::vector<SymbolTableEntry> &V) {
   // We cannot use 'auto' for Mid because GCC 6.1 cannot deduce
   // its type correctly.
   std::vector<SymbolTableEntry>::iterator Mid =
-      std::stable_partition(V.begin(), V.end(), [](const SymbolTableEntry &S) {
-        return !S.Sym->isDefined();
+      std::stable_partition(V.begin(), V.end(), [&](const SymbolTableEntry &S) {
+        return !S.Sym->isDefined() || S.Sym->Part != Part;
       });
 
   // We chose load factor 4 for the on-disk hash table. For each hash
