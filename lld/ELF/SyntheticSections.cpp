@@ -3232,10 +3232,10 @@ template <typename ELFT> void elf::writeEhdr(uint8_t *Buf, Partition &Part) {
 template <typename ELFT> void elf::writePhdrs(uint8_t *Buf, Partition &Part) {
   // Write the program header table.
   auto *HBuf = reinterpret_cast<typename ELFT::Phdr *>(Buf);
-  for (PhdrEntry *P : Main.Phdrs) {
+  for (PhdrEntry *P : Part.Phdrs) {
     HBuf->p_type = P->p_type;
     HBuf->p_flags = P->p_flags;
-    HBuf->p_offset = P->p_offset - Part.ElfHeader->Offset;
+    HBuf->p_offset = P->p_offset;
     HBuf->p_vaddr = P->p_vaddr;
     HBuf->p_paddr = P->p_paddr;
     HBuf->p_filesz = P->p_filesz;
