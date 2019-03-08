@@ -3245,6 +3245,34 @@ template <typename ELFT> void elf::writePhdrs(uint8_t *Buf, Partition &Part) {
   }
 }
 
+template <typename ELFT>
+PartitionElfHeaderSection<ELFT>::PartitionElfHeaderSection()
+    : SyntheticSection(SHF_ALLOC, SHT_LLVM_PART_EHDR, 1, "") {}
+
+template <typename ELFT>
+size_t PartitionElfHeaderSection<ELFT>::getSize() const {
+  return sizeof(typename ELFT::Ehdr);
+}
+
+template <typename ELFT>
+void PartitionElfHeaderSection<ELFT>::writeTo(uint8_t *Buf) {
+  writeEhdr<ELFT>(Buf, *Partitions[Part]);
+}
+
+template <typename ELFT>
+PartitionProgramHeadersSection<ELFT>::PartitionProgramHeadersSection()
+    : SyntheticSection(SHF_ALLOC, SHT_LLVM_PART_PHDR, 1, ".phdrs") {}
+
+template <typename ELFT>
+size_t PartitionProgramHeadersSection<ELFT>::getSize() const {
+  return sizeof(typename ELFT::Phdr) * Partitions[Part]->Phdrs.size();
+}
+
+template <typename ELFT>
+void PartitionProgramHeadersSection<ELFT>::writeTo(uint8_t *Buf) {
+  writePhdrs<ELFT>(Buf, *Partitions[Part]);
+}
+
 InStruct elf::In;
 Partition elf::Main;
 std::vector<Partition *> elf::Partitions;
@@ -3323,3 +3351,13 @@ template void elf::writePhdrs<ELF32LE>(uint8_t *Buf, Partition &Part);
 template void elf::writePhdrs<ELF32BE>(uint8_t *Buf, Partition &Part);
 template void elf::writePhdrs<ELF64LE>(uint8_t *Buf, Partition &Part);
 template void elf::writePhdrs<ELF64BE>(uint8_t *Buf, Partition &Part);
+
+template class elf::PartitionElfHeaderSection<ELF32LE>;
+template class elf::PartitionElfHeaderSection<ELF32BE>;
+template class elf::PartitionElfHeaderSection<ELF64LE>;
+template class elf::PartitionElfHeaderSection<ELF64BE>;
+
+template class elf::PartitionProgramHeadersSection<ELF32LE>;
+template class elf::PartitionProgramHeadersSection<ELF32BE>;
+template class elf::PartitionProgramHeadersSection<ELF64LE>;
+template class elf::PartitionProgramHeadersSection<ELF64BE>;

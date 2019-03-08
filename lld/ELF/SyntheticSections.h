@@ -1013,6 +1013,22 @@ private:
   bool Finalized = false;
 };
 
+template <typename ELFT>
+class PartitionElfHeaderSection : public SyntheticSection {
+public:
+  PartitionElfHeaderSection();
+  size_t getSize() const override;
+  void writeTo(uint8_t *Buf) override;
+};
+
+template <typename ELFT>
+class PartitionProgramHeadersSection : public SyntheticSection {
+public:
+  PartitionProgramHeadersSection();
+  size_t getSize() const override;
+  void writeTo(uint8_t *Buf) override;
+};
+
 InputSection *createInterpSection();
 MergeInputSection *createCommentSection();
 template <class ELFT> void splitSections();
@@ -1027,9 +1043,13 @@ Defined *addSyntheticLocal(StringRef Name, uint8_t Type, uint64_t Value,
 // Linker generated per-partition sections.
 struct Partition {
   StringRef Name;
+
   OutputSection *ElfHeader;
+  SyntheticSection *InElfHeader;
   OutputSection *ProgramHeaders;
+  SyntheticSection *InProgramHeaders;
   std::vector<PhdrEntry *> Phdrs;
+
   SyntheticSection *Dynamic;
   StringTableSection *DynStrTab;
   SymbolTableBaseSection *DynSymTab;
