@@ -729,18 +729,22 @@ private:
 
   const ELFFile<ELFT> &ElfFile;
   Object &Obj;
+  uint64_t EhdrOffset = 0;
 
   void setParentSegment(Segment &Child);
   void readProgramHeaders();
   void initGroupSection(GroupSection *GroupSec);
   void initSymbolTable(SymbolTableSection *SymTab);
   void readSectionHeaders();
+  void readSections();
+  void findEhdrOffset();
   SectionBase &makeSection(const Elf_Shdr &Shdr);
 
 public:
   ELFBuilder(const ELFObjectFile<ELFT> &ElfObj, Object &Obj)
       : ElfFile(*ElfObj.getELFFile()), Obj(Obj) {}
 
+  StringRef ReadPartitionHeaders;
   void build();
 };
 
@@ -758,6 +762,7 @@ class ELFReader : public Reader {
   Binary *Bin;
 
 public:
+  StringRef ReadPartitionHeaders;
   std::unique_ptr<Object> create() const override;
   explicit ELFReader(Binary *B) : Bin(B) {}
 };

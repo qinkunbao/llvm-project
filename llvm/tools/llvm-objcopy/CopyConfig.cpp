@@ -493,6 +493,8 @@ Expected<DriverConfig> parseObjcopyOptions(ArrayRef<const char *> ArgsArr) {
         InputArgs.getLastArgValue(OBJCOPY_build_id_link_output);
   Config.SplitDWO = InputArgs.getLastArgValue(OBJCOPY_split_dwo);
   Config.SymbolsPrefix = InputArgs.getLastArgValue(OBJCOPY_prefix_symbols);
+  Config.ExtractPartition =
+      InputArgs.getLastArgValue(OBJCOPY_extract_partition);
 
   for (auto Arg : InputArgs.filtered(OBJCOPY_redefine_symbol)) {
     if (!StringRef(Arg->getValue()).contains('='))
@@ -567,6 +569,8 @@ Expected<DriverConfig> parseObjcopyOptions(ArrayRef<const char *> ArgsArr) {
   Config.StripNonAlloc = InputArgs.hasArg(OBJCOPY_strip_non_alloc);
   Config.StripUnneeded = InputArgs.hasArg(OBJCOPY_strip_unneeded);
   Config.ExtractDWO = InputArgs.hasArg(OBJCOPY_extract_dwo);
+  Config.ExtractMainPartition =
+      InputArgs.hasArg(OBJCOPY_extract_main_partition);
   Config.LocalizeHidden = InputArgs.hasArg(OBJCOPY_localize_hidden);
   Config.Weaken = InputArgs.hasArg(OBJCOPY_weaken);
   if (InputArgs.hasArg(OBJCOPY_discard_all, OBJCOPY_discard_locals))
