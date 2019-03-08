@@ -318,6 +318,15 @@ template <class ELFT> static void createSyntheticSections() {
 
     Partition &Part = *Partitions[I];
 
+    if (I > 1) {
+      Part.InElfHeader = make<PartitionElfHeaderSection<ELFT>>();
+      Part.InElfHeader->Name = Part.Name;
+      Add(Part.InElfHeader);
+
+      Part.InProgramHeaders = make<PartitionProgramHeadersSection<ELFT>>();
+      Add(Part.InProgramHeaders);
+    }
+
     Part.DynStrTab = make<StringTableSection>(".dynstr", true);
     Part.DynSymTab = make<SymbolTableSection<ELFT>>(*Main.DynStrTab);
     Part.Dynamic = make<DynamicSection<ELFT>>(Part);
@@ -1643,6 +1652,12 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
   Out::PreinitArray = findSection(".preinit_array");
   Out::InitArray = findSection(".init_array");
   Out::FiniArray = findSection(".fini_array");
+
+  for (unsigned I = 2; I != Partitions.size(); ++I) {
+    Partition &Part = *Partitions[I];
+    Part.ElfHeader = Part.InElfHeader->getParent();
+    Part.ProgramHeaders = Part.InProgramHeaders->getParent();
+  }
 
   // The linker needs to define SECNAME_start, SECNAME_end and SECNAME_stop
   // symbols for sections, so that the runtime can get the start and end
