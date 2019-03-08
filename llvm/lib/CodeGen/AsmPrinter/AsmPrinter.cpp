@@ -1564,7 +1564,8 @@ bool AsmPrinter::doFinalization(Module &M) {
   if (TM.getTargetTriple().isOSBinFormatELF()) {
     unsigned UniqueID = 0;
     for (const Function &F : M) {
-      if (F.getVisibility() != GlobalValue::DefaultVisibility)
+      if (F.isDeclarationForLinker() ||
+          F.getVisibility() != GlobalValue::DefaultVisibility)
         continue;
       StringRef SymPart =
               F.getFnAttribute("symbol-partition").getValueAsString();
