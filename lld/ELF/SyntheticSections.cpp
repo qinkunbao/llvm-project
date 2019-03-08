@@ -774,7 +774,7 @@ uint64_t MipsGotSection::getGlobalDynOffset(const InputFile *F,
   return G.DynTlsSymbols.lookup(Sym) * Config->Wordsize;
 }
 
-const Symbol *MipsGotSection::getFirstGlobalEntry() const {
+Symbol *MipsGotSection::getFirstGlobalEntry() const {
   if (Gots.empty())
     return nullptr;
   const FileGot &PrimGot = Gots.front();
@@ -1424,8 +1424,8 @@ template <class ELFT> void DynamicSection<ELFT>::finalizeContents() {
 
     add(DT_MIPS_LOCAL_GOTNO, [] { return In.MipsGot->getLocalEntriesNum(); });
 
-    if (const Symbol *B = In.MipsGot->getFirstGlobalEntry())
-      addInt(DT_MIPS_GOTSYM, B->DynsymIndex);
+    if (Symbol *B = In.MipsGot->getFirstGlobalEntry())
+      addInt(DT_MIPS_GOTSYM, PartInfo.DynSymTab->getSymbolIndex(B));
     else
       addInt(DT_MIPS_GOTSYM, PartInfo.DynSymTab->getNumSymbols());
     addInSec(DT_PLTGOT, In.MipsGot);
@@ -1477,9 +1477,9 @@ int64_t DynamicReloc::computeAddend() const {
   return getMipsPageAddr(OutputSec->Addr) + Addend;
 }
 
-uint32_t DynamicReloc::getSymIndex() const {
+uint32_t DynamicReloc::getSymIndex(SymbolTableBaseSection *SymTab) const {
   if (Sym && !UseSymVA)
-    return Sym->DynsymIndex;
+    return SymTab->getSymbolIndex(Sym);
   return 0;
 }
 
@@ -1534,12 +1534,13 @@ RelrBaseSection::RelrBaseSection()
                        Config->Wordsize, ".relr.dyn") {}
 
 template <class ELFT>
-static void encodeDynamicReloc(typename ELFT::Rela *P,
+static void encodeDynamicReloc(SymbolTableBaseSection *SymTab,
+                               typename ELFT::Rela *P,
                                const DynamicReloc &Rel) {
   if (Config->IsRela)
     P->r_addend = Rel.computeAddend();
   P->r_offset = Rel.getOffset();
-  P->setSymbolAndType(Rel.getSymIndex(), Rel.Type, Config->IsMips64EL);
+  P->setSymbolAndType(Rel.getSymIndex(SymTab), Rel.Type, Config->IsMips64EL);
 }
 
 template <class ELFT>
@@ -1552,20 +1553,19 @@ RelocationSection<ELFT>::RelocationSection(SymbolTableBaseSection *SymTab,
   this->Entsize = Config->IsRela ? sizeof(Elf_Rela) : sizeof(Elf_Rel);
 }
 
-static bool compRelocations(const DynamicReloc &A, const DynamicReloc &B) {
-  bool AIsRel = A.Type == Target->RelativeRel;
-  bool BIsRel = B.Type == Target->RelativeRel;
-  if (AIsRel != BIsRel)
-    return AIsRel;
-  return A.getSymIndex() < B.getSymIndex();
-}
-
 template <class ELFT> void RelocationSection<ELFT>::writeTo(uint8_t *Buf) {
   if (Sort)
-    std::stable_sort(Relocs.begin(), Relocs.end(), compRelocations);
+    std::stable_sort(Relocs.begin(), Relocs.end(),
+                     [&](const DynamicReloc &A, const DynamicReloc &B) {
+                       bool AIsRel = A.Type == Target->RelativeRel;
+                       bool BIsRel = B.Type == Target->RelativeRel;
+                       if (AIsRel != BIsRel)
+                         return AIsRel;
+                       return A.getSymIndex(SymTab) < B.getSymIndex(SymTab);
+                     });
 
   for (const DynamicReloc &Rel : Relocs) {
-    encodeDynamicReloc<ELFT>(reinterpret_cast<Elf_Rela *>(Buf), Rel);
+    encodeDynamicReloc<ELFT>(SymTab, reinterpret_cast<Elf_Rela *>(Buf), Rel);
     Buf += Config->IsRela ? sizeof(Elf_Rela) : sizeof(Elf_Rel);
   }
 }
@@ -1647,7 +1647,7 @@ bool AndroidPackedRelocationSection<ELFT>::updateAllocSize() {
 
   for (const DynamicReloc &Rel : Relocs) {
     Elf_Rela R;
-    encodeDynamicReloc<ELFT>(&R, Rel);
+    encodeDynamicReloc<ELFT>(SymTab, &R, Rel);
 
     if (R.getType(Config->IsMips64EL) == Target->RelativeRel)
       Relatives.push_back(R);
@@ -1903,8 +1903,9 @@ void SymbolTableBaseSection::finalizeContents() {
   }
 
   size_t I = 0;
-  for (const SymbolTableEntry &S : Symbols)
-    S.Sym->DynsymIndex = ++I;
+  if (this == Main.DynSymTab)
+    for (const SymbolTableEntry &S : Symbols)
+      S.Sym->DynsymIndex = ++I;
 }
 
 // The ELF spec requires that all local symbols precede global symbols, so we
@@ -1947,8 +1948,11 @@ void SymbolTableBaseSection::addSymbol(Symbol *B) {
 }
 
 size_t SymbolTableBaseSection::getSymbolIndex(Symbol *Sym) {
-  // Initializes symbol lookup tables lazily. This is used only
-  // for -r or -emit-relocs.
+  if (this == Main.DynSymTab)
+    return Sym->DynsymIndex;
+
+  // Initializes symbol lookup tables lazily. This is used only for -r,
+  // -emit-relocs and dynsyms in partitions other than the main one.
   llvm::call_once(OnceFlag, [&] {
     SymbolIndexMap.reserve(Symbols.size());
     size_t I = 0;
@@ -2225,7 +2229,7 @@ void GnuHashTableSection::writeHashTable(uint8_t *Buf) {
       continue;
     // Write a hash bucket. Hash buckets contain indices in the following hash
     // value table.
-    write32(Buckets + I->BucketIdx, I->Sym->DynsymIndex);
+    write32(Buckets + I->BucketIdx, SymTab.getSymbolIndex(I->Sym));
     OldBucket = I->BucketIdx;
   }
 }
@@ -2311,7 +2315,7 @@ void HashTableSection::writeTo(uint8_t *Buf) {
   for (const SymbolTableEntry &S : SymTab.getSymbols()) {
     Symbol *Sym = S.Sym;
     StringRef Name = Sym->getName();
-    unsigned I = Sym->DynsymIndex;
+    unsigned I = SymTab.getSymbolIndex(Sym);
     uint32_t Hash = hashSysV(Name) % NumSymbols;
     Chains[I] = Buckets[Hash];
     write32(Buckets + Hash, I);

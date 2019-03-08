@@ -213,7 +213,7 @@ public:
   // of GOT on MIPS platform. It is required to fill up MIPS-specific dynamic
   // table properties.
   // Returns nullptr if the global part is empty.
-  const Symbol *getFirstGlobalEntry() const;
+  Symbol *getFirstGlobalEntry() const;
 
   // Returns the number of entries in the local part of GOT including
   // the number of reserved entries.
@@ -423,7 +423,7 @@ public:
         UseSymVA(false), Addend(Addend), OutputSec(OutputSec) {}
 
   uint64_t getOffset() const;
-  uint32_t getSymIndex() const;
+  uint32_t getSymIndex(SymbolTableBaseSection *SymTab) const;
   const InputSectionBase *getInputSec() const { return InputSec; }
 
   // Computes the addend of the dynamic relocation. Note that this is not the
