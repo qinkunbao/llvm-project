@@ -1753,6 +1753,8 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
   // and add any referenced symbols to the partition's dynsym.
   for (unsigned I = 2; I != Partitions.size(); ++I) {
     DenseSet<Symbol *> Syms;
+    for (const SymbolTableEntry &E : Partitions[I]->DynSymTab->getSymbols())
+      Syms.insert(E.Sym);
     for (DynamicReloc &Reloc : Partitions[I]->RelaDyn->Relocs)
       if (Reloc.Sym && !Reloc.UseSymVA && Syms.insert(Reloc.Sym).second)
         Partitions[I]->DynSymTab->addSymbol(Reloc.Sym);
