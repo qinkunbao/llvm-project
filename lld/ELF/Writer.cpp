@@ -257,10 +257,10 @@ void elf::addReservedSymbols() {
   ElfSym::Edata2 = Add("_edata", -1);
 }
 
-static OutputSection *findSection(StringRef Name) {
+static OutputSection *findSection(StringRef Name, unsigned Part = 1) {
   for (BaseCommand *Base : Script->SectionCommands)
     if (auto *Sec = dyn_cast<OutputSection>(Base))
-      if (Sec->Name == Name)
+      if (Sec->Name == Name && Sec->Part == Part)
         return Sec;
   return nullptr;
 }
@@ -291,7 +291,8 @@ template <class ELFT> static void createSyntheticSections() {
   // If there is a SECTIONS command and a .data.rel.ro section name use name
   // .data.rel.ro.bss so that we match in the .data.rel.ro output section.
   // This makes sure our relro is contiguous.
-  bool HasDataRelRo = Script->HasSectionsCommand && findSection(".data.rel.ro");
+  bool HasDataRelRo =
+      Script->HasSectionsCommand && findSection(".data.rel.ro", 0);
   In.BssRelRo =
       make<BssSection>(HasDataRelRo ? ".data.rel.ro.bss" : ".bss.rel.ro", 0, 1);
   Add(In.BssRelRo);
