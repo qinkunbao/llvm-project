@@ -1273,8 +1273,14 @@ template <class ELFT> void DynamicSection<ELFT>::finalizeContents() {
     if (F->IsNeeded)
       addInt(DT_NEEDED, PartInfo.DynStrTab->addString(F->SoName));
   }
-  if (!Config->SoName.empty())
-    addInt(DT_SONAME, PartInfo.DynStrTab->addString(Config->SoName));
+  if (!Config->SoName.empty()) {
+    if (PartInfo.Name.empty()) {
+      addInt(DT_SONAME, PartInfo.DynStrTab->addString(Config->SoName));
+    } else {
+      addInt(DT_NEEDED, PartInfo.DynStrTab->addString(Config->SoName));
+      addInt(DT_SONAME, PartInfo.DynStrTab->addString(PartInfo.Name));
+    }
+  }
 
   // Set DT_FLAGS and DT_FLAGS_1.
   uint32_t DtFlags = 0;
