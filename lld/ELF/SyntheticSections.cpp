@@ -1356,7 +1356,7 @@ template <class ELFT> void DynamicSection<ELFT>::finalizeContents() {
   // as RelaIplt have. And we still want to emit proper dynamic tags for that
   // case, so here we always use RelaPlt as marker for the begining of
   // .rel[a].plt section.
-  if (In.RelaPlt->getParent()->isLive()) {
+  if (Part == 1 && In.RelaPlt->getParent()->isLive()) {
     addInSec(DT_JMPREL, In.RelaPlt);
     Entries.push_back({DT_PLTRELSZ, addPltRelSz});
     switch (Config->EMachine) {
