@@ -3174,6 +3174,77 @@ bool PPC64LongBranchTargetSection::empty() const {
   return Finalized && Entries.empty();
 }
 
+static uint16_t getELFType() {
+  if (Config->Pic)
+    return ET_DYN;
+  if (Config->Relocatable)
+    return ET_REL;
+  return ET_EXEC;
+}
+
+static uint8_t getAbiVersion() {
+  // MIPS non-PIC executable gets ABI version 1.
+  if (Config->EMachine == EM_MIPS) {
+    if (getELFType() == ET_EXEC &&
+        (Config->EFlags & (EF_MIPS_PIC | EF_MIPS_CPIC)) == EF_MIPS_CPIC)
+      return 1;
+    return 0;
+  }
+
+  if (Config->EMachine == EM_AMDGPU) {
+    uint8_t Ver = ObjectFiles[0]->ABIVersion;
+    for (InputFile *File : makeArrayRef(ObjectFiles).slice(1))
+      if (File->ABIVersion != Ver)
+        error("incompatible ABI version: " + toString(File));
+    return Ver;
+  }
+
+  return 0;
+}
+
+template <typename ELFT> void elf::writeEhdr(uint8_t *Buf, Partition &Part) {
+  // For executable segments, the trap instructions are written before writing
+  // the header. Setting Elf header bytes to zero ensures that any unused bytes
+  // in header are zero-cleared, instead of having trap instructions.
+  memset(Buf, 0, sizeof(typename ELFT::Ehdr));
+  memcpy(Buf, "\177ELF", 4);
+
+  auto *EHdr = reinterpret_cast<typename ELFT::Ehdr *>(Buf);
+  EHdr->e_ident[EI_CLASS] = Config->Is64 ? ELFCLASS64 : ELFCLASS32;
+  EHdr->e_ident[EI_DATA] = Config->IsLE ? ELFDATA2LSB : ELFDATA2MSB;
+  EHdr->e_ident[EI_VERSION] = EV_CURRENT;
+  EHdr->e_ident[EI_OSABI] = Config->OSABI;
+  EHdr->e_ident[EI_ABIVERSION] = getAbiVersion();
+  EHdr->e_type = getELFType();
+  EHdr->e_machine = Config->EMachine;
+  EHdr->e_version = EV_CURRENT;
+  EHdr->e_flags = Config->EFlags;
+  EHdr->e_ehsize = sizeof(typename ELFT::Ehdr);
+  EHdr->e_phnum = Part.Phdrs.size();
+  EHdr->e_shentsize = sizeof(typename ELFT::Shdr);
+
+  if (!Config->Relocatable) {
+    EHdr->e_phoff = Part.ProgramHeaders->Offset - Part.ElfHeader->Offset;
+    EHdr->e_phentsize = sizeof(typename ELFT::Phdr);
+  }
+}
+
+template <typename ELFT> void elf::writePhdrs(uint8_t *Buf, Partition &Part) {
+  // Write the program header table.
+  auto *HBuf = reinterpret_cast<typename ELFT::Phdr *>(Buf);
+  for (PhdrEntry *P : Main.Phdrs) {
+    HBuf->p_type = P->p_type;
+    HBuf->p_flags = P->p_flags;
+    HBuf->p_offset = P->p_offset - Part.ElfHeader->Offset;
+    HBuf->p_vaddr = P->p_vaddr;
+    HBuf->p_paddr = P->p_paddr;
+    HBuf->p_filesz = P->p_filesz;
+    HBuf->p_memsz = P->p_memsz;
+    HBuf->p_align = P->p_align;
+    ++HBuf;
+  }
+}
+
 InStruct elf::In;
 Partition elf::Main;
 std::vector<Partition *> elf::Partitions;
@@ -3242,3 +3313,13 @@ template class elf::VersionNeedSection<ELF32LE>;
 template class elf::VersionNeedSection<ELF32BE>;
 template class elf::VersionNeedSection<ELF64LE>;
 template class elf::VersionNeedSection<ELF64BE>;
+
+template void elf::writeEhdr<ELF32LE>(uint8_t *Buf, Partition &Part);
+template void elf::writeEhdr<ELF32BE>(uint8_t *Buf, Partition &Part);
+template void elf::writeEhdr<ELF64LE>(uint8_t *Buf, Partition &Part);
+template void elf::writeEhdr<ELF64BE>(uint8_t *Buf, Partition &Part);
+
+template void elf::writePhdrs<ELF32LE>(uint8_t *Buf, Partition &Part);
+template void elf::writePhdrs<ELF32BE>(uint8_t *Buf, Partition &Part);
+template void elf::writePhdrs<ELF64LE>(uint8_t *Buf, Partition &Part);
+template void elf::writePhdrs<ELF64BE>(uint8_t *Buf, Partition &Part);

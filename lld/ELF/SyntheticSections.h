@@ -1018,6 +1018,9 @@ MergeInputSection *createCommentSection();
 template <class ELFT> void splitSections();
 void mergeSections();
 
+template <typename ELFT> void writeEhdr(uint8_t *Buf, Partition &Part);
+template <typename ELFT> void writePhdrs(uint8_t *Buf, Partition &Part);
+
 Defined *addSyntheticLocal(StringRef Name, uint8_t Type, uint64_t Value,
                            uint64_t Size, InputSectionBase &Section);
 

@@ -2394,76 +2394,13 @@ static uint64_t getEntryAddr() {
   return 0;
 }
 
-static uint16_t getELFType() {
-  if (Config->Pic)
-    return ET_DYN;
-  if (Config->Relocatable)
-    return ET_REL;
-  return ET_EXEC;
-}
-
-static uint8_t getAbiVersion() {
-  // MIPS non-PIC executable gets ABI version 1.
-  if (Config->EMachine == EM_MIPS) {
-    if (getELFType() == ET_EXEC &&
-        (Config->EFlags & (EF_MIPS_PIC | EF_MIPS_CPIC)) == EF_MIPS_CPIC)
-      return 1;
-    return 0;
-  }
-
-  if (Config->EMachine == EM_AMDGPU) {
-    uint8_t Ver = ObjectFiles[0]->ABIVersion;
-    for (InputFile *File : makeArrayRef(ObjectFiles).slice(1))
-      if (File->ABIVersion != Ver)
-        error("incompatible ABI version: " + toString(File));
-    return Ver;
-  }
-
-  return 0;
-}
-
 template <class ELFT> void Writer<ELFT>::writeHeader() {
-  // For executable segments, the trap instructions are written before writing
-  // the header. Setting Elf header bytes to zero ensures that any unused bytes
-  // in header are zero-cleared, instead of having trap instructions.
-  memset(Out::BufferStart, 0, sizeof(Elf_Ehdr));
-  memcpy(Out::BufferStart, "\177ELF", 4);
+  writeEhdr<ELFT>(Out::BufferStart, Main);
+  writePhdrs<ELFT>(Out::BufferStart + sizeof(Elf_Ehdr), Main);
 
-  // Write the ELF header.
   auto *EHdr = reinterpret_cast<Elf_Ehdr *>(Out::BufferStart);
-  EHdr->e_ident[EI_CLASS] = Config->Is64 ? ELFCLASS64 : ELFCLASS32;
-  EHdr->e_ident[EI_DATA] = Config->IsLE ? ELFDATA2LSB : ELFDATA2MSB;
-  EHdr->e_ident[EI_VERSION] = EV_CURRENT;
-  EHdr->e_ident[EI_OSABI] = Config->OSABI;
-  EHdr->e_ident[EI_ABIVERSION] = getAbiVersion();
-  EHdr->e_type = getELFType();
-  EHdr->e_machine = Config->EMachine;
-  EHdr->e_version = EV_CURRENT;
   EHdr->e_entry = getEntryAddr();
   EHdr->e_shoff = SectionHeaderOff;
-  EHdr->e_flags = Config->EFlags;
-  EHdr->e_ehsize = sizeof(Elf_Ehdr);
-  EHdr->e_phnum = Main.Phdrs.size();
-  EHdr->e_shentsize = sizeof(Elf_Shdr);
-
-  if (!Config->Relocatable) {
-    EHdr->e_phoff = sizeof(Elf_Ehdr);
-    EHdr->e_phentsize = sizeof(Elf_Phdr);
-  }
-
-  // Write the program header table.
-  auto *HBuf = reinterpret_cast<Elf_Phdr *>(Out::BufferStart + EHdr->e_phoff);
-  for (PhdrEntry *P : Main.Phdrs) {
-    HBuf->p_type = P->p_type;
-    HBuf->p_flags = P->p_flags;
-    HBuf->p_offset = P->p_offset;
-    HBuf->p_vaddr = P->p_vaddr;
-    HBuf->p_paddr = P->p_paddr;
-    HBuf->p_filesz = P->p_filesz;
-    HBuf->p_memsz = P->p_memsz;
-    HBuf->p_align = P->p_align;
-    ++HBuf;
-  }
 
   // Write the section header table.
   //
