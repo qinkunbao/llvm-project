@@ -1,0 +1,25 @@
+# RUN: yaml2obj %s -o %t.o
+# RUN: llvm-objdump -s %t.o | FileCheck %s
+
+# CHECK: Contents of section dynsym1:
+# CHECK: Contents of section dynsym2:
+
+--- !ELF
+FileHeader:
+  Class:   ELFCLASS64
+  Data:    ELFDATA2LSB
+  Type:    ET_REL
+  Machine: EM_X86_64
+Sections:
+  - Name: dynsym1
+    Type: SHT_DYNSYM
+    Link: dynstr1
+    Content: "000000000000000000000000000000000000000000000000"
+  - Name: dynsym2
+    Type: SHT_DYNSYM
+    Link: dynstr2
+    Content: "000000000000000000000000000000000000000000000000"
+  - Name: dynstr1
+    Type: SHT_STRTAB
+  - Name: dynstr2
+    Type: SHT_STRTAB
