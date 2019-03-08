@@ -433,7 +433,6 @@ public:
 
   RelType Type;
 
-private:
   Symbol *Sym;
   const InputSectionBase *InputSec = nullptr;
   uint64_t OffsetInSec;
@@ -495,7 +494,6 @@ public:
   void finalizeContents() override;
   int32_t DynamicTag, SizeDynamicTag;
 
-protected:
   SymbolTableBaseSection *SymTab;
   std::vector<DynamicReloc> Relocs;
   size_t NumRelativeRelocs = 0;

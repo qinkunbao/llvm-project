@@ -2011,6 +2011,7 @@ template <class ELFT> void SymbolTableSection<ELFT>::writeTo(uint8_t *Buf) {
 
   for (SymbolTableEntry &Ent : Symbols) {
     Symbol *Sym = Ent.Sym;
+    bool IsDefinedHere = Type == SHT_SYMTAB || Sym->Part == Part;
 
     // Set st_info and st_other.
     ESym->st_other = 0;
@@ -2027,7 +2028,8 @@ template <class ELFT> void SymbolTableSection<ELFT>::writeTo(uint8_t *Buf) {
       ESym->st_other |= Sym->StOther & 0xe0;
 
     ESym->st_name = Ent.StrTabOffset;
-    ESym->st_shndx = getSymSectionIndex(Ent.Sym);
+    if (IsDefinedHere)
+      ESym->st_shndx = getSymSectionIndex(Ent.Sym);
 
     // Copy symbol size if it is a defined symbol. st_size is not significant
     // for undefined symbols, so whether copying it or not is up to us if that's
@@ -2044,7 +2046,7 @@ template <class ELFT> void SymbolTableSection<ELFT>::writeTo(uint8_t *Buf) {
     // occur if -r is given).
     if (BssSection *CommonSec = getCommonSec(Ent.Sym))
       ESym->st_value = CommonSec->Alignment;
-    else
+    else if (IsDefinedHere)
       ESym->st_value = Sym->getVA();
 
     ++ESym;

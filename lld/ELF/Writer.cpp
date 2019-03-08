@@ -1572,10 +1572,11 @@ template <class ELFT> void Writer<ELFT>::maybeAddThunks() {
     if (In.MipsGot)
       In.MipsGot->updateAllocSize();
 
-    Changed |= Main.RelaDyn->updateAllocSize();
-
-    if (Main.RelrDyn)
-      Changed |= Main.RelrDyn->updateAllocSize();
+    for (unsigned I = 1; I != Partitions.size(); ++I) {
+      Changed |= Partitions[I]->RelaDyn->updateAllocSize();
+      if (Partitions[I]->RelrDyn)
+        Changed |= Partitions[I]->RelrDyn->updateAllocSize();
+    }
 
     if (!Changed)
       return;
@@ -1741,11 +1742,20 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
       In.SymTab->addSymbol(Sym);
 
     if (Sym->includeInDynsym()) {
-      Main.DynSymTab->addSymbol(Sym);
+      Partitions[Sym->Part]->DynSymTab->addSymbol(Sym);
       if (auto *File = dyn_cast_or_null<SharedFile<ELFT>>(Sym->File))
         if (File->IsNeeded && !Sym->isUndefined())
-          Main.VerNeed->addSymbol(Sym);
+          Partitions[Sym->Part]->VerNeed->addSymbol(Sym);
     }
+  }
+
+  // We also need to scan the dynamic relocation tables of the other partitions
+  // and add any referenced symbols to the partition's dynsym.
+  for (unsigned I = 2; I != Partitions.size(); ++I) {
+    DenseSet<Symbol *> Syms;
+    for (DynamicReloc &Reloc : Partitions[I]->RelaDyn->Relocs)
+      if (Reloc.Sym && !Reloc.UseSymVA && Syms.insert(Reloc.Sym).second)
+        Partitions[I]->DynSymTab->addSymbol(Reloc.Sym);
   }
 
   // Do not proceed if there was an undefined symbol.
