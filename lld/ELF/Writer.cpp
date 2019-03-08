@@ -330,7 +330,7 @@ template <class ELFT> static void createSyntheticSections() {
     }
 
     Part.DynStrTab = make<StringTableSection>(".dynstr", true);
-    Part.DynSymTab = make<SymbolTableSection<ELFT>>(*Main.DynStrTab);
+    Part.DynSymTab = make<SymbolTableSection<ELFT>>(*Part.DynStrTab);
     Part.Dynamic = make<DynamicSection<ELFT>>(Part);
     if (Config->AndroidPackDynRelocs) {
       Part.RelaDyn = make<AndroidPackedRelocationSection<ELFT>>(
