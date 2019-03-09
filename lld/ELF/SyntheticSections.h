@@ -781,6 +781,7 @@ public:
 
 private:
   enum { EntrySize = 28 };
+  StringRef getFileDefName();
   void writeOne(uint8_t *Buf, uint32_t Index, StringRef Name, size_t NameOff);
 
   unsigned FileDefNameOff;

@@ -2733,18 +2733,20 @@ VersionDefinitionSection::VersionDefinitionSection()
     : SyntheticSection(SHF_ALLOC, SHT_GNU_verdef, sizeof(uint32_t),
                        ".gnu.version_d") {}
 
-static StringRef getFileDefName() {
+StringRef VersionDefinitionSection::getFileDefName() {
+  if (Part != 1)
+    return Partitions[Part]->Name;
   if (!Config->SoName.empty())
     return Config->SoName;
   return Config->OutputFile;
 }
 
 void VersionDefinitionSection::finalizeContents() {
-  FileDefNameOff = Main.DynStrTab->addString(getFileDefName());
+  FileDefNameOff = Partitions[Part]->DynStrTab->addString(getFileDefName());
   for (VersionDefinition &V : Config->VersionDefinitions)
-    V.NameOff = Main.DynStrTab->addString(V.Name);
+    V.NameOff = Partitions[Part]->DynStrTab->addString(V.Name);
 
-  if (OutputSection *Sec = Main.DynStrTab->getParent())
+  if (OutputSection *Sec = Partitions[Part]->DynStrTab->getParent())
     getParent()->Link = Sec->SectionIndex;
 
   // sh_info should be set to the number of definitions. This fact is missed in
@@ -2806,7 +2808,7 @@ size_t VersionTableSection::getSize() const {
 
 void VersionTableSection::writeTo(uint8_t *Buf) {
   Buf += 2;
-  for (const SymbolTableEntry &S : Main.DynSymTab->getSymbols()) {
+  for (const SymbolTableEntry &S : Partitions[Part]->DynSymTab->getSymbols()) {
     write16(Buf, S.Sym->VersionId);
     Buf += 2;
   }
