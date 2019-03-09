@@ -324,6 +324,8 @@ template <class ELFT> static void createSyntheticSections() {
       Part.InElfHeader = make<PartitionElfHeaderSection<ELFT>>();
       Part.InElfHeader->Name = Part.Name;
       Add(Part.InElfHeader);
+      addOptionalRegular(Saver.save("__part_" + Part.Name), Part.InElfHeader,
+                         0);
 
       Part.InProgramHeaders = make<PartitionProgramHeadersSection<ELFT>>();
       Add(Part.InProgramHeaders);
@@ -394,6 +396,13 @@ template <class ELFT> static void createSyntheticSections() {
       // Add a sentinel to terminate .ARM.exidx. It helps an unwinder
       // to find the exact address range of the last entry.
       Add(make<ARMExidxSentinelSection>());
+  }
+
+  if (Partitions.size() != 2) {
+    auto *PartEnd = make<BssSection>(".part.end", Target->PageSize, 1);
+    PartEnd->Part = 255;
+    addOptionalRegular("__part_end", PartEnd, 0);
+    Add(PartEnd);
   }
 
   // Add .got. MIPS' .got is so different from the other archs,
@@ -2014,8 +2023,13 @@ std::vector<PhdrEntry *> Writer<ELFT>::createPhdrs(unsigned I) {
   for (OutputSection *Sec : OutputSections) {
     if (!(Sec->Flags & SHF_ALLOC))
       break;
-    if (!needsPtLoad(Sec) || Sec->Part != I)
+    if (!needsPtLoad(Sec))
       continue;
+    if (Sec->Part != I) {
+      if (I == 1 && Sec->Part == 255)
+        AddHdr(PT_LOAD, computeFlags(Sec->getPhdrFlags()))->add(Sec);
+      continue;
+    }
 
     // Segments are contiguous memory regions that has the same attributes
     // (e.g. executable or writable). There is one phdr for each segment.

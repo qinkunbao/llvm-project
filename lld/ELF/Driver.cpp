@@ -1374,8 +1374,8 @@ static void readSymbolPartitionSection(InputSectionBase *S) {
     return;
   }
 
-  if (Partitions.size() == 256)
-    fatal("may not have more than 255 partitions");
+  if (Partitions.size() == 255)
+    fatal("may not have more than 254 partitions");
   auto *NewPart = make<Partition>();
   NewPart->Name = PartName;
   Sym->Part = Partitions.size();
