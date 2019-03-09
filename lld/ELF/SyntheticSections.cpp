@@ -3238,7 +3238,7 @@ template <typename ELFT> void elf::writeEhdr(uint8_t *Buf, Partition &Part) {
   EHdr->e_shentsize = sizeof(typename ELFT::Shdr);
 
   if (!Config->Relocatable) {
-    EHdr->e_phoff = Part.ProgramHeaders->Offset - Part.ElfHeader->Offset;
+    EHdr->e_phoff = sizeof(typename ELFT::Ehdr);
     EHdr->e_phentsize = sizeof(typename ELFT::Phdr);
   }
 }

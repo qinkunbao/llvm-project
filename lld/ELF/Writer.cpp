@@ -757,9 +757,11 @@ static bool isRelroSection(const OutputSection *Sec) {
 // * It is easy to check if a give branch was taken.
 // * It is easy two see how similar two ranks are (see getRankProximity).
 enum RankFlags {
-  RF_NOT_ADDR_SET = 1 << 26,
-  RF_NOT_ALLOC = 1 << 25,
-  RF_PARTITION = 1 << 17, // 8 bits
+  RF_NOT_ADDR_SET = 1 << 28,
+  RF_NOT_ALLOC = 1 << 27,
+  RF_PARTITION = 1 << 19, // 8 bits
+  RF_NOT_PART_EHDR = 1 << 18,
+  RF_NOT_PART_PHDR = 1 << 17,
   RF_NOT_INTERP = 1 << 16,
   RF_NOT_NOTE = 1 << 15,
   RF_WRITE = 1 << 14,
@@ -792,6 +794,14 @@ static unsigned getSectionRank(const OutputSection *Sec) {
   // so debug info doesn't change addresses in actual code.
   if (!(Sec->Flags & SHF_ALLOC))
     return Rank | RF_NOT_ALLOC;
+
+  if (Sec->Type == SHT_LLVM_PART_EHDR)
+    return Rank;
+  Rank |= RF_NOT_PART_EHDR;
+
+  if (Sec->Type == SHT_LLVM_PART_PHDR)
+    return Rank;
+  Rank |= RF_NOT_PART_PHDR;
 
   // Put .interp first because some loaders want to see that section
   // on the first page of the executable file when loaded into memory.
@@ -1667,12 +1677,6 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
   Out::InitArray = findSection(".init_array");
   Out::FiniArray = findSection(".fini_array");
 
-  for (unsigned I = 2; I != Partitions.size(); ++I) {
-    Partition &Part = *Partitions[I];
-    Part.ElfHeader = Part.InElfHeader->getParent();
-    Part.ProgramHeaders = Part.InProgramHeaders->getParent();
-  }
-
   // The linker needs to define SECNAME_start, SECNAME_end and SECNAME_stop
   // symbols for sections, so that the runtime can get the start and end
   // addresses of each section by section name. Add such symbols.
@@ -2006,7 +2010,10 @@ std::vector<PhdrEntry *> Writer<ELFT>::createPhdrs(unsigned I) {
   Partition &Part = *Partitions[I];
 
   // The first phdr entry is PT_PHDR which describes the program header itself.
-  AddHdr(PT_PHDR, PF_R)->add(Part.ProgramHeaders);
+  if (I == 1)
+    AddHdr(PT_PHDR, PF_R)->add(Main.ProgramHeaders);
+  else
+    AddHdr(PT_PHDR, PF_R)->add(Part.InProgramHeaders->getParent());
 
   // PT_INTERP must be the second entry if exists.
   if (OutputSection *Cmd = findSection(".interp", I))
@@ -2014,11 +2021,16 @@ std::vector<PhdrEntry *> Writer<ELFT>::createPhdrs(unsigned I) {
 
   // Add the first PT_LOAD segment for regular output sections.
   uint64_t Flags = computeFlags(PF_R);
-  PhdrEntry *Load = AddHdr(PT_LOAD, Flags);
+  PhdrEntry *Load = nullptr;
 
   // Add the headers. We will remove them if they don't fit.
-  Load->add(Part.ElfHeader);
-  Load->add(Part.ProgramHeaders);
+  // In the other partitions the headers are ordinary sections, so they don't
+  // need to be added here.
+  if (I == 1) {
+    Load = AddHdr(PT_LOAD, Flags);
+    Load->add(Main.ElfHeader);
+    Load->add(Main.ProgramHeaders);
+  }
 
   for (OutputSection *Sec : OutputSections) {
     if (!(Sec->Flags & SHF_ALLOC))
@@ -2039,7 +2051,8 @@ std::vector<PhdrEntry *> Writer<ELFT>::createPhdrs(unsigned I) {
     // time, we don't want to create a separate load segment for the headers,
     // even if the first output section has an AT or AT> attribute.
     uint64_t NewFlags = computeFlags(Sec->getPhdrFlags());
-    if (((Sec->LMAExpr ||
+    if (!Load ||
+        ((Sec->LMAExpr ||
           (Sec->LMARegion && (Sec->LMARegion != Load->FirstSec->LMARegion))) &&
          Load->LastSec != Main.ProgramHeaders) ||
         Sec->MemRegion != Load->FirstSec->MemRegion || Flags != NewFlags) {
@@ -2289,7 +2302,9 @@ template <class ELFT> void Writer<ELFT>::setPhdrs(Partition &Part) {
         P->p_filesz += Last->Size;
 
       P->p_memsz = Last->Addr + Last->Size - First->Addr;
-      P->p_offset = First->Offset - Part.ElfHeader->Offset;
+      P->p_offset = First->Offset;
+      if (Part.InElfHeader)
+        P->p_offset -= Part.InElfHeader->getParent()->Offset;
       P->p_vaddr = First->Addr;
 
       if (!P->HasLMA)
