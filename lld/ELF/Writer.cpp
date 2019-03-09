@@ -1745,7 +1745,7 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
       Partitions[Sym->Part]->DynSymTab->addSymbol(Sym);
       if (auto *File = dyn_cast_or_null<SharedFile<ELFT>>(Sym->File))
         if (File->IsNeeded && !Sym->isUndefined())
-          Partitions[Sym->Part]->VerNeed->addSymbol(Sym);
+          addVerneed(Sym);
     }
   }
 

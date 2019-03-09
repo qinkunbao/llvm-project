@@ -804,14 +804,8 @@ public:
 };
 
 class VersionNeedBaseSection : public SyntheticSection {
-protected:
-  // The next available version identifier.
-  unsigned NextIndex;
-
 public:
   VersionNeedBaseSection();
-  virtual void addSymbol(Symbol *Sym) = 0;
-  virtual size_t getNeedNum() const = 0;
 };
 
 // The .gnu.version_r section defines the version identifiers used by
@@ -824,16 +818,23 @@ class VersionNeedSection final : public VersionNeedBaseSection {
   typedef typename ELFT::Verneed Elf_Verneed;
   typedef typename ELFT::Vernaux Elf_Vernaux;
 
-  // A vector of shared files that need Elf_Verneed data structures and the
-  // string table offsets of their sonames.
-  std::vector<std::pair<SharedFile<ELFT> *, size_t>> Needed;
+  struct MyVernaux {
+    uint64_t Hash;
+    uint32_t VerneedIndex;
+    uint64_t StrTab;
+  };
+
+  struct MyVerneed {
+    uint64_t StrTab;
+    std::vector<MyVernaux> Vernauxs;
+  };
+
+  std::vector<MyVerneed> MyVerneeds;
 
 public:
-  void addSymbol(Symbol *Sym) override;
   void finalizeContents() override;
   void writeTo(uint8_t *Buf) override;
   size_t getSize() const override;
-  size_t getNeedNum() const override { return Needed.size(); }
   bool empty() const override;
 };
 
@@ -1037,6 +1038,8 @@ template <typename ELFT> void writePhdrs(uint8_t *Buf, Partition &Part);
 
 Defined *addSyntheticLocal(StringRef Name, uint8_t Type, uint64_t Value,
                            uint64_t Size, InputSectionBase &Section);
+
+void addVerneed(Symbol *S);
 
 // Linker generated per-partition sections.
 struct Partition {
