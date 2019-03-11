@@ -257,7 +257,7 @@ template <class ELFT> static void doGcSections() {
     }
   }
 
-  for (CurPart = 1; CurPart != Partitions.size(); ++CurPart) {
+  for (; CurPart != Partitions.size(); ++CurPart) {
     // Preserve externally-visible symbols for this partition if the symbols
     // defined by this file can interrupt other ELF file's symbols at runtime.
     for (Symbol *S : Symtab->getSymbols())
@@ -265,6 +265,25 @@ template <class ELFT> static void doGcSections() {
         MarkSymbol(S);
 
     // Mark all reachable sections.
+    while (!Q.empty())
+      forEachSuccessor<ELFT>(*Q.pop_back_val(), Enqueue);
+  }
+
+  if (Partitions.size() != 2) {
+    // Some symbols always need to live in the main partition, specifically
+    // ifuncs (because they can result in an IRELATIVE being added to the main
+    // partition's GOT, which means that the ifunc must be available when the
+    // main partition is loaded) and TLS symbols (because we only know how to
+    // correctly process TLS relocations for the main partition).
+    CurPart = 1;
+    for (InputFile *File : ObjectFiles) {
+      for (Symbol *S : File->getSymbols())
+        if (auto *D = dyn_cast<Defined>(S))
+          if (D->Section && D->Section->isLive() &&
+              (S->Type == STT_GNU_IFUNC || S->Type == STT_TLS))
+            MarkSymbol(S);
+    }
+
     while (!Q.empty())
       forEachSuccessor<ELFT>(*Q.pop_back_val(), Enqueue);
   }
