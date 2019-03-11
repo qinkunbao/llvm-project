@@ -222,7 +222,7 @@ void elf::addReservedSymbols() {
     else
       ElfSym::GlobalOffsetTable = Symtab->addDefined(
           GotTableSymName, STV_HIDDEN, STT_NOTYPE, Target->GotBaseSymOff,
-          /*Size=*/0, STB_GLOBAL, Main.ElfHeader,
+          /*Size=*/0, STB_GLOBAL, Out::ElfHeader,
           /*File=*/nullptr);
   }
 
@@ -230,23 +230,23 @@ void elf::addReservedSymbols() {
   // this symbol unconditionally even when using a linker script, which
   // differs from the behavior implemented by GNU linker which only define
   // this symbol if ELF headers are in the memory mapped segment.
-  addOptionalRegular("__ehdr_start", Main.ElfHeader, 0, STV_HIDDEN);
+  addOptionalRegular("__ehdr_start", Out::ElfHeader, 0, STV_HIDDEN);
 
   // __executable_start is not documented, but the expectation of at
   // least the Android libc is that it points to the ELF header.
-  addOptionalRegular("__executable_start", Main.ElfHeader, 0, STV_HIDDEN);
+  addOptionalRegular("__executable_start", Out::ElfHeader, 0, STV_HIDDEN);
 
   // __dso_handle symbol is passed to cxa_finalize as a marker to identify
   // each DSO. The address of the symbol doesn't matter as long as they are
   // different in different DSOs, so we chose the start address of the DSO.
-  addOptionalRegular("__dso_handle", Main.ElfHeader, 0, STV_HIDDEN);
+  addOptionalRegular("__dso_handle", Out::ElfHeader, 0, STV_HIDDEN);
 
   // If linker script do layout we do not need to create any standart symbols.
   if (Script->HasSectionsCommand)
     return;
 
   auto Add = [](StringRef S, int64_t Pos) {
-    return addOptionalRegular(S, Main.ElfHeader, Pos, STV_DEFAULT);
+    return addOptionalRegular(S, Out::ElfHeader, Pos, STV_DEFAULT);
   };
 
   ElfSym::Bss = Add("__bss_start", 0);
@@ -280,6 +280,9 @@ template <class ELFT> static void createSyntheticSections() {
     In.SymTab = make<SymbolTableSection<ELFT>>(*In.StrTab);
     In.SymTabShndx = make<SymtabShndxSection>();
   }
+
+  Out::ProgramHeaders = make<OutputSection>("", 0, SHF_ALLOC);
+  Out::ProgramHeaders->Alignment = Config->Wordsize;
 
   if (Config->BuildId != BuildIdKind::None) {
     In.BuildId = make<BuildIdSection>();
@@ -342,9 +345,6 @@ template <class ELFT> static void createSyntheticSections() {
           Part.DynSymTab, Config->IsRela ? ".rela.dyn" : ".rel.dyn",
           Config->ZCombreloc);
     }
-
-    Part.ProgramHeaders = make<OutputSection>("", 0, SHF_ALLOC);
-    Part.ProgramHeaders->Alignment = Config->Wordsize;
 
     if (needsInterpSection())
       Add(createInterpSection());
@@ -952,15 +952,15 @@ template <class ELFT> void Writer<ELFT>::addRelIpltSymbols() {
 
   // By default, __rela_iplt_{start,end} belong to a dummy section 0
   // because .rela.plt might be empty and thus removed from output.
-  // We'll override Main.ElfHeader with In.RelaIplt later when we are
+  // We'll override Out::ElfHeader with In.RelaIplt later when we are
   // sure that .rela.plt exists in output.
   ElfSym::RelaIpltStart = addOptionalRegular(
-      Config->IsRela ? "__rela_iplt_start" : "__rel_iplt_start", Main.ElfHeader,
+      Config->IsRela ? "__rela_iplt_start" : "__rel_iplt_start", Out::ElfHeader,
       0, STV_HIDDEN, STB_WEAK);
 
   ElfSym::RelaIpltEnd =
       addOptionalRegular(Config->IsRela ? "__rela_iplt_end" : "__rel_iplt_end",
-                         Main.ElfHeader, 0, STV_HIDDEN, STB_WEAK);
+                         Out::ElfHeader, 0, STV_HIDDEN, STB_WEAK);
 }
 
 template <class ELFT>
@@ -1800,7 +1800,7 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
   // This is a bit of a hack. A value of 0 means undef, so we set it
   // to 1 to make __ehdr_start defined. The section number is not
   // particularly relevant.
-  Main.ElfHeader->SectionIndex = 1;
+  Out::ElfHeader->SectionIndex = 1;
 
   for (size_t I = 0, E = OutputSections.size(); I != E; ++I) {
     OutputSection *Sec = OutputSections[I];
@@ -1825,9 +1825,9 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
         addPhdrForSection(I, SHT_MIPS_OPTIONS, PT_MIPS_OPTIONS, PF_R);
         addPhdrForSection(I, SHT_MIPS_ABIFLAGS, PT_MIPS_ABIFLAGS, PF_R);
       }
-      Partitions[I]->ProgramHeaders->Size =
-          sizeof(Elf_Phdr) * Partitions[I]->Phdrs.size();
     }
+
+    Out::ProgramHeaders->Size = sizeof(Elf_Phdr) * Partitions[1]->Phdrs.size();
 
     // Find the TLS segment. This happens before the section layout loop so that
     // Android relocation packing can look up TLS symbol addresses.
@@ -1937,7 +1937,7 @@ template <class ELFT> void Writer<ELFT>::addStartEndSymbols() {
   // case, use the image base address as a last resort.
   OutputSection *Default = findSection(".text");
   if (!Default)
-    Default = Main.ElfHeader;
+    Default = Out::ElfHeader;
 
   auto Define = [=](StringRef Start, StringRef End, OutputSection *OS) {
     if (OS) {
@@ -2011,7 +2011,7 @@ std::vector<PhdrEntry *> Writer<ELFT>::createPhdrs(unsigned I) {
 
   // The first phdr entry is PT_PHDR which describes the program header itself.
   if (I == 1)
-    AddHdr(PT_PHDR, PF_R)->add(Main.ProgramHeaders);
+    AddHdr(PT_PHDR, PF_R)->add(Out::ProgramHeaders);
   else
     AddHdr(PT_PHDR, PF_R)->add(Part.InProgramHeaders->getParent());
 
@@ -2028,8 +2028,8 @@ std::vector<PhdrEntry *> Writer<ELFT>::createPhdrs(unsigned I) {
   // need to be added here.
   if (I == 1) {
     Load = AddHdr(PT_LOAD, Flags);
-    Load->add(Main.ElfHeader);
-    Load->add(Main.ProgramHeaders);
+    Load->add(Out::ElfHeader);
+    Load->add(Out::ProgramHeaders);
   }
 
   for (OutputSection *Sec : OutputSections) {
@@ -2054,7 +2054,7 @@ std::vector<PhdrEntry *> Writer<ELFT>::createPhdrs(unsigned I) {
     if (!Load ||
         ((Sec->LMAExpr ||
           (Sec->LMARegion && (Sec->LMARegion != Load->FirstSec->LMARegion))) &&
-         Load->LastSec != Main.ProgramHeaders) ||
+         Load->LastSec != Out::ProgramHeaders) ||
         Sec->MemRegion != Load->FirstSec->MemRegion || Flags != NewFlags) {
 
       Load = AddHdr(PT_LOAD, NewFlags);
@@ -2247,8 +2247,8 @@ static std::string rangeToString(uint64_t Addr, uint64_t Len) {
 // Assign file offsets to output sections.
 template <class ELFT> void Writer<ELFT>::assignFileOffsets() {
   uint64_t Off = 0;
-  Off = setFileOffset(Main.ElfHeader, Off);
-  Off = setFileOffset(Main.ProgramHeaders, Off);
+  Off = setFileOffset(Out::ElfHeader, Off);
+  Off = setFileOffset(Out::ProgramHeaders, Off);
 
   PhdrEntry *LastRX = nullptr;
   for (PhdrEntry *P : Main.Phdrs)

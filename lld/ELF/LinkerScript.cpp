@@ -993,8 +993,8 @@ void LinkerScript::allocateHeaders(std::vector<PhdrEntry *> &Phdrs) {
   uint64_t HeaderSize = getHeaderSize();
   if (HeaderSize <= Min - computeBase(Min, HasExplicitHeaders)) {
     Min = alignDown(Min - HeaderSize, Config->MaxPageSize);
-    Main.ElfHeader->Addr = Min;
-    Main.ProgramHeaders->Addr = Min + Main.ElfHeader->Size;
+    Out::ElfHeader->Addr = Min;
+    Out::ProgramHeaders->Addr = Min + Out::ElfHeader->Size;
     return;
   }
 
@@ -1002,8 +1002,8 @@ void LinkerScript::allocateHeaders(std::vector<PhdrEntry *> &Phdrs) {
   if (HasExplicitHeaders)
     error("could not allocate headers");
 
-  Main.ElfHeader->PtLoad = nullptr;
-  Main.ProgramHeaders->PtLoad = nullptr;
+  Out::ElfHeader->PtLoad = nullptr;
+  Out::ProgramHeaders->PtLoad = nullptr;
   FirstPTLoad->FirstSec = findFirstSection(FirstPTLoad);
 
   llvm::erase_if(Phdrs,
@@ -1065,9 +1065,9 @@ std::vector<PhdrEntry *> LinkerScript::createPhdrs() {
     PhdrEntry *Phdr = make<PhdrEntry>(Cmd.Type, Cmd.Flags ? *Cmd.Flags : PF_R);
 
     if (Cmd.HasFilehdr)
-      Phdr->add(Main.ElfHeader);
+      Phdr->add(Out::ElfHeader);
     if (Cmd.HasPhdrs)
-      Phdr->add(Main.ProgramHeaders);
+      Phdr->add(Out::ProgramHeaders);
 
     if (Cmd.LMAExpr) {
       Phdr->p_paddr = Cmd.LMAExpr().getValue();

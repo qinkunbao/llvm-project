@@ -128,6 +128,8 @@ struct Out {
   static uint8_t *BufferStart;
   static uint8_t First;
   static PhdrEntry *TlsPhdr;
+  static OutputSection *ElfHeader;
+  static OutputSection *ProgramHeaders;
   static OutputSection *PreinitArray;
   static OutputSection *InitArray;
   static OutputSection *FiniArray;

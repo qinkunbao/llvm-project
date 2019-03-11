@@ -1046,9 +1046,7 @@ void addVerneed(Symbol *S);
 struct Partition {
   StringRef Name;
 
-  OutputSection *ElfHeader;
   SyntheticSection *InElfHeader;
-  OutputSection *ProgramHeaders;
   SyntheticSection *InProgramHeaders;
   std::vector<PhdrEntry *> Phdrs;
 
