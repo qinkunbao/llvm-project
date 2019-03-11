@@ -324,14 +324,14 @@ template <class ELFT> static void createSyntheticSections() {
     Partition &Part = *Partitions[I];
 
     if (I > 1) {
-      Part.InElfHeader = make<PartitionElfHeaderSection<ELFT>>();
-      Part.InElfHeader->Name = Part.Name;
-      Add(Part.InElfHeader);
-      addOptionalRegular(Saver.save("__part_" + Part.Name), Part.InElfHeader,
+      Part.ElfHeader = make<PartitionElfHeaderSection<ELFT>>();
+      Part.ElfHeader->Name = Part.Name;
+      Add(Part.ElfHeader);
+      addOptionalRegular(Saver.save("__part_" + Part.Name), Part.ElfHeader,
                          0);
 
-      Part.InProgramHeaders = make<PartitionProgramHeadersSection<ELFT>>();
-      Add(Part.InProgramHeaders);
+      Part.ProgramHeaders = make<PartitionProgramHeadersSection<ELFT>>();
+      Add(Part.ProgramHeaders);
     }
 
     Part.DynStrTab = make<StringTableSection>(".dynstr", true);
@@ -2013,7 +2013,7 @@ std::vector<PhdrEntry *> Writer<ELFT>::createPhdrs(unsigned I) {
   if (I == 1)
     AddHdr(PT_PHDR, PF_R)->add(Out::ProgramHeaders);
   else
-    AddHdr(PT_PHDR, PF_R)->add(Part.InProgramHeaders->getParent());
+    AddHdr(PT_PHDR, PF_R)->add(Part.ProgramHeaders->getParent());
 
   // PT_INTERP must be the second entry if exists.
   if (OutputSection *Cmd = findSection(".interp", I))
@@ -2303,8 +2303,8 @@ template <class ELFT> void Writer<ELFT>::setPhdrs(Partition &Part) {
 
       P->p_memsz = Last->Addr + Last->Size - First->Addr;
       P->p_offset = First->Offset;
-      if (Part.InElfHeader)
-        P->p_offset -= Part.InElfHeader->getParent()->Offset;
+      if (Part.ElfHeader)
+        P->p_offset -= Part.ElfHeader->getParent()->Offset;
       P->p_vaddr = First->Addr;
 
       if (!P->HasLMA)
