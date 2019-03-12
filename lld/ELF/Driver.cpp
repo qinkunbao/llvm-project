@@ -97,6 +97,9 @@ bool elf::link(ArrayRef<const char *> Args, bool CanExitEarly,
   Tar = nullptr;
   memset(&In, 0, sizeof(In));
 
+  memset(&Partitions, 0, sizeof(Partitions));
+  NumPartitions = 1;
+
   Config->ProgName = Args[0];
 
   Driver->main(Args);
@@ -1367,19 +1370,19 @@ static void readSymbolPartitionSection(InputSectionBase *S) {
     return;
 
   StringRef PartName = reinterpret_cast<const char *>(S->data().data());
-  for (unsigned I = 1; I != Partitions.size(); ++I) {
-    if (Partitions[I]->Name != PartName)
+  for (Partition &Part : getPartitions()) {
+    if (Part.Name != PartName)
       continue;
-    Sym->Part = I;
+    Sym->Part = Part.getPartitionNumber();
     return;
   }
 
-  if (Partitions.size() == 255)
+  if (NumPartitions == 254)
     fatal("may not have more than 254 partitions");
-  auto *NewPart = make<Partition>();
-  NewPart->Name = PartName;
-  Sym->Part = Partitions.size();
-  Partitions.push_back(NewPart);
+  ++NumPartitions;
+  Partition &NewPart = getPartitions().back();
+  NewPart.Name = PartName;
+  Sym->Part = NewPart.getPartitionNumber();
 }
 
 template <class ELFT> static Symbol *addUndefined(StringRef Name) {
@@ -1630,7 +1633,6 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &Args) {
     for (InputSectionBase *S : F->getSections())
       InputSections.push_back(cast<InputSection>(S));
 
-  Partitions = { nullptr, &Main };
   llvm::erase_if(InputSections, [](InputSectionBase *S) {
     if (S->Type == SHT_LLVM_SYMPART) {
       readSymbolPartitionSection<ELFT>(S);
@@ -1644,7 +1646,7 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &Args) {
 
   // Forbid partitions from being used together with various linker features
   // that assume a single set of output sections.
-  if (Partitions.size() != 2) {
+  if (NumPartitions != 1) {
     if (Script->HasSectionsCommand)
       error("partitions cannot be used with the SECTIONS command");
 

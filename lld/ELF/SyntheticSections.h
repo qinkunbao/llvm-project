@@ -1062,10 +1062,27 @@ struct Partition {
   VersionDefinitionSection *VerDef;
   VersionNeedBaseSection *VerNeed;
   VersionTableSection *VerSym;
+
+  unsigned getPartitionNumber() const;
 };
 
-extern Partition Main;
-extern std::vector<Partition *> Partitions;
+extern Partition Partitions[255];
+extern size_t NumPartitions;
+
+inline unsigned Partition::getPartitionNumber() const {
+  return this - &Partitions[0] + 1;
+}
+
+inline Partition &SectionBase::getPartition() const {
+  assert(isLive());
+  return Partitions[Part - 1];
+}
+
+inline llvm::MutableArrayRef<Partition> getPartitions() {
+  return {Partitions, NumPartitions};
+}
+
+static Partition &Main = Partitions[0];
 
 // Linker generated sections which can be used as inputs.
 struct InStruct {

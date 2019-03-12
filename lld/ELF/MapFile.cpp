@@ -177,7 +177,7 @@ void elf::writeMapFile() {
     writeHeader(OS, OSec->Addr, OSec->getLMA(), OSec->Size, OSec->Alignment);
     OS << OSec->Name;
     if (OSec->Part > 1 && OSec->Part != 255)
-      OS << " [" << Partitions[OSec->Part]->Name << ']';
+      OS << " [" << OSec->getPartition().Name << ']';
     OS << '\n';
 
     // Dump symbols for each input section.

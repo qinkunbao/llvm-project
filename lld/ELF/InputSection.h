@@ -25,10 +25,13 @@ class Symbol;
 struct SectionPiece;
 
 class Defined;
+struct Partition;
 class SyntheticSection;
 class MergeSyntheticSection;
 template <class ELFT> class ObjFile;
 class OutputSection;
+
+extern Partition Partitions[255];
 
 // This is the base class of all sections that lld handles. Some are sections in
 // input files, some are sections in the produced output file and some exist
@@ -78,6 +81,8 @@ public:
   // collector, or 0 if this section is dead. Normally there is only one
   // partition, so this will either be 0 or 1.
   unsigned Part : 8;
+
+  Partition &getPartition() const;
 
   // These corresponds to the fields in Elf_Shdr.
   uint32_t Alignment;

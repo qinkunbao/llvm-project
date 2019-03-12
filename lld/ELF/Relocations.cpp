@@ -768,7 +768,7 @@ private:
 static void addRelativeReloc(InputSectionBase *IS, uint64_t OffsetInSec,
                              Symbol *Sym, int64_t Addend, RelExpr Expr,
                              RelType Type) {
-  Partition &Part = *Partitions[IS->Part];
+  Partition &Part = IS->getPartition();
 
   // Add a relative relocation. If RelrDyn section is enabled, and the
   // relocation offset is guaranteed to be even, add the relocation to
@@ -875,8 +875,8 @@ static void processRelocAux(InputSectionBase &Sec, RelExpr Expr, RelType Type,
       addRelativeReloc(&Sec, Offset, &Sym, Addend, Expr, Type);
       return;
     } else if (RelType Rel = Target->getDynRel(Type)) {
-      Partitions[Sec.Part]->RelaDyn->addReloc(Rel, &Sec, Offset, &Sym, Addend,
-                                              R_ADDEND, Type);
+      Sec.getPartition().RelaDyn->addReloc(Rel, &Sec, Offset, &Sym, Addend,
+                                           R_ADDEND, Type);
 
       // MIPS ABI turns using of GOT and dynamic relocations inside out.
       // While regular ABI uses dynamic relocations to fill up GOT entries

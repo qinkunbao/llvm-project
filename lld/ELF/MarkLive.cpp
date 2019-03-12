@@ -257,7 +257,7 @@ template <class ELFT> static void doGcSections() {
     }
   }
 
-  for (; CurPart != Partitions.size(); ++CurPart) {
+  for (; CurPart != NumPartitions + 1; ++CurPart) {
     // Preserve externally-visible symbols for this partition if the symbols
     // defined by this file can interrupt other ELF file's symbols at runtime.
     for (Symbol *S : Symtab->getSymbols())
@@ -269,7 +269,7 @@ template <class ELFT> static void doGcSections() {
       forEachSuccessor<ELFT>(*Q.pop_back_val(), Enqueue);
   }
 
-  if (Partitions.size() != 2) {
+  if (NumPartitions != 1) {
     // Some symbols always need to live in the main partition, specifically
     // ifuncs (because they can result in an IRELATIVE being added to the main
     // partition's GOT, which means that the ifunc must be available when the

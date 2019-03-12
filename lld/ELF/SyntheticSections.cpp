@@ -2735,18 +2735,18 @@ VersionDefinitionSection::VersionDefinitionSection()
 
 StringRef VersionDefinitionSection::getFileDefName() {
   if (Part != 1)
-    return Partitions[Part]->Name;
+    return getPartition().Name;
   if (!Config->SoName.empty())
     return Config->SoName;
   return Config->OutputFile;
 }
 
 void VersionDefinitionSection::finalizeContents() {
-  FileDefNameOff = Partitions[Part]->DynStrTab->addString(getFileDefName());
+  FileDefNameOff = getPartition().DynStrTab->addString(getFileDefName());
   for (VersionDefinition &V : Config->VersionDefinitions)
-    V.NameOff = Partitions[Part]->DynStrTab->addString(V.Name);
+    V.NameOff = getPartition().DynStrTab->addString(V.Name);
 
-  if (OutputSection *Sec = Partitions[Part]->DynStrTab->getParent())
+  if (OutputSection *Sec = getPartition().DynStrTab->getParent())
     getParent()->Link = Sec->SectionIndex;
 
   // sh_info should be set to the number of definitions. This fact is missed in
@@ -2808,7 +2808,7 @@ size_t VersionTableSection::getSize() const {
 
 void VersionTableSection::writeTo(uint8_t *Buf) {
   Buf += 2;
-  for (const SymbolTableEntry &S : Partitions[Part]->DynSymTab->getSymbols()) {
+  for (const SymbolTableEntry &S : getPartition().DynSymTab->getSymbols()) {
     write16(Buf, S.Sym->VersionId);
     Buf += 2;
   }
@@ -2845,19 +2845,19 @@ template <class ELFT> void VersionNeedSection<ELFT>::finalizeContents() {
 
     MyVerneeds.emplace_back();
     MyVerneeds.back().StrTab =
-        Partitions[Part]->DynStrTab->addString(File.SoName);
+        getPartition().DynStrTab->addString(File.SoName);
     for (unsigned I = 0; I != P.second.size(); ++I) {
       if (P.second[I] == 0)
         continue;
       const typename ELFT::Verdef *Ver = File.Verdefs[I];
       MyVerneeds.back().Vernauxs.push_back(
           {Ver->vd_hash, P.second[I],
-           Partitions[Part]->DynStrTab->addString(File.getStringTable().data() +
+           getPartition().DynStrTab->addString(File.getStringTable().data() +
                                                   Ver->getAux()->vda_name)});
     }
   }
 
-  if (OutputSection *Sec = Partitions[Part]->DynStrTab->getParent())
+  if (OutputSection *Sec = getPartition().DynStrTab->getParent())
     getParent()->Link = Sec->SectionIndex;
   getParent()->Info = Verneeds.size();
 }
@@ -3270,7 +3270,7 @@ size_t PartitionElfHeaderSection<ELFT>::getSize() const {
 
 template <typename ELFT>
 void PartitionElfHeaderSection<ELFT>::writeTo(uint8_t *Buf) {
-  writeEhdr<ELFT>(Buf, *Partitions[Part]);
+  writeEhdr<ELFT>(Buf, getPartition());
 }
 
 template <typename ELFT>
@@ -3279,17 +3279,17 @@ PartitionProgramHeadersSection<ELFT>::PartitionProgramHeadersSection()
 
 template <typename ELFT>
 size_t PartitionProgramHeadersSection<ELFT>::getSize() const {
-  return sizeof(typename ELFT::Phdr) * Partitions[Part]->Phdrs.size();
+  return sizeof(typename ELFT::Phdr) * getPartition().Phdrs.size();
 }
 
 template <typename ELFT>
 void PartitionProgramHeadersSection<ELFT>::writeTo(uint8_t *Buf) {
-  writePhdrs<ELFT>(Buf, *Partitions[Part]);
+  writePhdrs<ELFT>(Buf, getPartition());
 }
 
 InStruct elf::In;
-Partition elf::Main;
-std::vector<Partition *> elf::Partitions;
+Partition elf::Partitions[255];
+size_t elf::NumPartitions;
 
 template GdbIndexSection *GdbIndexSection::create<ELF32LE>();
 template GdbIndexSection *GdbIndexSection::create<ELF32BE>();
