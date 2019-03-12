@@ -275,14 +275,15 @@ template <class ELFT> static void createSyntheticSections() {
   auto Add = [](InputSectionBase *Sec) { InputSections.push_back(Sec); };
 
   In.ShStrTab = make<StringTableSection>(".shstrtab", false);
+
+  Out::ProgramHeaders = make<OutputSection>("", 0, SHF_ALLOC);
+  Out::ProgramHeaders->Alignment = Config->Wordsize;
+
   if (Config->Strip != StripPolicy::All) {
     In.StrTab = make<StringTableSection>(".strtab", false);
     In.SymTab = make<SymbolTableSection<ELFT>>(*In.StrTab);
     In.SymTabShndx = make<SymtabShndxSection>();
   }
-
-  Out::ProgramHeaders = make<OutputSection>("", 0, SHF_ALLOC);
-  Out::ProgramHeaders->Alignment = Config->Wordsize;
 
   if (Config->BuildId != BuildIdKind::None) {
     In.BuildId = make<BuildIdSection>();
