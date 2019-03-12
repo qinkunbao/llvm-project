@@ -68,7 +68,7 @@ struct CieRecord {
 // Section for .eh_frame.
 class EhFrameSection final : public SyntheticSection {
 public:
-  EhFrameSection(Partition &PartInfo);
+  EhFrameSection();
   void writeTo(uint8_t *Buf) override;
   void finalizeContents() override;
   bool empty() const override { return Sections.empty(); }
@@ -88,8 +88,6 @@ public:
   ArrayRef<CieRecord *> getCieRecords() const { return CieRecords; }
 
 private:
-  Partition &PartInfo;
-
   // This is used only when parsing EhInputSection. We keep it here to avoid
   // allocating one for each EhInputSection.
   llvm::DenseMap<size_t, CieRecord *> OffsetToCie;
@@ -457,7 +455,7 @@ template <class ELFT> class DynamicSection final : public SyntheticSection {
   std::vector<std::pair<int32_t, std::function<uint64_t()>>> Entries;
 
 public:
-  DynamicSection(Partition &PartInfo);
+  DynamicSection();
   void finalizeContents() override;
   void writeTo(uint8_t *Buf) override;
   size_t getSize() const override { return Size; }
@@ -471,14 +469,12 @@ private:
   void addSize(int32_t Tag, OutputSection *Sec);
   void addSym(int32_t Tag, Symbol *Sym);
 
-  Partition &PartInfo;
   uint64_t Size = 0;
 };
 
 class RelocationBaseSection : public SyntheticSection {
 public:
-  RelocationBaseSection(SymbolTableBaseSection *SymTab, StringRef Name,
-                        uint32_t Type, int32_t DynamicTag,
+  RelocationBaseSection(StringRef Name, uint32_t Type, int32_t DynamicTag,
                         int32_t SizeDynamicTag);
   void addReloc(RelType DynType, InputSectionBase *IS, uint64_t OffsetInSec,
                 Symbol *Sym);
@@ -494,7 +490,6 @@ public:
   void finalizeContents() override;
   int32_t DynamicTag, SizeDynamicTag;
 
-  SymbolTableBaseSection *SymTab;
   std::vector<DynamicReloc> Relocs;
   size_t NumRelativeRelocs = 0;
 };
@@ -505,7 +500,7 @@ class RelocationSection final : public RelocationBaseSection {
   typedef typename ELFT::Rela Elf_Rela;
 
 public:
-  RelocationSection(SymbolTableBaseSection *SymTab, StringRef Name, bool Sort);
+  RelocationSection(StringRef Name, bool Sort);
   unsigned getRelocOffset();
   void writeTo(uint8_t *Buf) override;
 
@@ -519,8 +514,7 @@ class AndroidPackedRelocationSection final : public RelocationBaseSection {
   typedef typename ELFT::Rela Elf_Rela;
 
 public:
-  AndroidPackedRelocationSection(SymbolTableBaseSection *SymTab,
-                                 StringRef Name);
+  AndroidPackedRelocationSection(StringRef Name);
 
   bool updateAllocSize() override;
   size_t getSize() const override { return RelocData.size(); }
@@ -581,8 +575,6 @@ public:
   size_t getSymbolIndex(Symbol *Sym);
   ArrayRef<SymbolTableEntry> getSymbols() const { return Symbols; }
 
-  GnuHashTableSection *GnuHashTab = nullptr;
-
 protected:
   void sortSymTabSymbols();
 
@@ -619,7 +611,7 @@ public:
 // https://blogs.oracle.com/ali/entry/gnu_hash_elf_sections
 class GnuHashTableSection final : public SyntheticSection {
 public:
-  GnuHashTableSection(SymbolTableBaseSection &SymTab);
+  GnuHashTableSection();
   void finalizeContents() override;
   void writeTo(uint8_t *Buf) override;
   size_t getSize() const override { return Size; }
@@ -629,8 +621,6 @@ public:
   void addSymbols(std::vector<SymbolTableEntry> &Symbols);
 
 private:
-  SymbolTableBaseSection &SymTab;
-
   // See the comment in writeBloomFilter.
   enum { Shift2 = 26 };
 
@@ -652,13 +642,12 @@ private:
 
 class HashTableSection final : public SyntheticSection {
 public:
-  HashTableSection(SymbolTableBaseSection &SymTab);
+  HashTableSection();
   void finalizeContents() override;
   void writeTo(uint8_t *Buf) override;
   size_t getSize() const override { return Size; }
 
 private:
-  SymbolTableBaseSection &SymTab;
   size_t Size = 0;
 };
 
@@ -754,10 +743,8 @@ private:
 // http://www.airs.com/blog/archives/460 (".eh_frame")
 // http://www.airs.com/blog/archives/462 (".eh_frame_hdr")
 class EhFrameHeader final : public SyntheticSection {
-  Partition &PartInfo;
-
 public:
-  EhFrameHeader(Partition &PartInfo);
+  EhFrameHeader();
   void write();
   void writeTo(uint8_t *Buf) override;
   size_t getSize() const override;
@@ -794,10 +781,8 @@ private:
 // The values 0 and 1 are reserved. All other values are used for versions in
 // the own object or in any of the dependencies.
 class VersionTableSection final : public SyntheticSection {
-  Partition &PartInfo;
-
 public:
-  VersionTableSection(Partition &PartInfo);
+  VersionTableSection();
   void finalizeContents() override;
   size_t getSize() const override;
   void writeTo(uint8_t *Buf) override;

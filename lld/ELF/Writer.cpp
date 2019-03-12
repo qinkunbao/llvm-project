@@ -334,14 +334,13 @@ template <class ELFT> static void createSyntheticSections() {
 
     Part.DynStrTab = make<StringTableSection>(".dynstr", true);
     Part.DynSymTab = make<SymbolTableSection<ELFT>>(*Part.DynStrTab);
-    Part.Dynamic = make<DynamicSection<ELFT>>(Part);
+    Part.Dynamic = make<DynamicSection<ELFT>>();
     if (Config->AndroidPackDynRelocs) {
       Part.RelaDyn = make<AndroidPackedRelocationSection<ELFT>>(
-          Part.DynSymTab, Config->IsRela ? ".rela.dyn" : ".rel.dyn");
+          Config->IsRela ? ".rela.dyn" : ".rel.dyn");
     } else {
       Part.RelaDyn = make<RelocationSection<ELFT>>(
-          Part.DynSymTab, Config->IsRela ? ".rela.dyn" : ".rel.dyn",
-          Config->ZCombreloc);
+          Config->IsRela ? ".rela.dyn" : ".rel.dyn", Config->ZCombreloc);
     }
 
     if (needsInterpSection())
@@ -350,7 +349,7 @@ template <class ELFT> static void createSyntheticSections() {
     if (Config->HasDynSymTab) {
       Add(Part.DynSymTab);
 
-      Part.VerSym = make<VersionTableSection>(Part);
+      Part.VerSym = make<VersionTableSection>();
       Add(Part.VerSym);
 
       if (!Config->VersionDefinitions.empty()) {
@@ -362,12 +361,12 @@ template <class ELFT> static void createSyntheticSections() {
       Add(Part.VerNeed);
 
       if (Config->GnuHash) {
-        Part.GnuHashTab = make<GnuHashTableSection>(*Part.DynSymTab);
+        Part.GnuHashTab = make<GnuHashTableSection>();
         Add(Part.GnuHashTab);
       }
 
       if (Config->SysvHash) {
-        Part.HashTab = make<HashTableSection>(*Part.DynSymTab);
+        Part.HashTab = make<HashTableSection>();
         Add(Part.HashTab);
       }
 
@@ -383,10 +382,10 @@ template <class ELFT> static void createSyntheticSections() {
 
     if (!Config->Relocatable) {
       if (Config->EhFrameHdr) {
-        Part.EhFrameHdr = make<EhFrameHeader>(Part);
+        Part.EhFrameHdr = make<EhFrameHeader>();
         Add(Part.EhFrameHdr);
       }
-      Part.EhFrame = make<EhFrameSection>(Part);
+      Part.EhFrame = make<EhFrameSection>();
       Add(Part.EhFrame);
     }
 
@@ -429,8 +428,7 @@ template <class ELFT> static void createSyntheticSections() {
   // We always need to add rel[a].plt to output if it has entries.
   // Even for static linking it can contain R_[*]_IRELATIVE relocations.
   In.RelaPlt = make<RelocationSection<ELFT>>(
-      Main.DynSymTab, Config->IsRela ? ".rela.plt" : ".rel.plt",
-      false /*Sort*/);
+      Config->IsRela ? ".rela.plt" : ".rel.plt", false /*Sort*/);
   Add(In.RelaPlt);
 
   // The RelaIplt immediately follows .rel.plt (.rel.dyn for ARM) to ensure
@@ -440,7 +438,6 @@ template <class ELFT> static void createSyntheticSections() {
   // However, because the Android dynamic loader reads .rel.plt after .rel.dyn,
   // we can get the desired behaviour by placing the iplt section in .rel.plt.
   In.RelaIplt = make<RelocationSection<ELFT>>(
-      Main.DynSymTab,
       (Config->EMachine == EM_ARM && !Config->AndroidPackDynRelocs)
           ? ".rel.dyn"
           : In.RelaPlt->Name,
