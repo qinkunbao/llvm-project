@@ -1048,13 +1048,13 @@ struct Partition {
   VersionNeedBaseSection *VerNeed;
   VersionTableSection *VerSym;
 
-  unsigned getPartitionNumber() const;
+  unsigned getNumber() const;
 };
 
 extern Partition Partitions[255];
 extern size_t NumPartitions;
 
-inline unsigned Partition::getPartitionNumber() const {
+inline unsigned Partition::getNumber() const {
   return this - &Partitions[0] + 1;
 }
 

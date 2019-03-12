@@ -318,7 +318,7 @@ template <class ELFT> static void createSyntheticSections() {
 
   for (Partition &Part : getPartitions()) {
     auto Add = [&](InputSectionBase *Sec) {
-      Sec->Part = Part.getPartitionNumber();
+      Sec->Part = Part.getNumber();
       InputSections.push_back(Sec);
     };
 
@@ -2000,7 +2000,7 @@ std::vector<PhdrEntry *> Writer<ELFT>::createPhdrs(Partition &Part) {
     return Ret.back();
   };
 
-  unsigned PartNo = Part.getPartitionNumber();
+  unsigned PartNo = Part.getNumber();
   bool IsMain = PartNo == 1;
 
   // The first phdr entry is PT_PHDR which describes the program header itself.
@@ -2141,7 +2141,7 @@ std::vector<PhdrEntry *> Writer<ELFT>::createPhdrs(Partition &Part) {
 template <class ELFT>
 void Writer<ELFT>::addPhdrForSection(Partition &Part, unsigned ShType,
                                      unsigned PType, unsigned PFlags) {
-  unsigned PartNo = Part.getPartitionNumber();
+  unsigned PartNo = Part.getNumber();
   auto I = llvm::find_if(OutputSections, [=](OutputSection *Cmd) {
     return Cmd->Part == PartNo && Cmd->Type == ShType;
   });

@@ -1373,7 +1373,7 @@ static void readSymbolPartitionSection(InputSectionBase *S) {
   for (Partition &Part : getPartitions()) {
     if (Part.Name != PartName)
       continue;
-    Sym->Part = Part.getPartitionNumber();
+    Sym->Part = Part.getNumber();
     return;
   }
 
@@ -1382,7 +1382,7 @@ static void readSymbolPartitionSection(InputSectionBase *S) {
   ++NumPartitions;
   Partition &NewPart = getPartitions().back();
   NewPart.Name = PartName;
-  Sym->Part = NewPart.getPartitionNumber();
+  Sym->Part = NewPart.getNumber();
 }
 
 template <class ELFT> static Symbol *addUndefined(StringRef Name) {
