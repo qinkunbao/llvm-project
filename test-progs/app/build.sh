@@ -16,11 +16,11 @@ PLATFORM="${SDK}/platforms/android-28"
 
 LLVM="${HOME}/l2/ra"
 
-TRIPLE=armv7-linux-android21
-ABI=armeabi-v7a
+# TRIPLE=armv7-linux-android21
+# ABI=armeabi-v7a
 
-# TRIPLE=aarch64-linux-android21
-# ABI=arm64-v8a
+TRIPLE=aarch64-linux-android21
+ABI=arm64-v8a
 
 rm -rf build
 mkdir -p build/gen build/obj build/dbg

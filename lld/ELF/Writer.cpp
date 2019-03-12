@@ -151,13 +151,36 @@ void Writer<ELFT>::removeEmptyPTLoad(std::vector<PhdrEntry *> &Phdrs) {
   });
 }
 
+// Make copies of any input sections that need to be copied into each partition.
+template <class ELFT> static void copySectionsIntoPartitions() {
+  std::vector<InputSectionBase *> NewSections;
+  for (unsigned Part = 2; Part != NumPartitions + 1; ++Part) {
+    for (InputSectionBase *S : InputSections) {
+      if (!(S->Flags & SHF_ALLOC) || !S->isLive())
+        continue;
+      InputSectionBase *Copy;
+      if (S->Type == SHT_NOTE)
+        Copy = make<InputSection>(cast<InputSection>(*S));
+      else if (auto *ES = dyn_cast<EhInputSection>(S))
+        Copy = make<EhInputSection>(*ES);
+      else
+        continue;
+      Copy->Part = Part;
+      NewSections.push_back(Copy);
+    }
+  }
+
+  InputSections.insert(InputSections.end(), NewSections.begin(),
+                       NewSections.end());
+}
+
 template <class ELFT> static void combineEhFrameSections() {
   for (InputSectionBase *&S : InputSections) {
     EhInputSection *ES = dyn_cast<EhInputSection>(S);
     if (!ES || !ES->isLive())
       continue;
 
-    Main.EhFrame->addSection<ELFT>(ES);
+    ES->getPartition().EhFrame->addSection<ELFT>(ES);
     S = nullptr;
   }
 
@@ -469,6 +492,8 @@ template <class ELFT> static void createSyntheticSections() {
 
 // The main function of the writer.
 template <class ELFT> void Writer<ELFT>::run() {
+  copySectionsIntoPartitions<ELFT>();
+
   // Create linker-synthesized sections such as .got or .plt.
   // Such sections are of type input section.
   createSyntheticSections<ELFT>();
@@ -970,8 +995,9 @@ void Writer<ELFT>::forEachRelSec(
   for (InputSectionBase *IS : InputSections)
     if (IS->isLive() && isa<InputSection>(IS) && (IS->Flags & SHF_ALLOC))
       Fn(*IS);
-  for (EhInputSection *ES : Main.EhFrame->Sections)
-    Fn(*ES);
+  for (Partition &Part : getPartitions())
+    for (EhInputSection *ES : Part.EhFrame->Sections)
+      Fn(*ES);
 }
 
 // This function generates assignments for predefined symbols (e.g. _end or
@@ -1703,7 +1729,8 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
   // This responsible for splitting up .eh_frame section into
   // pieces. The relocation scan uses those pieces, so this has to be
   // earlier.
-  finalizeSynthetic(Main.EhFrame);
+  for (Partition &Part : getPartitions())
+    finalizeSynthetic(Part.EhFrame);
 
   for (Symbol *S : Symtab->getSymbols())
     if (!S->IsPreemptible)

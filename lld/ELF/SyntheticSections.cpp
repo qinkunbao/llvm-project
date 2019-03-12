@@ -417,10 +417,11 @@ bool EhFrameSection::isFdeLive(EhSectionPiece &Fde, ArrayRef<RelTy> Rels) {
   const RelTy &Rel = Rels[FirstRelI];
   Symbol &B = Sec->template getFile<ELFT>()->getRelocTargetSym(Rel);
 
-  // FDEs for garbage-collected or merged-by-ICF sections are dead.
+  // FDEs for garbage-collected or merged-by-ICF sections, or sections in
+  // another partition, are dead.
   if (auto *D = dyn_cast<Defined>(&B))
     if (SectionBase *Sec = D->Section)
-      return Sec->isLive();
+      return Sec->Part == Part;
   return false;
 }
 
