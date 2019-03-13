@@ -49,7 +49,7 @@ function clang() {
       "$@"
 }
 
-clang --target=${TRIPLE} -c -o build/hello.o -Xclang -default-function-attr -Xclang symbol-partition=libhello.so jni/hello.c
+clang --target=${TRIPLE} -c -o build/hello.o -fsymbol-partition=libhello.so jni/hello.c
 clang --target=${TRIPLE} -c -o build/loader.o jni/loader.c
 
 clang --target=${TRIPLE} -o build/libcombined.so \

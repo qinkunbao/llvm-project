@@ -238,6 +238,8 @@ public:
   /// records.
   std::string OptRecordFile;
 
+  std::string SymbolPartition;
+
   /// Regular expression to select optimizations for which we should enable
   /// optimization remarks. Transformation passes whose name matches this
   /// expression (and support this feature), will emit a diagnostic

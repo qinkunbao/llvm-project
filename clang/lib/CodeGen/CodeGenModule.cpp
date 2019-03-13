@@ -842,12 +842,14 @@ void CodeGenModule::setGVProperties(llvm::GlobalValue *GV,
                                     GlobalDecl GD) const {
   setDLLImportDLLExport(GV, GD);
   setGlobalVisibilityAndLocal(GV, dyn_cast<NamedDecl>(GD.getDecl()));
+  GV->setPartition(CodeGenOpts.SymbolPartition);
 }
 
 void CodeGenModule::setGVProperties(llvm::GlobalValue *GV,
                                     const NamedDecl *D) const {
   setDLLImportDLLExport(GV, D);
   setGlobalVisibilityAndLocal(GV, D);
+  GV->setPartition(CodeGenOpts.SymbolPartition);
 }
 
 void CodeGenModule::setGlobalVisibilityAndLocal(llvm::GlobalValue *GV,

@@ -1563,21 +1563,18 @@ bool AsmPrinter::doFinalization(Module &M) {
   // Emit symbol partition specifications (ELF only).
   if (TM.getTargetTriple().isOSBinFormatELF()) {
     unsigned UniqueID = 0;
-    for (const Function &F : M) {
-      if (F.isDeclarationForLinker() ||
-          F.getVisibility() != GlobalValue::DefaultVisibility)
-        continue;
-      StringRef SymPart =
-              F.getFnAttribute("symbol-partition").getValueAsString();
-      if (SymPart.empty())
+    for (const GlobalValue &GV : M.global_values()) {
+      if (!GV.hasPartition() || GV.isDeclarationForLinker() ||
+          GV.getVisibility() != GlobalValue::DefaultVisibility)
         continue;
 
       OutStreamer->SwitchSection(OutContext.getELFSection(
           ".llvm_sympart", ELF::SHT_LLVM_SYMPART, 0, 0, "", ++UniqueID));
-      OutStreamer->EmitBytes(SymPart);
+      OutStreamer->EmitBytes(GV.getPartition());
       OutStreamer->EmitZeros(1);
-      OutStreamer->EmitValue(MCSymbolRefExpr::create(getSymbol(&F), OutContext),
-                             MAI->getCodePointerSize());
+      OutStreamer->EmitValue(
+          MCSymbolRefExpr::create(getSymbol(&GV), OutContext),
+          MAI->getCodePointerSize());
     }
   }
 

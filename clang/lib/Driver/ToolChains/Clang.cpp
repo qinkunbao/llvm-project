@@ -5391,6 +5391,8 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
                        TC.useIntegratedAs()))
     CmdArgs.push_back("-faddrsig");
 
+  Args.AddLastArg(CmdArgs, options::OPT_fsymbol_partition_EQ);
+
   // Finally add the compile command to the compilation.
   if (Args.hasArg(options::OPT__SLASH_fallback) &&
       Output.getType() == types::TY_Object &&
