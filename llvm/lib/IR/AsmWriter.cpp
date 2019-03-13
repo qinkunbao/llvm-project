@@ -3419,6 +3419,11 @@ void AssemblyWriter::printFunction(const Function *F) {
     printEscapedString(F->getSection(), Out);
     Out << '"';
   }
+  if (F->hasPartition()) {
+    Out << " partition \"";
+    printEscapedString(F->getPartition(), Out);
+    Out << '"';
+  }
   maybePrintComdat(Out, *F);
   if (F->getAlignment())
     Out << " align " << F->getAlignment();
