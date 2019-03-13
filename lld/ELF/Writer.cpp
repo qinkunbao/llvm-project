@@ -24,6 +24,9 @@
 #include "lld/Common/Threads.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringSwitch.h"
+#include "llvm/Support/RandomNumberGenerator.h"
+#include "llvm/Support/SHA1.h"
+#include "llvm/Support/xxhash.h"
 #include <climits>
 
 using namespace llvm;
@@ -308,11 +311,6 @@ template <class ELFT> static void createSyntheticSections() {
     In.SymTabShndx = make<SymtabShndxSection>();
   }
 
-  if (Config->BuildId != BuildIdKind::None) {
-    In.BuildId = make<BuildIdSection>();
-    Add(In.BuildId);
-  }
-
   In.Bss = make<BssSection>(".bss", 0, 1);
   Add(In.Bss);
 
@@ -354,6 +352,11 @@ template <class ELFT> static void createSyntheticSections() {
 
       Part.ProgramHeaders = make<PartitionProgramHeadersSection<ELFT>>();
       Add(Part.ProgramHeaders);
+    }
+
+    if (Config->BuildId != BuildIdKind::None) {
+      Part.BuildId = make<BuildIdSection>();
+      Add(Part.BuildId);
     }
 
     Part.DynStrTab = make<StringTableSection>(".dynstr", true);
@@ -2601,12 +2604,79 @@ template <class ELFT> void Writer<ELFT>::writeSections() {
       Sec->writeTo<ELFT>(Out::BufferStart + Sec->Offset);
 }
 
+static std::vector<ArrayRef<uint8_t>> split(ArrayRef<uint8_t> Arr,
+                                            size_t ChunkSize) {
+  std::vector<ArrayRef<uint8_t>> Ret;
+  while (Arr.size() > ChunkSize) {
+    Ret.push_back(Arr.take_front(ChunkSize));
+    Arr = Arr.drop_front(ChunkSize);
+  }
+  if (!Arr.empty())
+    Ret.push_back(Arr);
+  return Ret;
+}
+
+static void
+computeHash(llvm::MutableArrayRef<uint8_t> HashBuf,
+            llvm::ArrayRef<uint8_t> Data,
+            std::function<void(uint8_t *Dest, ArrayRef<uint8_t> Arr)> HashFn) {
+  std::vector<ArrayRef<uint8_t>> Chunks = split(Data, 1024 * 1024);
+  std::vector<uint8_t> Hashes(Chunks.size() * HashBuf.size());
+
+  // Compute hash values.
+  parallelForEachN(0, Chunks.size(), [&](size_t I) {
+    HashFn(Hashes.data() + I * HashBuf.size(), Chunks[I]);
+  });
+
+  // Write to the final output buffer.
+  HashFn(HashBuf.data(), Hashes);
+}
+
+static std::vector<uint8_t> computeBuildId(llvm::ArrayRef<uint8_t> Buf) {
+  std::vector<uint8_t> HashBuf;
+  switch (Config->BuildId) {
+  case BuildIdKind::Fast:
+    HashBuf.resize(8);
+    computeHash(HashBuf, Buf, [](uint8_t *Dest, ArrayRef<uint8_t> Arr) {
+      write64le(Dest, xxHash64(Arr));
+    });
+    break;
+  case BuildIdKind::Md5:
+    HashBuf.resize(16);
+    computeHash(HashBuf, Buf, [](uint8_t *Dest, ArrayRef<uint8_t> Arr) {
+      memcpy(Dest, MD5::hash(Arr).data(), 16);
+    });
+    break;
+  case BuildIdKind::Sha1:
+    HashBuf.resize(20);
+    computeHash(HashBuf, Buf, [](uint8_t *Dest, ArrayRef<uint8_t> Arr) {
+      memcpy(Dest, SHA1::hash(Arr).data(), 20);
+    });
+    break;
+  case BuildIdKind::Uuid:
+    HashBuf.resize(16);
+    if (auto EC = llvm::getRandomBytes(HashBuf.data(), 16))
+      error("entropy source failure: " + EC.message());
+    break;
+  case BuildIdKind::Hexstring:
+    HashBuf = Config->BuildIdVector;
+    break;
+  default:
+    llvm_unreachable("unknown BuildIdKind");
+  }
+  return HashBuf;
+}
+
 template <class ELFT> void Writer<ELFT>::writeBuildId() {
-  if (!In.BuildId || !In.BuildId->getParent())
+  if (!Main.BuildId || !Main.BuildId->getParent())
     return;
 
   // Compute a hash of all sections of the output file.
-  In.BuildId->writeBuildId({Out::BufferStart, size_t(FileSize)});
+  std::vector<uint8_t> BuildId =
+      computeBuildId({Out::BufferStart, size_t(FileSize)});
+
+  for (Partition &Part : getPartitions())
+    Part.BuildId->writeBuildId(BuildId);
 }
 
 template void elf::writeResult<ELF32LE>();

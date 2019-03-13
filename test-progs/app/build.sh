@@ -58,6 +58,7 @@ clang --target=${TRIPLE} -o build/libcombined.so \
   -Wl,--pack-dyn-relocs=android+relr \
   -Wl,--use-android-relr-tags \
   -Wl,--no-rosegment \
+  -Wl,--build-id \
   -Wl,-Map,build/libcombined.map \
   build/hello.o build/loader.o -llog
 

@@ -159,9 +159,6 @@ public:
   void writeBuildId(llvm::ArrayRef<uint8_t> Buf);
 
 private:
-  void computeHash(llvm::ArrayRef<uint8_t> Buf,
-                   std::function<void(uint8_t *, ArrayRef<uint8_t>)> Hash);
-
   size_t HashSize;
   uint8_t *HashBuf;
 };
@@ -1035,6 +1032,7 @@ struct Partition {
   SyntheticSection *ProgramHeaders;
   std::vector<PhdrEntry *> Phdrs;
 
+  BuildIdSection *BuildId;
   SyntheticSection *Dynamic;
   StringTableSection *DynStrTab;
   SymbolTableBaseSection *DynSymTab;
@@ -1074,7 +1072,6 @@ struct InStruct {
   InputSection *ARMAttributes;
   BssSection *Bss;
   BssSection *BssRelRo;
-  BuildIdSection *BuildId;
   GotSection *Got;
   GotPltSection *GotPlt;
   IgotPltSection *IgotPlt;
