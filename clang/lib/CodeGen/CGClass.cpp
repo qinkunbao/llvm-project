@@ -1254,6 +1254,13 @@ void CodeGenFunction::EmitCtorPrologue(const CXXConstructorDecl *CD,
   if (CD->isDelegatingConstructor())
     return EmitDelegatingCXXConstructorCall(CD, Args);
 
+  llvm::BasicBlock *BeforeInitBlock = Builder.GetInsertBlock();
+  llvm::BasicBlock::iterator BeforeInitPoint =
+      std::prev(Builder.GetInsertPoint());
+  ScopedCtorCallTracker Tracker(*this, CXXThisValue);
+  if (!CurGD.isPattern())
+    CtorCallTracker = nullptr;
+
   const CXXRecordDecl *ClassDecl = CD->getParent();
 
   CXXConstructorDecl::init_const_iterator B = CD->init_begin(),
@@ -1324,6 +1331,20 @@ void CodeGenFunction::EmitCtorPrologue(const CXXConstructorDecl *CD,
     CM.addMemberInitializer(Member);
   }
   CM.finish();
+
+  CGBuilderTy TmpBuilder = Builder;
+  Builder.SetInsertPoint(BeforeInitBlock, std::next(BeforeInitPoint));
+  ArrayRef<std::pair<size_t, size_t>> Ranges;
+  if (Tracker.IsValid &&
+      TmpBuilder.GetInsertBlock() == Builder.GetInsertBlock())
+    Ranges = Tracker.Ranges;
+  if (!ClassDecl->isEmpty() && !getenv("NO_CTORS") && CurGD.isPattern())
+    initializeWhatIsTechnicallyUninitialized(
+        getContext().getRecordType(CD->getParent()),
+        CtorType == Ctor_Base ? ObjToInit::Base : ObjToInit::Complete, nullptr,
+        LoadCXXThisAddress(), Ranges);
+  Builder.SetInsertPoint(TmpBuilder.GetInsertBlock(),
+                         TmpBuilder.GetInsertPoint());
 }
 
 static bool
@@ -2100,7 +2121,18 @@ void CodeGenFunction::EmitCXXConstructorCall(const CXXConstructorDecl *D,
                                              AggValueSlot::Overlap_t Overlap,
                                              SourceLocation Loc,
                                              bool NewPointerIsChecked) {
+  GlobalDecl GD(D, Type);
   const CXXRecordDecl *ClassDecl = D->getParent();
+
+  if (CtorCallTracker) {
+    auto &Layout = getContext().getASTRecordLayout(ClassDecl);
+    CharUnits Size = Type == Ctor_Complete ? Layout.getDataSize()
+                                           : Layout.getNonVirtualSize();
+    if (CtorCallTracker->addCtorCall(This.getPointer(), Size.getQuantity()) &&
+        getContext().getLangOpts().getTrivialAutoVarInit() !=
+            LangOptions::TrivialAutoVarInitKind::Uninitialized)
+      GD = GD.getWithPattern(true);
+  }
 
   if (!NewPointerIsChecked)
     EmitTypeCheck(CodeGenFunction::TCK_ConstructorCall, Loc, This.getPointer(),
@@ -2144,10 +2176,10 @@ void CodeGenFunction::EmitCXXConstructorCall(const CXXConstructorDecl *D,
                                                  Delegating, Args);
 
   // Emit the call.
-  llvm::Constant *CalleePtr = CGM.getAddrOfCXXStructor(GlobalDecl(D, Type));
+  llvm::Constant *CalleePtr = CGM.getAddrOfCXXStructor(GD);
   const CGFunctionInfo &Info = CGM.getTypes().arrangeCXXConstructorCall(
       Args, D, Type, ExtraArgs.Prefix, ExtraArgs.Suffix, PassPrototypeArgs);
-  CGCallee Callee = CGCallee::forDirect(CalleePtr, GlobalDecl(D, Type));
+  CGCallee Callee = CGCallee::forDirect(CalleePtr, GD);
   EmitCall(Info, Callee, ReturnValueSlot(), Args);
 
   // Generate vtable assumptions if we're constructing a complete object

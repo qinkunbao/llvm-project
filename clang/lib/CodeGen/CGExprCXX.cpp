@@ -1698,8 +1698,14 @@ llvm::Value *CodeGenFunction::EmitCXXNewExpr(const CXXNewExpr *E) {
                 result.getPointer(), allocType, result.getAlignment(),
                 SkippedChecks, numElements);
 
+  if (allocator->hasAttr<ZeroInitializedAttr>())
+    InEmitCXXGlobalVarDeclInit = true;
+
   EmitNewInitializer(*this, E, allocType, elementTy, result, numElements,
                      allocSizeWithoutCookie);
+
+  InEmitCXXGlobalVarDeclInit = false;
+
   if (E->isArray()) {
     // NewPtr is a pointer to the base element type.  If we're
     // allocating an array of arrays, we'll need to cast back to the

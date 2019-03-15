@@ -10,4 +10,6 @@ declare_args() {
 
   # Whether to enable assertions.
   llvm_enable_assertions = true
+
+  tvi_pattern = false
 }

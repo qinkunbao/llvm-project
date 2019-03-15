@@ -1735,6 +1735,11 @@ void CodeGenFunction::EmitStoreOfScalar(llvm::Value *Value, Address Addr,
 
   Value = EmitToMemory(Value, Ty);
 
+  if (CtorCallTracker)
+    CtorCallTracker->addCtorCall(
+        Addr.getPointer(),
+        CGM.getDataLayout().getTypeStoreSize(Value->getType()));
+
   LValue AtomicLValue =
       LValue::MakeAddr(Addr, Ty, getContext(), BaseInfo, TBAAInfo);
   if (Ty->isAtomicType() ||

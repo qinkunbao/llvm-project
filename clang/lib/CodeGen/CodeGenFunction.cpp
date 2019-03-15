@@ -2577,3 +2577,67 @@ llvm::DebugLoc CodeGenFunction::SourceLocToDebugLoc(SourceLocation Location) {
 
   return llvm::DebugLoc();
 }
+
+CodeGenFunction::ScopedCtorCallTracker::ScopedCtorCallTracker(
+    CodeGenFunction &CGF, llvm::Value *Object)
+    : CGF(CGF) {
+  // If initialization happens recursively during initialization, be
+  // conservative. This should not happen often.
+  if (CGF.CtorCallTracker) {
+    IsValid = false;
+    return;
+  }
+  CGF.CtorCallTracker = this;
+
+  llvm::APInt OffsetAP(
+      CGF.CGM.getDataLayout().getIndexSizeInBits(
+          cast<llvm::PointerType>(Object->getType())->getAddressSpace()),
+      0);
+  Base = Object->stripAndAccumulateInBoundsConstantOffsets(
+      CGF.CGM.getDataLayout(), OffsetAP);
+  Offset = OffsetAP.getZExtValue();
+}
+
+bool CodeGenFunction::ScopedCtorCallTracker::addCtorCall(llvm::Value *V,
+                                                         size_t Size) {
+  if (!IsValid)
+    return false;
+
+  llvm::APInt OffsetAP(
+      CGF.CGM.getDataLayout().getIndexSizeInBits(
+          cast<llvm::PointerType>(V->getType())->getAddressSpace()),
+      0);
+  if (V->stripAndAccumulateInBoundsConstantOffsets(CGF.CGM.getDataLayout(),
+                                                   OffsetAP) != Base)
+    return false;
+  uint64_t Offset = OffsetAP.getZExtValue() - this->Offset;
+
+#if 0
+  Base->dump();
+  llvm::outs() << Offset << ' ' << Size << '\n';
+#endif
+
+  std::pair<size_t, size_t> Range = {Offset, Offset + Size};
+  auto Point = std::lower_bound(
+      Ranges.begin(), Ranges.end(), Range,
+      [](std::pair<size_t, size_t> A, std::pair<size_t, size_t> B) {
+        return A.first < B.first;
+      });
+  // We're going to insert our new range before Point, which means that it
+  // points to the range after the one that we're inserting. Check that there is
+  // no overlap: the upper bound of the previous range must be <= the lower
+  // bound of this one and the upper bound of this range must be <= the lower
+  // bound of the next one.
+  //
+  // It's possible for us to see initialization overlap on two branches of a
+  // conditional, or with something like a statement expression. In that case we
+  // simply mark the call list as invalid, which will cause us to act
+  // conservatively later.
+  if (!(Point == Ranges.begin() || (Point - 1)->second <= Range.first) ||
+      !(Point == Ranges.end() || Range.second <= Point->first)) {
+    IsValid = false;
+    return false;
+  }
+  Ranges.insert(Point, Range);
+  return true;
+}

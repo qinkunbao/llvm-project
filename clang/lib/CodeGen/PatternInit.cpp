@@ -22,7 +22,7 @@ llvm::Constant *clang::CodeGen::initializationPatternFor(CodeGenModule &CGM,
   // zero page can reasonably be expected to be unmapped, and even then we need
   // a very low address. We use a smaller value, and that value sadly doesn't
   // have a repeated byte-pattern. We don't use it for integers.
-  constexpr uint32_t SmallValue = 0x000000AA;
+  constexpr uint32_t SmallValue = 0xFFFFFFFF;
   // Floating-point values are initialized as NaNs because they propagate. Using
   // a repeated byte pattern means that it will be easier to initialize
   // all-floating-point aggregates and arrays with memset. Further, aggregates

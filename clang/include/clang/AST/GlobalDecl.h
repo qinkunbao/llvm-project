@@ -34,6 +34,7 @@ namespace clang {
 class GlobalDecl {
   llvm::PointerIntPair<const Decl *, 2> Value;
   unsigned MultiVersionIndex = 0;
+  bool Pattern = false;
 
   void Init(const Decl *D) {
     assert(!isa<CXXConstructorDecl>(D) && "Use other ctor with ctor decls!");
@@ -57,11 +58,8 @@ public:
   GlobalDecl(const CXXDestructorDecl *D, CXXDtorType Type) : Value(D, Type) {}
 
   GlobalDecl getCanonicalDecl() const {
-    GlobalDecl CanonGD;
-    CanonGD.Value.setPointer(Value.getPointer()->getCanonicalDecl());
-    CanonGD.Value.setInt(Value.getInt());
-    CanonGD.MultiVersionIndex = MultiVersionIndex;
-
+    GlobalDecl CanonGD(*this);
+    CanonGD.Value.setPointer(getDecl()->getCanonicalDecl());
     return CanonGD;
   }
 
@@ -85,9 +83,15 @@ public:
     return MultiVersionIndex;
   }
 
+  bool isPattern() const {
+    assert(isa<CXXConstructorDecl>(getDecl()));
+    return Pattern;
+  }
+
   friend bool operator==(const GlobalDecl &LHS, const GlobalDecl &RHS) {
     return LHS.Value == RHS.Value &&
-           LHS.MultiVersionIndex == RHS.MultiVersionIndex;
+           LHS.MultiVersionIndex == RHS.MultiVersionIndex &&
+           LHS.Pattern == RHS.Pattern;
   }
 
   void *getAsOpaquePtr() const { return Value.getOpaqueValue(); }
@@ -125,6 +129,13 @@ public:
            "Decl is not a plain FunctionDecl!");
     GlobalDecl Result(*this);
     Result.MultiVersionIndex = Index;
+    return Result;
+  }
+
+  GlobalDecl getWithPattern(bool IsPattern) {
+    assert(isa<CXXConstructorDecl>(getDecl()));
+    GlobalDecl Result(*this);
+    Result.Pattern = IsPattern;
     return Result;
   }
 };

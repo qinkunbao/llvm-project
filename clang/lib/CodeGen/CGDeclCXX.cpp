@@ -161,6 +161,7 @@ void CodeGenFunction::EmitInvariantStart(llvm::Constant *Addr, CharUnits Size) {
 void CodeGenFunction::EmitCXXGlobalVarDeclInit(const VarDecl &D,
                                                llvm::Constant *DeclPtr,
                                                bool PerformInit) {
+  InEmitCXXGlobalVarDeclInit = true;
 
   const Expr *Init = D.getInit();
   QualType T = D.getType();
@@ -203,6 +204,7 @@ void CodeGenFunction::EmitCXXGlobalVarDeclInit(const VarDecl &D,
       EmitDeclInvariant(*this, D, DeclPtr);
     else
       EmitDeclDestroy(*this, D, DeclAddr);
+    InEmitCXXGlobalVarDeclInit = false;
     return;
   }
 
@@ -210,6 +212,7 @@ void CodeGenFunction::EmitCXXGlobalVarDeclInit(const VarDecl &D,
          "destruction for reference");
   RValue RV = EmitReferenceBindingToExpr(Init);
   EmitStoreOfScalar(RV.getScalarVal(), DeclAddr, false, T);
+  InEmitCXXGlobalVarDeclInit = false;
 }
 
 /// Create a stub function, suitable for being passed to atexit,

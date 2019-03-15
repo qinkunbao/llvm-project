@@ -217,13 +217,20 @@ class Value;
   ///   x < -0 --> false
   bool SignBitMustBeZero(const Value *V, const TargetLibraryInfo *TLI);
 
+  struct ValueHistogram {
+    uint64_t Values[256] = {};
+    uint64_t Other = 0;
+  };
+
+  ValueHistogram getValueHistogram(Value *V, const DataLayout *DL = nullptr);
+
   /// If the specified value can be set by repeating the same byte in memory,
   /// return the i8 value that it is represented with. This is true for all i8
   /// values obviously, but is also true for i32 0, i32 -1, i16 0xF0F0, double
   /// 0.0 etc. If the value can't be handled with a repeated byte store (e.g.
   /// i16 0x1234), return null. If the value is entirely undef and padding,
   /// return undef.
-  Value *isBytewiseValue(Value *V);
+  Value *isBytewiseValue(Value *V, const DataLayout *DL = nullptr);
 
   /// Given an aggregrate and an sequence of indices, see if the scalar value
   /// indexed is already around as a register, for example if it were inserted

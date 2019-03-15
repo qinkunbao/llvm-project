@@ -136,6 +136,10 @@ config("compiler_defaults") {
   if (use_lld && host_os != "win") {
     ldflags += [ "-fuse-ld=lld" ]
   }
+
+  if (tvi_pattern) {
+    cflags += [ "-ftrivial-auto-var-init=pattern" ]
+  }
 }
 
 config("no_exceptions") {

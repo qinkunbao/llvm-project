@@ -458,6 +458,28 @@ public:
     ~SanitizerScope();
   };
 
+  class ScopedCtorCallTracker {
+    CodeGenFunction &CGF;
+    llvm::Value *Base;
+    uint64_t Offset;
+
+  public:
+    ScopedCtorCallTracker(CodeGenFunction &CGF, llvm::Value *Object);
+    ~ScopedCtorCallTracker() {
+      if (CGF.CtorCallTracker == this)
+        CGF.CtorCallTracker = nullptr;
+    }
+
+    bool IsValid = true;
+    std::vector<std::pair<size_t, size_t>> Ranges;
+
+    bool addCtorCall(llvm::Value *V, size_t Size);
+  };
+
+  ScopedCtorCallTracker *CtorCallTracker = nullptr;
+
+  bool InEmitCXXGlobalVarDeclInit = false;
+
   /// In C++, whether we are code generating a thunk.  This controls whether we
   /// should emit cleanups.
   bool CurFuncIsThunk = false;
@@ -4182,6 +4204,16 @@ private:
                                      llvm::IntegerType *ResType,
                                      llvm::Value *EmittedE,
                                      bool IsDynamic);
+
+  enum class ObjToInit {
+    Variable,
+    Base,
+    Complete,
+  };
+
+  void initializeWhatIsTechnicallyUninitialized(
+      QualType type, ObjToInit toInit, const VarDecl *D, Address Loc,
+      ArrayRef<std::pair<size_t, size_t>> CtorInits);
 
 public:
 #ifndef NDEBUG

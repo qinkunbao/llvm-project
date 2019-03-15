@@ -7299,6 +7299,10 @@ static void ProcessDeclAttribute(Sema &S, Scope *scope, Decl *D,
   case ParsedAttr::AT_MSAllocator:
     handleMSAllocatorAttr(S, D, AL);
     break;
+
+  case ParsedAttr::AT_ZeroInitialized:
+    handleSimpleAttribute<ZeroInitializedAttr>(S, D, AL);
+    break;
   }
 }
 

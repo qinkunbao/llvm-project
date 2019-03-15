@@ -3161,18 +3161,24 @@ bool llvm::isKnownNeverNaN(const Value *V, const TargetLibraryInfo *TLI,
   return true;
 }
 
-Value *llvm::isBytewiseValue(Value *V) {
-
-  // All byte-wide stores are splatable, even of arbitrary variables.
-  if (V->getType()->isIntegerTy(8))
-    return V;
-
+static void addToValueHistogram(ValueHistogram &H, Value *V,
+                                const DataLayout *DL) {
   LLVMContext &Ctx = V->getContext();
 
   // Undef don't care.
-  auto *UndefInt8 = UndefValue::get(Type::getInt8Ty(Ctx));
   if (isa<UndefValue>(V))
-    return UndefInt8;
+    return;
+
+  if (auto *T = dyn_cast<SequentialType>(V->getType()))
+    if (T->getNumElements() == 0)
+      return;
+  if (auto *T = dyn_cast<StructType>(V->getType()))
+    if (T->getNumElements() == 0)
+      return;
+
+  uint64_t Size = 1;
+  if (DL)
+    Size = DL->getTypeStoreSize(V->getType());
 
   Constant *C = dyn_cast<Constant>(V);
   if (!C) {
@@ -3182,12 +3188,15 @@ Value *llvm::isBytewiseValue(Value *V) {
     //   %c = or i16 %a, %b
     // but until there is an example that actually needs this, it doesn't seem
     // worth worrying about.
-    return nullptr;
+    H.Other += Size;
+    return;
   }
 
   // Handle 'null' ConstantArrayZero etc.
-  if (C->isNullValue())
-    return Constant::getNullValue(Type::getInt8Ty(Ctx));
+  if (C->isNullValue()) {
+    H.Values[0] += Size;
+    return;
+  }
 
   // Constant floating-point values can be handled as integer values if the
   // corresponding integer value is "byteable".  An important case is 0.0.
@@ -3200,54 +3209,78 @@ Value *llvm::isBytewiseValue(Value *V) {
     else if (CFP->getType()->isDoubleTy())
       Ty = Type::getInt64Ty(Ctx);
     // Don't handle long double formats, which have strange constraints.
-    return Ty ? isBytewiseValue(ConstantExpr::getBitCast(CFP, Ty)) : nullptr;
-  }
-
-  // We can handle constant integers that are multiple of 8 bits.
-  if (ConstantInt *CI = dyn_cast<ConstantInt>(C)) {
-    if (CI->getBitWidth() % 8 == 0) {
-      assert(CI->getBitWidth() > 8 && "8 bits should be handled above!");
-      if (!CI->getValue().isSplat(8))
-        return nullptr;
-      return ConstantInt::get(Ctx, CI->getValue().trunc(8));
+    if (Ty) {
+      addToValueHistogram(H, ConstantExpr::getBitCast(CFP, Ty), DL);
+      return;
     }
   }
 
-  auto Merge = [&](Value *LHS, Value *RHS) -> Value * {
-    if (LHS == RHS)
-      return LHS;
-    if (!LHS || !RHS)
-      return nullptr;
-    if (LHS == UndefInt8)
-      return RHS;
-    if (RHS == UndefInt8)
-      return LHS;
-    return nullptr;
-  };
+  // We can handle constant integers that are multiple of 8 bits.
+  if (ConstantInt *CI = dyn_cast<ConstantInt>(C))
+    if (CI->getBitWidth() % 8 == 0)
+      if (CI->getValue().isSplat(8)) {
+        H.Values[CI->getValue().getRawData()[0] % 256] += Size;
+        return;
+      }
 
-  if (ConstantDataSequential *CA = dyn_cast<ConstantDataSequential>(C)) {
-    Value *Val = UndefInt8;
-    for (unsigned I = 0, E = CA->getNumElements(); I != E; ++I)
-      if (!(Val = Merge(Val, isBytewiseValue(CA->getElementAsConstant(I)))))
-        return nullptr;
-    return Val;
+  if (auto *CE = dyn_cast<ConstantExpr>(C)) {
+    if (DL && CE->getOpcode() == Instruction::IntToPtr &&
+        cast<IntegerType>(CE->getOperand(0)->getType())->getBitWidth() ==
+            DL->getPointerSizeInBits(
+                cast<PointerType>(CE->getType())->getAddressSpace())) {
+      addToValueHistogram(H, CE->getOperand(0), DL);
+      return;
+    }
   }
 
-  if (isa<ConstantVector>(C)) {
-    Constant *Splat = cast<ConstantVector>(C)->getSplatValue();
-    return Splat ? isBytewiseValue(Splat) : nullptr;
+  if (ConstantDataSequential *CA = dyn_cast<ConstantDataSequential>(C)) {
+    for (unsigned I = 0, E = CA->getNumElements(); I != E; ++I)
+      addToValueHistogram(H, CA->getElementAsConstant(I), DL);
+    return;
+  }
+
+  if (auto *Vec = dyn_cast<ConstantVector>(C)) {
+    if (Constant *Splat = Vec->getSplatValue())
+      for (unsigned I = 0; I != Vec->getNumOperands(); ++I)
+        addToValueHistogram(H, Splat, DL);
+    else
+      H.Other += Size;
+    return;
   }
 
   if (isa<ConstantArray>(C) || isa<ConstantStruct>(C)) {
-    Value *Val = UndefInt8;
     for (unsigned I = 0, E = C->getNumOperands(); I != E; ++I)
-      if (!(Val = Merge(Val, isBytewiseValue(C->getOperand(I)))))
-        return nullptr;
-    return Val;
+      addToValueHistogram(H, C->getOperand(I), DL);
+    return;
   }
 
   // Don't try to handle the handful of other constants.
-  return nullptr;
+  H.Other += Size;
+}
+
+ValueHistogram llvm::getValueHistogram(Value *V, const DataLayout *DL) {
+  ValueHistogram H;
+  addToValueHistogram(H, V, DL);
+  return H;
+}
+
+Value *llvm::isBytewiseValue(Value *V, const DataLayout *DL) {
+  // All byte-wide stores are splatable, even of arbitrary variables.
+  if (V->getType()->isIntegerTy(8))
+    return V;
+
+  ValueHistogram H = getValueHistogram(V, DL);
+  if (H.Other)
+    return nullptr;
+  for (unsigned I = 0; I != 256; ++I) {
+    if (!H.Values[I])
+      continue;
+    for (unsigned J = I + 1; J != 256; ++J)
+      if (H.Values[J])
+        return nullptr;
+    return ConstantInt::get(Type::getInt8Ty(V->getContext()), I);
+  }
+  return UndefValue::get(Type::getInt8Ty(V->getContext()));
 }
 
 // This is the recursive version of BuildSubAggregate. It takes a few different

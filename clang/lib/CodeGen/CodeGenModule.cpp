@@ -989,6 +989,9 @@ static std::string getMangledNameImpl(const CodeGenModule &CGM, GlobalDecl GD,
       }
     }
 
+  if (isa<CXXConstructorDecl>(ND) && GD.isPattern())
+    Out << ".pattern";
+
   return Out.str();
 }
 

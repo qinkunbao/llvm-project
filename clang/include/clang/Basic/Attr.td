@@ -3231,6 +3231,12 @@ def Uninitialized : InheritableAttr {
   let Documentation = [UninitializedDocs];
 }
 
+def ZeroInitialized : InheritableAttr {
+  let Spellings = [Clang<"zero_init", 0>];
+  let Subjects = SubjectList<[Function]>;
+  let Documentation = [UninitializedDocs];
+}
+
 def ObjCExternallyRetained : InheritableAttr {
   let LangOpts = [ObjCAutoRefCount];
   let Spellings = [Clang<"objc_externally_retained">];

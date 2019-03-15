@@ -1445,15 +1445,23 @@ void ItaniumCXXABI::EmitCXXConstructors(const CXXConstructorDecl *D) {
   // Just make sure we're in sync with TargetCXXABI.
   assert(CGM.getTarget().getCXXABI().hasConstructorVariants());
 
+  auto EmitVariant = [&](CXXCtorType T) {
+    GlobalDecl GD(D, T);
+    CGM.EmitGlobal(GD);
+    if (getContext().getLangOpts().getTrivialAutoVarInit() !=
+        LangOptions::TrivialAutoVarInitKind::Uninitialized)
+      CGM.EmitGlobal(GD.getWithPattern(true));
+  };
+
   // The constructor used for constructing this as a base class;
   // ignores virtual bases.
-  CGM.EmitGlobal(GlobalDecl(D, Ctor_Base));
+  EmitVariant(Ctor_Base);
 
   // The constructor used for constructing this as a complete class;
   // constructs the virtual bases, then calls the base constructor.
   if (!D->getParent()->isAbstract()) {
     // We don't need to emit the complete ctor if the class is abstract.
-    CGM.EmitGlobal(GlobalDecl(D, Ctor_Complete));
+    EmitVariant(Ctor_Complete);
   }
 }
 
