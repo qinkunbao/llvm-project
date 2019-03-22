@@ -14,7 +14,7 @@ NDK="${HOME}/android-ndk-r19"
 BUILD_TOOLS="${SDK}/build-tools/27.0.3"
 PLATFORM="${SDK}/platforms/android-28"
 
-LLVM="${HOME}/l2/ra"
+LLVM="../../ra"
 
 # TRIPLE=armv7-linux-android21
 # ABI=armeabi-v7a
