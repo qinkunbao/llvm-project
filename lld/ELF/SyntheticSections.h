@@ -1011,6 +1011,14 @@ public:
   void writeTo(uint8_t *Buf) override;
 };
 
+class PartitionIndexSection : public SyntheticSection {
+public:
+  PartitionIndexSection();
+  size_t getSize() const override;
+  void finalizeContents() override;
+  void writeTo(uint8_t *Buf) override;
+};
+
 InputSection *createInterpSection();
 MergeInputSection *createCommentSection();
 template <class ELFT> void splitSections();
@@ -1027,6 +1035,7 @@ void addVerneed(Symbol *S);
 // Linker generated per-partition sections.
 struct Partition {
   StringRef Name;
+  uint64_t NameStrTab;
 
   SyntheticSection *ElfHeader;
   SyntheticSection *ProgramHeaders;
@@ -1078,6 +1087,8 @@ struct InStruct {
   PPC64LongBranchTargetSection *PPC64LongBranchTarget;
   MipsGotSection *MipsGot;
   MipsRldMapSection *MipsRldMap;
+  SyntheticSection *PartEnd;
+  SyntheticSection *PartIndex;
   PltSection *Plt;
   PltSection *Iplt;
   RelocationBaseSection *RelaPlt;

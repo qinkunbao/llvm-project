@@ -3,17 +3,36 @@
 #include <dlfcn.h>
 #include <jni.h>
 #include <stdlib.h>
+#include <string.h>
 
-extern char libhello_start[] __asm__("__part_libhello.so");
-extern char __part_end[];
+struct partition_index_entry {
+  int32_t name_relptr;
+  int32_t addr_relptr;
+  uint32_t size;
+};
+
+extern struct partition_index_entry __part_index_begin[], __part_index_end[];
+
+static void *read_relptr(int32_t *relptr) { return ((char *)relptr) + *relptr; }
+
+void *dlopen_wrapper(const char *name, int flags) {
+  for (struct partition_index_entry *part = __part_index_begin;
+       part != __part_index_end; ++part) {
+    if (strcmp(read_relptr(&part->name_relptr), name) == 0) {
+      android_dlextinfo info = {};
+      info.flags = ANDROID_DLEXT_RESERVED_ADDRESS;
+      info.reserved_addr = read_relptr(&part->addr_relptr);
+      info.reserved_size = part->size;
+
+      return android_dlopen_ext(name, flags, &info);
+    }
+  }
+
+  return dlopen(name, flags);
+}
 
 JNIEXPORT void JNICALL Java_net_hanshq_hello_MainActivity_loadDFM(JNIEnv *env) {
-  android_dlextinfo info = {};
-  info.flags = ANDROID_DLEXT_RESERVED_ADDRESS;
-  info.reserved_addr = libhello_start;
-  info.reserved_size = __part_end - libhello_start;
-
-  void *handle = android_dlopen_ext("libhello.so", RTLD_NOW, &info);
+  void *handle = dlopen_wrapper("libhello.so", RTLD_NOW);
   if (!handle) {
     __android_log_print(ANDROID_LOG_VERBOSE, "dlerror", "%s\n", dlerror());
     abort();

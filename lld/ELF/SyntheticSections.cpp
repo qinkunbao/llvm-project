@@ -3238,6 +3238,33 @@ void PartitionProgramHeadersSection<ELFT>::writeTo(uint8_t *Buf) {
   writePhdrs<ELFT>(Buf, getPartition());
 }
 
+PartitionIndexSection::PartitionIndexSection()
+    : SyntheticSection(SHF_ALLOC, SHT_PROGBITS, 4, ".rodata") {}
+
+size_t PartitionIndexSection::getSize() const {
+  return 12 * (NumPartitions - 1);
+}
+
+void PartitionIndexSection::finalizeContents() {
+  for (size_t I = 1; I != NumPartitions; ++I)
+    Partitions[I].NameStrTab = Main.DynStrTab->addString(Partitions[I].Name);
+}
+
+void PartitionIndexSection::writeTo(uint8_t *Buf) {
+  uint64_t VA = getVA();
+  for (size_t I = 1; I != NumPartitions; ++I) {
+    write32(Buf, Main.DynStrTab->getVA() + Partitions[I].NameStrTab - VA);
+    write32(Buf + 4, Partitions[I].ElfHeader->getVA() - (VA + 4));
+
+    SyntheticSection *Next =
+        I == NumPartitions - 1 ? In.PartEnd : Partitions[I + 1].ElfHeader;
+    write32(Buf + 8, Next->getVA() - Partitions[I].ElfHeader->getVA());
+
+    VA += 12;
+    Buf += 12;
+  }
+}
+
 InStruct elf::In;
 Partition elf::Partitions[255];
 size_t elf::NumPartitions;

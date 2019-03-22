@@ -423,10 +423,15 @@ template <class ELFT> static void createSyntheticSections() {
   }
 
   if (NumPartitions != 1) {
-    auto *PartEnd = make<BssSection>(".part.end", Target->PageSize, 1);
-    PartEnd->Part = 255;
-    addOptionalRegular("__part_end", PartEnd, 0);
-    Add(PartEnd);
+    In.PartEnd = make<BssSection>(".part.end", Target->PageSize, 1);
+    In.PartEnd->Part = 255;
+    Add(In.PartEnd);
+
+    In.PartIndex = make<PartitionIndexSection>();
+    addOptionalRegular("__part_index_begin", In.PartIndex, 0);
+    addOptionalRegular("__part_index_end", In.PartIndex,
+                       In.PartIndex->getSize());
+    Add(In.PartIndex);
   }
 
   // Add .got. MIPS' .got is so different from the other archs,
@@ -1878,6 +1883,7 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
   finalizeSynthetic(In.RelaPlt);
   finalizeSynthetic(In.Plt);
   finalizeSynthetic(In.Iplt);
+  finalizeSynthetic(In.PartIndex);
 
   // Dynamic section must be the last one in this list and dynamic
   // symbol table section (DynSymTab) must be the first one.
