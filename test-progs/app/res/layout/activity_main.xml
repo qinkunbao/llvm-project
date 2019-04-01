@@ -11,6 +11,11 @@
         android:layout_height="wrap_content"
         android:id="@+id/my_text"/>
     <Button
+        android:id="@+id/load_dfm"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Insert disk 2"/>
+    <Button
         android:id="@+id/my_button"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
