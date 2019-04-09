@@ -1291,13 +1291,14 @@ static void emitStoresForZeroInit(CodeGenModule &CGM, const VarDecl &D,
 }
 
 static void emitStoresForPatternInit(CodeGenModule &CGM, const VarDecl &D,
-                                     Address Loc, bool isVolatile,
-                                     CGBuilderTy &Builder) {
-  llvm::Type *ElTy = Loc.getElementType();
-  llvm::Constant *constant =
-      constWithPadding(CGM, IsPattern::Yes, patternFor(CGM, ElTy));
-  assert(!isa<llvm::UndefValue>(constant));
-  emitStoresForConstant(CGM, D, Loc, isVolatile, Builder, constant);
+                                     Address Loc, CharUnits Size,
+                                     bool isVolatile, CGBuilderTy &Builder) {
+  Address LocI8 = Builder.CreateBitCast(Loc, CGM.Int8PtrTy);
+  unsigned PtrWidth =
+      CGM.getContext().getTargetInfo().getPointerWidth(Loc.getAddressSpace());
+  Builder.CreateMemSet(LocI8,
+      llvm::ConstantInt::get(CGM.Int8Ty, PtrWidth == 64 ? 0xAA : 0xFF),
+      llvm::ConstantInt::get(CGM.IntPtrTy, Size.getQuantity()), isVolatile);
 }
 
 static bool containsUndef(llvm::Constant *constant) {
@@ -1788,7 +1789,7 @@ void CodeGenFunction::EmitAutoVarInit(const AutoVarEmission &emission) {
         emitStoresForZeroInit(CGM, D, Loc, isVolatile, Builder);
         break;
       case LangOptions::TrivialAutoVarInitKind::Pattern:
-        emitStoresForPatternInit(CGM, D, Loc, isVolatile, Builder);
+        emitStoresForPatternInit(CGM, D, Loc, Size, isVolatile, Builder);
         break;
       }
       return;
