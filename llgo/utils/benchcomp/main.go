@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"debug/elf"
 	"debug/macho"
+	"encoding/binary"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -133,7 +134,7 @@ func ninja_logs(path string) map[string]float64 {
 		if err != nil {
 			panic(err.Error())
 		}
-		m[elems[3]] = float64(end-begin)
+		m[elems[3]] = float64(end - begin)
 	}
 
 	return m
@@ -155,11 +156,101 @@ func filesizes(root string) map[string]float64 {
 	return m
 }
 
+type reloc struct {
+	offset, symno uint64
+}
+
+func read_relocs(data []byte, class elf.Class, t elf.SectionType, byteorder binary.ByteOrder) []reloc {
+	var rel_size int
+	if t == elf.SHT_RELA {
+		rel_size = 12
+	} else {
+		rel_size = 8
+	}
+	if len(data)%rel_size != 0 {
+		panic("huh")
+	}
+
+	rel_info_offset := 4
+	word := func(data []byte) uint64 {
+		return uint64(byteorder.Uint32(data))
+	}
+	var rel_symno_shift uint = 8
+	if class == elf.ELFCLASS64 {
+		rel_size = rel_size * 2
+		rel_info_offset = rel_info_offset * 2
+		rel_symno_shift = 32
+		word = func(data []byte) uint64 {
+			return byteorder.Uint64(data)
+		}
+	}
+
+	var relocs []reloc
+	for i := 0; i < len(data); i = i + rel_size {
+		var r reloc
+		r.offset = word(data[i:])
+		r.symno = word(data[i+rel_info_offset:]) >> rel_symno_shift
+		relocs = append(relocs, r)
+	}
+	return relocs
+}
+
+func sym_reloc_sizes(root string) map[string]float64 {
+	m := make(map[string]float64)
+
+	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if !info.Mode().IsRegular() {
+			return nil
+		}
+		f, err := elf.Open(path)
+		if err != nil || f.Type != elf.ET_REL {
+			return nil
+		}
+		rels := make([][]reloc, len(f.Sections))
+		for _, s := range f.Sections {
+			if s.Type == elf.SHT_REL || s.Type == elf.SHT_RELA {
+				relsec_data, err := s.Data()
+				if err != nil {
+					panic(err.Error())
+				}
+				rels[s.Info] = read_relocs(relsec_data, f.Class, s.Type, f.ByteOrder)
+			}
+		}
+		syms, err := f.Symbols()
+		if err != nil {
+			return nil
+		}
+		for _, sym := range syms {
+			if sym.Section < elf.SectionIndex(len(f.Sections)) && strings.HasPrefix(f.Sections[sym.Section].Name, ".text") {
+				name := sym.Name
+				if sym.Size != 0 {
+					for _, r := range rels[sym.Section] {
+						if r.offset >= sym.Value && r.offset < sym.Value+sym.Size {
+							name += "," + syms[r.symno-1].Name
+						}
+					}
+				}
+				m[name] = float64(sym.Size)
+			}
+		}
+
+		return nil
+	})
+	if err != nil {
+		panic(err.Error())
+	}
+
+	return m
+}
+
 func main() {
 	var cmp func(string) map[string]float64
 	switch os.Args[1] {
 	case "symsizes":
 		cmp = symsizes
+
+	case "sym_reloc_sizes":
+		cmp = sym_reloc_sizes
 
 	case "macho_symsizes":
 		cmp = macho_symsizes
