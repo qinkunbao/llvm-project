@@ -1538,11 +1538,13 @@ ThunkSection *ThunkCreator::addThunkSection(OutputSection *OS,
                                             InputSectionDescription *ISD,
                                             uint64_t Off) {
   auto *TS = make<ThunkSection>(OS, Off);
+  TS->Part = OS->Part;
   ISD->ThunkSections.push_back({TS, Pass});
   return TS;
 }
 
 std::pair<Thunk *, bool> ThunkCreator::getThunk(Symbol &Sym, RelType Type,
+                                                InputSection *IS,
                                                 uint64_t Src) {
   std::vector<Thunk *> *ThunkVec = nullptr;
 
@@ -1556,7 +1558,8 @@ std::pair<Thunk *, bool> ThunkCreator::getThunk(Symbol &Sym, RelType Type,
 
   // Check existing Thunks for Sym to see if they can be reused
   for (Thunk *T : *ThunkVec)
-    if (T->isCompatibleWith(Type) &&
+    if (T->getThunkTargetSym()->Section->Part == IS->Part &&
+        T->isCompatibleWith(Type) &&
         Target->inBranchRange(Type, Src, T->getThunkTargetSym()->getVA()))
       return std::make_pair(T, false);
 
@@ -1640,7 +1643,7 @@ bool ThunkCreator::createThunks(ArrayRef<OutputSection *> OutputSections) {
 
             Thunk *T;
             bool IsNew;
-            std::tie(T, IsNew) = getThunk(*Rel.Sym, Rel.Type, Src);
+            std::tie(T, IsNew) = getThunk(*Rel.Sym, Rel.Type, IS, Src);
 
             if (IsNew) {
               // Find or create a ThunkSection for the new Thunk

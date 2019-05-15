@@ -133,7 +133,8 @@ private:
 
   void createInitialThunkSections(ArrayRef<OutputSection *> OutputSections);
 
-  std::pair<Thunk *, bool> getThunk(Symbol &Sym, RelType Type, uint64_t Src);
+  std::pair<Thunk *, bool> getThunk(Symbol &Sym, RelType Type, InputSection *IS,
+                                    uint64_t Src);
 
   ThunkSection *addThunkSection(OutputSection *OS, InputSectionDescription *,
                                 uint64_t Off);
