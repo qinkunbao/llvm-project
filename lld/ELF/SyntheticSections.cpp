@@ -1336,25 +1336,27 @@ template <class ELFT> void DynamicSection<ELFT>::finalizeContents() {
   if (Part.HashTab)
     addInSec(DT_HASH, Part.HashTab);
 
-  if (Out::PreinitArray) {
-    addOutSec(DT_PREINIT_ARRAY, Out::PreinitArray);
-    addSize(DT_PREINIT_ARRAYSZ, Out::PreinitArray);
-  }
-  if (Out::InitArray) {
-    addOutSec(DT_INIT_ARRAY, Out::InitArray);
-    addSize(DT_INIT_ARRAYSZ, Out::InitArray);
-  }
-  if (Out::FiniArray) {
-    addOutSec(DT_FINI_ARRAY, Out::FiniArray);
-    addSize(DT_FINI_ARRAYSZ, Out::FiniArray);
-  }
+  if (this->Part == 1) {
+    if (Out::PreinitArray) {
+      addOutSec(DT_PREINIT_ARRAY, Out::PreinitArray);
+      addSize(DT_PREINIT_ARRAYSZ, Out::PreinitArray);
+    }
+    if (Out::InitArray) {
+      addOutSec(DT_INIT_ARRAY, Out::InitArray);
+      addSize(DT_INIT_ARRAYSZ, Out::InitArray);
+    }
+    if (Out::FiniArray) {
+      addOutSec(DT_FINI_ARRAY, Out::FiniArray);
+      addSize(DT_FINI_ARRAYSZ, Out::FiniArray);
+    }
 
-  if (Symbol *B = Symtab->find(Config->Init))
-    if (B->isDefined())
-      addSym(DT_INIT, B);
-  if (Symbol *B = Symtab->find(Config->Fini))
-    if (B->isDefined())
-      addSym(DT_FINI, B);
+    if (Symbol *B = Symtab->find(Config->Init))
+      if (B->isDefined())
+        addSym(DT_INIT, B);
+    if (Symbol *B = Symtab->find(Config->Fini))
+      if (B->isDefined())
+        addSym(DT_FINI, B);
+  }
 
   bool HasVerNeed = !Verneeds.empty();
   if (HasVerNeed || Part.VerDef)
