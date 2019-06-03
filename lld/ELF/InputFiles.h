@@ -95,6 +95,13 @@ public:
   // Get filename to use for linker script processing.
   StringRef getNameForScript() const;
 
+  // Returns undefined symbols of a shared library.
+  // It is a runtime error to call this function on files of other types.
+  const llvm::DenseSet<StringRef> &getUndefinedSymbols() {
+    assert(fileKind == SharedKind);
+    return Undefs;
+  }
+
   // If not empty, this stores the name of the archive containing this file.
   // We use this string for creating error messages.
   std::string archiveName;
@@ -150,6 +157,7 @@ public:
 protected:
   InputFile(Kind k, MemoryBufferRef m);
   std::vector<InputSectionBase *> sections;
+  llvm::DenseSet<StringRef> Undefs;
 
 private:
   const Kind fileKind;
