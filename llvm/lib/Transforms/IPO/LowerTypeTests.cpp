@@ -982,6 +982,7 @@ void LowerTypeTestsModule::importFunction(Function *F, bool isDefinition) {
   GlobalValue::VisibilityTypes Visibility = F->getVisibility();
   std::string Name = F->getName();
 
+#if 0
   if (F->isDeclarationForLinker() && isDefinition) {
     // Non-dso_local functions may be overriden at run time,
     // don't short curcuit them
@@ -995,9 +996,10 @@ void LowerTypeTestsModule::importFunction(Function *F, bool isDefinition) {
     }
     return;
   }
+#endif
 
   Function *FDecl;
-  if (F->isDeclarationForLinker() && !isDefinition) {
+  if (1) {
     // Declaration of an external function.
     FDecl = Function::Create(F->getFunctionType(), GlobalValue::ExternalLinkage,
                              F->getAddressSpace(), Name + ".cfi_jt", &M);
@@ -1442,7 +1444,7 @@ void LowerTypeTestsModule::buildBitSetsFromFunctionsNative(
   // references to the original functions with references to the aliases.
   for (unsigned I = 0; I != Functions.size(); ++I) {
     Function *F = cast<Function>(Functions[I]->getGlobal());
-    bool IsDefinition = Functions[I]->isDefinition();
+    bool IsDefinition = false;
 
     Constant *CombinedGlobalElemPtr = ConstantExpr::getBitCast(
         ConstantExpr::getInBoundsGetElementPtr(
@@ -1458,7 +1460,10 @@ void LowerTypeTestsModule::buildBitSetsFromFunctionsNative(
             F->getValueType(), 0, GlobalValue::ExternalLinkage,
             F->getName() + ".cfi_jt", CombinedGlobalElemPtr, &M);
         JtAlias->setVisibility(GlobalValue::HiddenVisibility);
-        ExportSummary->cfiFunctionDecls().insert(F->getName());
+        if (Functions[I]->isDefinition())
+          ExportSummary->cfiFunctionDefs().insert(F->getName());
+        else
+          ExportSummary->cfiFunctionDecls().insert(F->getName());
       }
     }
     if (!IsDefinition) {
