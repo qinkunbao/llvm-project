@@ -1440,6 +1440,12 @@ void LowerTypeTestsModule::buildBitSetsFromFunctionsNative(
 
   lowerTypeTestCalls(TypeIds, JumpTable, GlobalLayout);
 
+  SmallPtrSet<GlobalValue *, 16> Used, CompilerUsed;
+  if (GlobalVariable *GV = collectUsedGlobalVariables(M, Used, false))
+    GV->eraseFromParent();
+  if (GlobalVariable *GV = collectUsedGlobalVariables(M, CompilerUsed, true))
+    GV->eraseFromParent();
+
   // Build aliases pointing to offsets into the jump table, and replace
   // references to the original functions with references to the aliases.
   for (unsigned I = 0; I != Functions.size(); ++I) {
@@ -1485,6 +1491,10 @@ void LowerTypeTestsModule::buildBitSetsFromFunctionsNative(
         F->setVisibility(GlobalVariable::HiddenVisibility);
     }
   }
+
+  appendToUsed(M, std::vector<GlobalValue *>(Used.begin(), Used.end()));
+  appendToCompilerUsed(
+      M, std::vector<GlobalValue *>(CompilerUsed.begin(), CompilerUsed.end()));
 
   createJumpTable(JumpTableFn, Functions);
 }
