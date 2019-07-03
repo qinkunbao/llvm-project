@@ -1036,7 +1036,7 @@ void LowerTypeTestsModule::importFunction(Function *F, bool isDefinition) {
     return;
   }
 
-  if (F->isWeakForLinker())
+  if (F->hasExternalWeakLinkage())
     replaceWeakDeclarationWithJumpTablePtr(F, FDecl, isDefinition);
   else
     replaceCfiUses(F, FDecl, isDefinition);
