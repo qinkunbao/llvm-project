@@ -1473,7 +1473,7 @@ void LowerTypeTestsModule::buildBitSetsFromFunctionsNative(
       }
     }
     if (!IsDefinition) {
-      if (F->isWeakForLinker())
+      if (F->hasExternalWeakLinkage())
         replaceWeakDeclarationWithJumpTablePtr(F, CombinedGlobalElemPtr, IsDefinition);
       else
         replaceCfiUses(F, CombinedGlobalElemPtr, IsDefinition);
