@@ -65,8 +65,20 @@ UnrollVerifyDomtree("unroll-verify-domtree", cl::Hidden,
 /// Convert the instruction operands from referencing the current values into
 /// those specified by VMap.
 void llvm::remapInstruction(Instruction *I, ValueToValueMapTy &VMap) {
-  for (unsigned op = 0, E = I->getNumOperands(); op != E; ++op) {
-    Value *Op = I->getOperand(op);
+  for (unsigned OpNo = 0, E = I->getNumOperands(); OpNo != E; ++OpNo) {
+    Value *Op = I->getOperand(OpNo);
+
+    // If we have a BlockAddress operand where the BasicBlock of the
+    // BlockAddress was remapped and the BlockAddress is the operand of a
+    // CallBrInst, then we need to update the CallBrInst's operand to be a
+    // BlockAddress of the remapped BasicBlock, not the original BasicBlock.
+    if (auto *BA = dyn_cast<BlockAddress>(Op)) {
+      ValueToValueMapTy::iterator It = VMap.find(BA->getBasicBlock());
+      if (It != VMap.end() && isa<CallBrInst>(*I)) {
+        I->setOperand(OpNo, BlockAddress::get(cast<BasicBlock>(It->second)));
+        continue;
+      }
+    }
 
     // Unwrap arguments of dbg.value intrinsics.
     bool Wrapped = false;
@@ -83,7 +95,7 @@ void llvm::remapInstruction(Instruction *I, ValueToValueMapTy &VMap) {
 
     ValueToValueMapTy::iterator It = VMap.find(Op);
     if (It != VMap.end())
-      I->setOperand(op, wrap(It->second));
+      I->setOperand(OpNo, wrap(It->second));
   }
 
   if (PHINode *PN = dyn_cast<PHINode>(I)) {
@@ -537,7 +549,6 @@ LoopUnrollResult llvm::UnrollLoop(Loop *L, UnrollLoopOptions ULO, LoopInfo *LI,
 
   // For the first iteration of the loop, we should use the precloned values for
   // PHI nodes.  Insert associations now.
-  ValueToValueMapTy LastValueMap;
   std::vector<PHINode*> OrigPHINode;
   for (BasicBlock::iterator I = Header->begin(); isa<PHINode>(I); ++I) {
     OrigPHINode.push_back(cast<PHINode>(I));
@@ -594,6 +605,7 @@ LoopUnrollResult llvm::UnrollLoop(Loop *L, UnrollLoopOptions ULO, LoopInfo *LI,
                          << DIL->getFilename() << " Line: " << DIL->getLine());
           }
 
+  ValueToValueMapTy LastValueMap;
   for (unsigned It = 1; It != ULO.Count; ++It) {
     std::vector<BasicBlock*> NewBlocks;
     SmallDenseMap<const Loop *, Loop *, 4> NewLoops;
