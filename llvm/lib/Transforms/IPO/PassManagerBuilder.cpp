@@ -807,7 +807,7 @@ void PassManagerBuilder::addLTOOptimizationPasses(legacy::PassManagerBase &PM) {
 
   if (OptLevel > 1) {
     // Split call-site with more constrained arguments.
-    PM.add(createCallSiteSplittingPass());
+    // PM.add(createCallSiteSplittingPass());
 
     // Indirect call promotion. This should promote all the targets that are
     // left by the earlier promotion pass that promotes intra-module targets.
