@@ -1666,7 +1666,7 @@ void LowerTypeTestsModule::replaceCfiUses(Function *Old, Value *New, bool IsDefi
     ++UI;
 
     // Skip block addresses
-    if (isa<BlockAddress>(U.getUser()))
+    if (isa<BlockAddress>(U.getUser()) || isa<GlobalAlias>(U.getUser()))
       continue;
 
     // Skip direct calls to externally defined or non-dso_local functions
