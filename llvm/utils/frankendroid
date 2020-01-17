@@ -32,9 +32,9 @@ cp $builddir/bin/clang $treepath/bin.real/clang
 ln -sf clang $treepath/bin.real/clang++
 ln -sf ../bin/ld.lld $treepath/bin.real/ld.lld
 echo '#!/bin/sh
-exec '$treepath_dest'/bin.real/clang "$@" -w -Wno-invalid-partial-specialization' > $treepath/bin/clang
+exec '$treepath_dest'/bin.real/clang "$@" -w -Wno-invalid-partial-specialization -flax-vector-conversions=all' > $treepath/bin/clang
 echo '#!/bin/sh
-exec '$treepath_dest'/bin.real/clang++ "$@" -w -Wno-invalid-partial-specialization' > $treepath/bin/clang++
+exec '$treepath_dest'/bin.real/clang++ "$@" -w -Wno-invalid-partial-specialization -flax-vector-conversions=all' > $treepath/bin/clang++
 
 cp $builddir/bin/lld $treepath/bin/lld
 cp $builddir/bin/llvm-ar $treepath/bin/llvm-ar
