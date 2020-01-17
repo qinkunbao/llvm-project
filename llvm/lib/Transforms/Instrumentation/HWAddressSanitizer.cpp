@@ -1326,7 +1326,7 @@ void HWAddressSanitizer::instrumentGlobals() {
   //
   // We only need one note per binary, so put everything for the note in a
   // comdat.
-  Comdat *NoteComdat = M.getOrInsertComdat(kHwasanNoteName);
+  Comdat *NoteComdat = M.getOrInsertComdat(kHwasanModuleCtorName);
 
   Type *Int8Arr0Ty = ArrayType::get(Int8Ty, 0);
   auto Start =
