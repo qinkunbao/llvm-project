@@ -12,6 +12,7 @@
 
 #include "sanitizer_stackdepot.h"
 
+#include "sanitizer_allocator_internal.h"
 #include "sanitizer_common.h"
 #include "sanitizer_hash.h"
 #include "sanitizer_stackdepotbase.h"
@@ -71,6 +72,17 @@ struct StackDepotNode {
   typedef StackDepotHandle handle_type;
 };
 
+struct StackTraceLog {
+  StackTraceLog *next;
+  uptr size;
+  uptr *trace() { return reinterpret_cast<uptr *>(this + 1); }
+};
+
+__attribute__((aligned(4096))) struct {
+  atomic_uintptr_t log;
+  atomic_uintptr_t inited;
+} theLog;
+
 COMPILER_CHECK(StackDepotNode::kMaxUseCount == (u32)kStackDepotMaxUseCount);
 
 u32 StackDepotHandle::id() { return node_->id; }
@@ -95,6 +107,23 @@ StackDepotStats *StackDepotGetStats() {
 }
 
 u32 StackDepotPut(StackTrace stack) {
+  uptr zero = 0;
+  if (atomic_compare_exchange_strong(&theLog.inited, &zero, 1,
+                                     memory_order_relaxed)) {
+    DecorateMapping((uptr)&theLog, 4096, "depot log");
+  }
+
+  StackTraceLog *log = (StackTraceLog *)InternalAlloc(
+      sizeof(StackTraceLog) + sizeof(uptr) * stack.size);
+  log->size = stack.size;
+  for (uptr i = 0; i != stack.size; ++i)
+    log->trace()[i] = stack.trace[i];
+  uptr next = atomic_load(&theLog.log, memory_order_acquire);
+  do {
+    log->next = (StackTraceLog *)next;
+  } while (!atomic_compare_exchange_strong(&theLog.log, &next, (uptr)log,
+                                           memory_order_release));
+
   StackDepotHandle h = theDepot.Put(stack);
   return h.valid() ? h.id() : 0;
 }
