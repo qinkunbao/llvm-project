@@ -35,6 +35,7 @@ if (current_toolchain != host_toolchain) {
       "//compiler-rt/include($host_toolchain)",
       "//compiler-rt/lib/cfi:blacklist($host_toolchain)",
       "//compiler-rt/lib/hwasan:hwasan_shared",
+      "//compiler-rt/lib/sanitizer_common:dump_depot_log",
       "//compiler-rt/test:lit_common_configured",
       "//llvm/utils/FileCheck($host_toolchain)",
       "//llvm/utils/llvm-lit($host_toolchain)",

@@ -172,3 +172,10 @@ source_set("nolibc_sources") {
     "sanitizer_common_nolibc.cpp",
   ]
 }
+
+executable("dump_depot_log") {
+  sources = [
+    "dump_depot_log.cpp",
+  ]
+}
+
