@@ -11,7 +11,7 @@ int main(int argc, char **argv) {
 
   while (log < log_end) {
     StackTrace trace(log + 1, log[0]);
-    StackDepotPut(trace);
+    StackDepotPutNoRecord(trace);
     log += log[0] + 1;
   }
 }

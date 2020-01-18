@@ -124,6 +124,10 @@ u32 StackDepotPut(StackTrace stack) {
   } while (!atomic_compare_exchange_strong(&theLog.log, &next, (uptr)log,
                                            memory_order_release));
 
+  return StackDepotPutNoRecord(stack);
+}
+
+u32 StackDepotPutNoRecord(StackTrace stack) {
   StackDepotHandle h = theDepot.Put(stack);
   return h.valid() ? h.id() : 0;
 }
