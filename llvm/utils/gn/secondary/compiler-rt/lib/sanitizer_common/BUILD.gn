@@ -185,3 +185,10 @@ executable("replay_depot_log") {
   ]
   deps = [ ":sources" ]
 }
+
+executable("replay_depot_log_lossy") {
+  sources = [
+    "replay_depot_log_lossy.cpp",
+  ]
+  deps = [ ":sources" ]
+}
