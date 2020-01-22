@@ -3,12 +3,14 @@
 #include "sanitizer_stackdepot.h"
 
 #include <stdio.h>
+#include <unistd.h>
+#include <memory>
 #include <vector>
 
 using namespace __sanitizer;
 
 struct LossyStackDepot {
-  enum { kNumBits = 16, kTabSize = 1 << kNumBits, kTabMask = kTabSize - 1 };
+  enum { kNumBits = 20, kTabSize = 1 << kNumBits, kTabMask = kTabSize - 1 };
   uptr tab[kTabSize];
 
   __attribute__((noinline)) u32 insert(uptr *begin, uptr *end) {
@@ -45,25 +47,47 @@ struct LossyStackDepot {
   }
 };
 
+#undef PERF
+#define MEM
+
 int main(int argc, char **argv) {
   uptr size;
   uptr *log = (uptr *)MapFileToMemory(argv[1], &size);
   uptr *log_end = log + (size / sizeof(uptr));
 
-  LossyStackDepot depot;
+#ifndef PERF
+  char cmd[64];
+  snprintf(cmd, 64, "grep RssAnon: /proc/%d/status", getpid());
+  system(cmd);
+#endif
+
+  auto depot = std::make_unique<LossyStackDepot>();
   std::vector<u32> hashes;
   while (log < log_end) {
-    hashes.push_back(depot.insert(log + 1, log + 1 + log[0]));
+    u32 hash = depot->insert(log + 1, log + 1 + log[0]);
+#if !defined(PERF) && !defined(MEM)
+    hashes.push_back(hash);
+#endif
     log += log[0] + 1;
   }
 
-#if 0
+#ifndef PERF
+  system(cmd);
+
+#ifndef MEM
   uptr num_recoverable = 0;
   for (u32 hash : hashes) {
-    if (depot.find(hash))
+    if (depot->find(hash))
       num_recoverable++;
   }
-
-  printf("%lu/%lu\n", (unsigned long)num_recoverable, (unsigned long)hashes.size());
+  printf("recall: %lu/%lu\n", (unsigned long)num_recoverable, (unsigned long)hashes.size());
+#endif
+  
+  uptr num_used = 0;
+  for (uptr v : depot->tab) {
+    if (v)
+      num_used++;
+  }
+  printf("usage: %lu/%lu\n", (unsigned long)num_used, (unsigned long)depot->kTabSize);
 #endif
 }
