@@ -18,7 +18,7 @@ struct LossyStackDepot {
     for (uptr *i = begin; i != end; ++i)
       b.add(*i);
     u32 hash = b.get();
-    u32 pos = hash & kTabMask;
+    u32 pos = hash & kTabMask & ~15;
     uptr entry = tab[pos];
     uptr hash_with_tag_bit = (uptr(hash) << 1) | 1;
     if ((entry & 0x1ffffffff) == hash_with_tag_bit)
@@ -32,7 +32,7 @@ struct LossyStackDepot {
   }
 
   bool find(u32 hash) {
-    u32 pos = hash & kTabMask;
+    u32 pos = hash & kTabMask & ~15;
     uptr entry = tab[pos];
     uptr hash_with_tag_bit = (uptr(hash) << 1) | 1;
     if ((entry & 0x1ffffffff) != hash_with_tag_bit)
@@ -48,7 +48,7 @@ struct LossyStackDepot {
 };
 
 #undef PERF
-#define MEM
+#undef MEM
 
 int main(int argc, char **argv) {
   uptr size;
@@ -81,6 +81,20 @@ int main(int argc, char **argv) {
       num_recoverable++;
   }
   printf("recall: %lu/%lu\n", (unsigned long)num_recoverable, (unsigned long)hashes.size());
+
+  enum { kLineLength = 160 };
+  for (uptr i = 0; i != kLineLength; ++i) {
+    uptr seg_recoverable = 0;
+    for (uptr j = hashes.size() * i / kLineLength,
+              e = hashes.size() * (i + 1) / kLineLength;
+         j != e; ++j) {
+      if (depot->find(hashes[j]))
+        seg_recoverable++;
+    }
+    u8 seg_recoverable_char = 'a' + seg_recoverable * 26 / ((hashes.size() / kLineLength) + 1);
+    printf("%c", seg_recoverable_char);
+  }
+  puts("");
 #endif
   
   uptr num_used = 0;
