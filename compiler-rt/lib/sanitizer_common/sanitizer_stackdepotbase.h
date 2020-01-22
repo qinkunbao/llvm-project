@@ -35,7 +35,7 @@ class StackDepotBase {
   void LockAll();
   void UnlockAll();
 
- private:
+ public:
   static Node *find(Node *s, args_type args, u32 hash);
   static Node *lock(atomic_uintptr_t *p);
   static void unlock(atomic_uintptr_t *p, Node *s);
