@@ -38,6 +38,7 @@ if (current_toolchain != host_toolchain) {
       "//compiler-rt/lib/sanitizer_common:dump_depot_log",
       "//compiler-rt/lib/sanitizer_common:replay_depot_log",
       "//compiler-rt/lib/sanitizer_common:replay_depot_log_lossy",
+      "//compiler-rt/lib/sanitizer_common:replay_depot_log_lossy2",
       "//compiler-rt/test:lit_common_configured",
       "//llvm/utils/FileCheck($host_toolchain)",
       "//llvm/utils/llvm-lit($host_toolchain)",

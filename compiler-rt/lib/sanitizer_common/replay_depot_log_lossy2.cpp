@@ -10,38 +10,50 @@
 using namespace __sanitizer;
 
 struct LossyStackDepot {
-  enum { kNumBits = 20, kTabSize = 1 << kNumBits, kTabMask = kTabSize - 1 };
-  uptr tab[kTabSize];
+  u32 ring_end;
+
+  enum { kTabBits = 16, kTabSize = 1 << kTabBits, kTabMask = kTabSize - 1 };
+  u32 tab[kTabSize];
+
+  enum { kRingSize = 1 << 20, kRingMask = kRingSize - 1 };
+  uptr ring[kRingSize];
 
   __attribute__((noinline)) u32 insert(uptr *begin, uptr *end) {
     MurMur2HashBuilder b;
     for (uptr *i = begin; i != end; ++i)
       b.add(*i);
     u32 hash = b.get();
-    u32 pos = hash & kTabMask & ~15;
-    uptr entry = tab[pos];
-    uptr hash_with_tag_bit = (uptr(hash) << 1) | 1;
-    if ((entry & 0x1ffffffff) == hash_with_tag_bit)
+
+    u32 pos = hash & kTabMask;
+    u32 ring_pos = tab[pos];
+    uptr entry = ring[ring_pos];
+    uptr id = ((end - begin) << 33) | (uptr(hash) << 1) | 1;
+    if (entry == id)
       return hash;
-    tab[pos] = hash_with_tag_bit | ((end - begin) << 33);
+
+    ring_pos = ring_end;
+    tab[pos] = ring_pos;
+    ring[ring_pos] = id;
     for (uptr *i = begin; i != end; ++i) {
-      pos = (pos + 1) & kTabMask;
-      tab[pos] = *i;
+      ring_pos = (ring_pos + 1) & kRingMask;
+      ring[ring_pos] = *i;
     }
+    ring_end = (ring_pos + 1) & kRingMask;
     return hash;
   }
 
   bool find(u32 hash) {
-    u32 pos = hash & kTabMask & ~15;
-    uptr entry = tab[pos];
+    u32 pos = hash & kTabMask;
+    u32 ring_pos = tab[pos];
+    uptr entry = ring[ring_pos];
     uptr hash_with_tag_bit = (uptr(hash) << 1) | 1;
     if ((entry & 0x1ffffffff) != hash_with_tag_bit)
       return false;
     u32 size = entry >> 33;
     MurMur2HashBuilder b;
     for (uptr i = 0; i != size; ++i) {
-      pos = (pos + 1) & kTabMask;
-      b.add(tab[pos]);
+      ring_pos = (ring_pos + 1) & kRingMask;
+      b.add(ring[ring_pos]);
     }
     return b.get() == hash;
   }
@@ -103,5 +115,12 @@ int main(int argc, char **argv) {
       num_used++;
   }
   printf("usage: %lu/%lu\n", (unsigned long)num_used, (unsigned long)depot->kTabSize);
+  
+  uptr ring_num_used = 0;
+  for (uptr v : depot->ring) {
+    if (v)
+      ring_num_used++;
+  }
+  printf("ring usage: %lu/%lu\n", (unsigned long)ring_num_used, (unsigned long)depot->kRingSize);
 #endif
 }
