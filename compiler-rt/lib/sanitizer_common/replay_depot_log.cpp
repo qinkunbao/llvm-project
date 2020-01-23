@@ -24,13 +24,14 @@ int main(int argc, char **argv) {
 
   std::set<std::string> traces;
   uptr num_inserts = 0;
+  log += 1 + log[0] * 2;
   while (log < log_end) {
-    StackTrace trace(log + 2, log[1]);
+    StackTrace trace(log + 1, log[0]);
     StackDepotPutNoRecord(trace);
 #if !defined(PERF) && !defined(MEM)
-    traces.insert(std::string((const char *)(log + 1), (log[1] + 1) * sizeof(uptr)));
+    traces.insert(std::string((const char *)log, (log[0] + 1) * sizeof(uptr)));
 #endif
-    log += log[1] + 2;
+    log += log[0] + 1;
     ++num_inserts;
   }
 

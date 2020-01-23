@@ -12,7 +12,7 @@
 using namespace __sanitizer;
 
 struct LossyStackDepot {
-  enum { kNumBits = 21, kTabSize = 1 << kNumBits, kTabMask = kTabSize - 1 };
+  enum { kNumBits = 18, kTabSize = 1 << kNumBits, kTabMask = kTabSize - 1 };
   uptr tab[kTabSize];
 
   __attribute__((noinline)) u32 insert(uptr *begin, uptr *end) {
@@ -64,12 +64,13 @@ int main(int argc, char **argv) {
       mmap(nullptr, (sizeof(LossyStackDepot) + 4095) & ~4095,
            PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0));
   std::vector<u32> hashes;
+  log += 1 + log[0] * 2;
   while (log < log_end) {
-    u32 hash = depot->insert(log + 2, log + 2 + log[1]);
+    u32 hash = depot->insert(log + 1, log + 1 + log[0]);
 #if !defined(PERF) && !defined(MEM)
     hashes.push_back(hash);
 #endif
-    log += log[1] + 2;
+    log += log[0] + 1;
   }
 
 #ifndef PERF
