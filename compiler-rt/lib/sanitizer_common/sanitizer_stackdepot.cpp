@@ -21,6 +21,7 @@ namespace __sanitizer {
 
 struct StackTraceLog {
   StackTraceLog *next;
+  uptr tid;
   uptr size;
   uptr *trace() { return reinterpret_cast<uptr *>(this + 1); }
 };
@@ -60,6 +61,7 @@ u32 StackDepotPut(StackTrace stack) {
 
   StackTraceLog *log = (StackTraceLog *)InternalAlloc(
       sizeof(StackTraceLog) + sizeof(uptr) * stack.size);
+  log->tid = GetTid();
   log->size = stack.size;
   for (uptr i = 0; i != stack.size; ++i)
     log->trace()[i] = stack.trace[i];

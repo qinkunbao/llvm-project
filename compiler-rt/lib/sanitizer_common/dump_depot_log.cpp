@@ -11,6 +11,7 @@
 
 struct StackTraceLog {
   uintptr_t next;
+  uintptr_t tid;
   uintptr_t size;
 };
 
@@ -51,15 +52,16 @@ int main(int argc, char **argv) {
     read(fd, &header, sizeof(header));
     log_addr = header.next;
 
-    auto blob = std::make_unique<uintptr_t[]>(header.size + 1);
-    blob[0] = header.size;
-    read(fd, blob.get() + 1, header.size * sizeof(uintptr_t));
+    auto blob = std::make_unique<uintptr_t[]>(header.size + 2);
+    blob[0] = header.tid;
+    blob[1] = header.size;
+    read(fd, blob.get() + 2, header.size * sizeof(uintptr_t));
     blobs.push_back(std::move(blob));
   }
   close(fd);
 
   fd = open(argv[2], O_CREAT | O_WRONLY | O_TRUNC, 0777);
   for (auto i = blobs.rbegin(); i != blobs.rend(); ++i)
-    write(fd, i->get(), ((*i)[0] + 1) * sizeof(uintptr_t));
+    write(fd, i->get(), ((*i)[1] + 2) * sizeof(uintptr_t));
   close(fd);
 }

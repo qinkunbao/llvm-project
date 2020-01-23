@@ -64,11 +64,11 @@ int main(int argc, char **argv) {
   auto depot = std::make_unique<LossyStackDepot>();
   std::vector<u32> hashes;
   while (log < log_end) {
-    u32 hash = depot->insert(log + 1, log + 1 + log[0]);
+    u32 hash = depot->insert(log + 2, log + 2 + log[1]);
 #if !defined(PERF) && !defined(MEM)
     hashes.push_back(hash);
 #endif
-    log += log[0] + 1;
+    log += log[1] + 2;
   }
 
 #ifndef PERF
