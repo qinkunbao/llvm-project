@@ -14,7 +14,7 @@
 using namespace __sanitizer;
 
 struct LossyStackDepot {
-  enum { kNumBits = 18, kTabSize = 1 << kNumBits, kTabMask = kTabSize - 1 };
+  enum { kNumBits = 21, kTabSize = 1 << kNumBits, kTabMask = kTabSize - 1 };
   uptr tab[kTabSize];
 
   __attribute__((noinline)) u32 insert(uptr *begin, uptr *end) {
