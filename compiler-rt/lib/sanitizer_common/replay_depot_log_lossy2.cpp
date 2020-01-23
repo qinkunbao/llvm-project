@@ -8,6 +8,7 @@
 
 #include <memory>
 #include <mutex>
+#include <thread>
 #include <vector>
 
 using namespace __sanitizer;
@@ -67,7 +68,6 @@ struct LossyStackDepot {
 int main(int argc, char **argv) {
   uptr size;
   uptr *log = (uptr *)MapFileToMemory(argv[1], &size);
-  uptr *log_end = log + (size / sizeof(uptr));
 
 #ifndef PERF
   char cmd[64];
@@ -78,15 +78,35 @@ int main(int argc, char **argv) {
   auto depot = reinterpret_cast<LossyStackDepot *>(
       mmap(nullptr, (sizeof(LossyStackDepot) + 4095) & ~4095,
            PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0));
+
   std::vector<u32> hashes;
-  log += 1 + log[0] * 2;
-  while (log < log_end) {
-    u32 hash = depot->insert(log + 1, log + 1 + log[0]);
+  std::mutex hashes_mu;
+
+  std::vector<std::thread> insert_threads;
+  for (unsigned i = 0; i != log[0]; ++i) {
+    uptr *thread_log_begin = log + log[1 + 2 * i] / sizeof(uptr);
+    uptr *thread_log_end = log + log[1 + 2 * i + 1] / sizeof(uptr);
+    insert_threads.push_back(std::thread([thread_log_begin, thread_log_end, depot,
+                                          &hashes_mu, &hashes]() {
+      uptr *thread_log = thread_log_begin;
+      while (thread_log < thread_log_end) {
+        u32 hash =
+            depot->insert(thread_log + 1, thread_log + 1 + thread_log[0]);
+        (void)hash;
+        (void)hashes;
+        (void)hashes_mu;
 #if !defined(PERF) && !defined(MEM)
-    hashes.push_back(hash);
+        {
+          std::lock_guard<std::mutex> x(hashes_mu);
+          hashes.push_back(hash);
+        }
 #endif
-    log += log[0] + 1;
+        thread_log += thread_log[0] + 1;
+      }
+    }));
   }
+
+  for (std::thread &t : insert_threads) t.join();
 
 #ifndef PERF
   system(cmd);
