@@ -11,9 +11,6 @@
 
 using namespace __sanitizer;
 
-#undef PERF
-#undef MEM
-
 int main(int argc, char **argv) {
   uptr size;
   uptr *log = (uptr *)MapFileToMemory(argv[1], &size);

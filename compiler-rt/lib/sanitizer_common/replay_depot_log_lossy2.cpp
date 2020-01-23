@@ -3,7 +3,9 @@
 #include "sanitizer_stackdepot.h"
 
 #include <stdio.h>
+#include <sys/mman.h>
 #include <unistd.h>
+
 #include <memory>
 #include <vector>
 
@@ -12,10 +14,10 @@ using namespace __sanitizer;
 struct LossyStackDepot {
   u32 ring_end;
 
-  enum { kTabBits = 16, kTabSize = 1 << kTabBits, kTabMask = kTabSize - 1 };
+  enum { kTabBits = 19, kTabSize = 1 << kTabBits, kTabMask = kTabSize - 1 };
   u32 tab[kTabSize];
 
-  enum { kRingSize = 1 << 20, kRingMask = kRingSize - 1 };
+  enum { kRingSize = 1 << 21, kRingMask = kRingSize - 1 };
   uptr ring[kRingSize];
 
   __attribute__((noinline)) u32 insert(uptr *begin, uptr *end) {
@@ -59,9 +61,6 @@ struct LossyStackDepot {
   }
 };
 
-#undef PERF
-#define MEM
-
 int main(int argc, char **argv) {
   uptr size;
   uptr *log = (uptr *)MapFileToMemory(argv[1], &size);
@@ -73,7 +72,9 @@ int main(int argc, char **argv) {
   system(cmd);
 #endif
 
-  auto depot = std::make_unique<LossyStackDepot>();
+  auto depot = reinterpret_cast<LossyStackDepot *>(
+      mmap(nullptr, (sizeof(LossyStackDepot) + 4095) & ~4095,
+           PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0));
   std::vector<u32> hashes;
   while (log < log_end) {
     u32 hash = depot->insert(log + 2, log + 2 + log[1]);

@@ -3,14 +3,16 @@
 #include "sanitizer_stackdepot.h"
 
 #include <stdio.h>
+#include <sys/mman.h>
 #include <unistd.h>
+
 #include <memory>
 #include <vector>
 
 using namespace __sanitizer;
 
 struct LossyStackDepot {
-  enum { kNumBits = 20, kTabSize = 1 << kNumBits, kTabMask = kTabSize - 1 };
+  enum { kNumBits = 21, kTabSize = 1 << kNumBits, kTabMask = kTabSize - 1 };
   uptr tab[kTabSize];
 
   __attribute__((noinline)) u32 insert(uptr *begin, uptr *end) {
@@ -47,9 +49,6 @@ struct LossyStackDepot {
   }
 };
 
-#undef PERF
-#define MEM
-
 int main(int argc, char **argv) {
   uptr size;
   uptr *log = (uptr *)MapFileToMemory(argv[1], &size);
@@ -61,7 +60,9 @@ int main(int argc, char **argv) {
   system(cmd);
 #endif
 
-  auto depot = std::make_unique<LossyStackDepot>();
+  auto depot = reinterpret_cast<LossyStackDepot *>(
+      mmap(nullptr, (sizeof(LossyStackDepot) + 4095) & ~4095,
+           PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0));
   std::vector<u32> hashes;
   while (log < log_end) {
     u32 hash = depot->insert(log + 2, log + 2 + log[1]);

@@ -179,23 +179,25 @@ executable("dump_depot_log") {
   ]
 }
 
-executable("replay_depot_log") {
-  sources = [
-    "replay_depot_log.cpp",
-  ]
-  deps = [ ":sources" ]
+template("replay") {
+  not_needed(invoker, [ "*" ])
+  source_name = "${target_name}.cpp"
+  executable(target_name) {
+    sources = [ source_name ]
+    deps = [ ":sources" ]
+  }
+  executable("${target_name}_mem") {
+    sources = [ source_name ]
+    cflags = [ "-DMEM" ]
+    deps = [ ":sources" ]
+  }
+  executable("${target_name}_perf") {
+    sources = [ source_name ]
+    cflags = [ "-DPERF" ]
+    deps = [ ":sources" ]
+  }
 }
 
-executable("replay_depot_log_lossy") {
-  sources = [
-    "replay_depot_log_lossy.cpp",
-  ]
-  deps = [ ":sources" ]
-}
-
-executable("replay_depot_log_lossy2") {
-  sources = [
-    "replay_depot_log_lossy2.cpp",
-  ]
-  deps = [ ":sources" ]
-}
+replay("replay_depot_log") {}
+replay("replay_depot_log_lossy") {}
+replay("replay_depot_log_lossy2") {}
