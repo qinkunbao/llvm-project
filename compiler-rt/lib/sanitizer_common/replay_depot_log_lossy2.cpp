@@ -17,10 +17,10 @@ struct LossyStackDepot {
   std::mutex ring_end_mu;
   u32 ring_end;
 
-  enum { kTabBits = 18, kTabSize = 1 << kTabBits, kTabMask = kTabSize - 1 };
+  enum { kTabBits = 16, kTabSize = 1 << kTabBits, kTabMask = kTabSize - 1 };
   u32 tab[kTabSize];
 
-  enum { kRingSize = 1 << 21, kRingMask = kRingSize - 1 };
+  enum { kRingSize = 1 << 19, kRingMask = kRingSize - 1 };
   uptr ring[kRingSize];
 
   __attribute__((noinline)) u32 insert(uptr *begin, uptr *end) {
