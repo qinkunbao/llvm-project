@@ -35,12 +35,18 @@ echo '#!/bin/sh
 exec '$treepath_dest'/bin.real/clang "$@" -w -Wno-invalid-partial-specialization -flax-vector-conversions=all' > $treepath/bin/clang
 echo '#!/bin/sh
 exec '$treepath_dest'/bin.real/clang++ "$@" -w -Wno-invalid-partial-specialization -flax-vector-conversions=all' > $treepath/bin/clang++
+echo '#!/bin/sh
+exit 0' > $treepath/bin/clang-tidy
 
 cp $builddir/bin/lld $treepath/bin/lld
 cp $builddir/bin/llvm-ar $treepath/bin/llvm-ar
 
 rm -rf $treepath/lib64/clang/$shortver/include
 cp -r $builddir/lib/clang/$builddirver/include $treepath/lib64/clang/$shortver/
+
+mkdir $treepath/lib64/clang/$shortver/include/bits
+cp $androiddir/bionic/libc/include/stdatomic.h $treepath/lib64/clang/$shortver/include/
+cp $androiddir/bionic/libc/include/bits/stdatomic.h $treepath/lib64/clang/$shortver/include/bits/
 
 cp $builddir/lib/clang/$builddirver/lib/linux/libclang_rt.* $treepath/lib64/clang/$shortver/lib/linux/
 python $llvm_androiddir/mapfile.py $treepath/lib64/clang/$shortver/lib/linux/libclang_rt.hwasan-aarch64-android.so $treepath/lib64/clang/$shortver/lib/linux/libclang_rt.hwasan-aarch64-android.map.txt
