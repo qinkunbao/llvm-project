@@ -184,20 +184,26 @@ template("replay") {
   source_name = "${target_name}.cpp"
   executable(target_name) {
     sources = [ source_name ]
-    deps = [ ":sources" ]
+    deps = [ ":sources" ] + invoker.deps
   }
   executable("${target_name}_mem") {
     sources = [ source_name ]
     cflags = [ "-DMEM" ]
-    deps = [ ":sources" ]
+    deps = [ ":sources" ] + invoker.deps
   }
   executable("${target_name}_perf") {
     sources = [ source_name ]
     cflags = [ "-DPERF" ]
-    deps = [ ":sources" ]
+    deps = [ ":sources" ] + invoker.deps
   }
 }
 
-replay("replay_depot_log") {}
-replay("replay_depot_log_lossy") {}
-replay("replay_depot_log_lossy2") {}
+replay("replay_depot_log") {
+  deps = [ "//compiler-rt/lib/scudo/standalone:sources" ]
+}
+replay("replay_depot_log_lossy") {
+  deps = []
+}
+replay("replay_depot_log_lossy2") {
+  deps = []
+}
