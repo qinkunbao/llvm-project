@@ -130,7 +130,7 @@ static void *HwasanAllocate(StackTrace *stack, uptr orig_size, uptr alignment,
   Metadata *meta =
       reinterpret_cast<Metadata *>(allocator.GetMetaData(allocated));
   meta->requested_size = static_cast<u32>(orig_size);
-  meta->alloc_context_id = StackDepotPut(*stack);
+  meta->alloc_context_id = StackDepotPut(*stack, orig_size);
   meta->right_aligned = false;
   if (zeroise) {
     internal_memset(allocated, 0, size);

@@ -13,6 +13,7 @@
 struct StackTraceLog {
   uintptr_t next;
   uintptr_t tid;
+  uintptr_t alloc_size;
   uintptr_t size;
 };
 
@@ -68,8 +69,9 @@ int main(int argc, char **argv) {
     } else {
       tid = tid_i->second;
     }
-    blob[0] = header.size;
-    read(fd, blob.get() + 1, header.size * sizeof(uintptr_t));
+    blob[0] = header.alloc_size;
+    blob[1] = header.size;
+    read(fd, blob.get() + 2, header.size * sizeof(uintptr_t));
     blobs_by_thread[tid].push_back(std::move(blob));
   }
   close(fd);
@@ -83,7 +85,7 @@ int main(int argc, char **argv) {
     hdr.begin = lseek(fd, 0, SEEK_CUR);
     for (auto i = blobs_by_thread[tid].rbegin();
          i != blobs_by_thread[tid].rend(); ++i) {
-      write(fd, i->get(), ((*i)[0] + 1) * sizeof(uintptr_t));
+      write(fd, i->get(), ((*i)[1] + 2) * sizeof(uintptr_t));
     }
     hdr.end = lseek(fd, 0, SEEK_CUR);
     lseek(fd, sizeof(uintptr_t) * (1 + 2 * tid), SEEK_SET);

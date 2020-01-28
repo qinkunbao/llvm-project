@@ -93,7 +93,7 @@ typedef StackDepotBase<StackDepotNode, 1, StackDepotNode::kTabSizeLog>
 extern StackDepot theDepot;
 
 StackDepotStats *StackDepotGetStats();
-u32 StackDepotPut(StackTrace stack);
+u32 StackDepotPut(StackTrace stack, uptr alloc_size = 0);
 u32 StackDepotPutNoRecord(StackTrace stack);
 StackDepotHandle StackDepotPut_WithHandle(StackTrace stack);
 // Retrieves a stored stack trace by the id.

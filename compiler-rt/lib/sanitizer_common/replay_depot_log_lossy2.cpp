@@ -23,7 +23,7 @@ struct LossyStackDepot {
   enum { kRingSize = 1 << 19, kRingMask = kRingSize - 1 };
   uptr ring[kRingSize];
 
-  __attribute__((noinline)) u32 insert(uptr *begin, uptr *end) {
+  u32 insert(uptr *begin, uptr *end) {
     MurMur2HashBuilder b;
     for (uptr *i = begin; i != end; ++i)
       b.add(*i);
@@ -91,7 +91,7 @@ int main(int argc, char **argv) {
       uptr *thread_log = thread_log_begin;
       while (thread_log < thread_log_end) {
         u32 hash =
-            depot->insert(thread_log + 1, thread_log + 1 + thread_log[0]);
+            depot->insert(thread_log + 2, thread_log + 2 + thread_log[1]);
         (void)hash;
         (void)hashes;
         (void)hashes_mu;
@@ -101,7 +101,7 @@ int main(int argc, char **argv) {
           hashes.push_back(hash);
         }
 #endif
-        thread_log += thread_log[0] + 1;
+        thread_log += thread_log[1] + 2;
       }
     }));
   }

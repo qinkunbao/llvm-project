@@ -22,6 +22,7 @@ namespace __sanitizer {
 struct StackTraceLog {
   StackTraceLog *next;
   uptr tid;
+  uptr alloc_size;
   uptr size;
   uptr *trace() { return reinterpret_cast<uptr *>(this + 1); }
 };
@@ -52,7 +53,7 @@ StackDepotStats *StackDepotGetStats() {
   return theDepot.GetStats();
 }
 
-u32 StackDepotPut(StackTrace stack) {
+u32 StackDepotPut(StackTrace stack, uptr alloc_size) {
   uptr zero = 0;
   if (atomic_compare_exchange_strong(&theLog.inited, &zero, 1,
                                      memory_order_relaxed)) {
@@ -62,6 +63,7 @@ u32 StackDepotPut(StackTrace stack) {
   StackTraceLog *log = (StackTraceLog *)InternalAlloc(
       sizeof(StackTraceLog) + sizeof(uptr) * stack.size);
   log->tid = GetTid();
+  log->alloc_size = alloc_size;
   log->size = stack.size;
   for (uptr i = 0; i != stack.size; ++i)
     log->trace()[i] = stack.trace[i];
