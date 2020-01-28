@@ -18,6 +18,7 @@
 #include "quarantine.h"
 #include "report.h"
 #include "secondary.h"
+#include "stack_depot.h"
 #include "string_utils.h"
 #include "tsd.h"
 
@@ -30,6 +31,14 @@
 #endif // GWP_ASAN_HOOKS
 
 extern "C" inline void EmptyCallback() {}
+
+#if SCUDO_ANDROID && __ANDROID_API__ == 10000
+// This function is not part of the NDK so it does not appear in any public
+// header files. We only declare/use it when targeting the platform (i.e. API
+// level 10000).
+extern "C" size_t android_unsafe_frame_pointer_chase(uintptr_t *buf,
+                                                     size_t num_entries);
+#endif
 
 namespace scudo {
 
@@ -362,12 +371,23 @@ public:
         } else {
           TaggedPtr = prepareTaggedChunk(Ptr, Size, BlockEnd);
         }
+
       } else if (UNLIKELY(ZeroContents)) {
         // This condition is not necessarily unlikely, but since memset is
         // costly, we might as well mark it as such.
         memset(Block, 0, PrimaryT::getSizeByClassId(ClassId));
       }
     }
+
+#if SCUDO_ANDROID && __ANDROID_API__ == 10000
+    if (TrackAllocationStacks) {
+      uptr Stack[64];
+      uptr Size = android_unsafe_frame_pointer_chase(Stack, 64);
+      Size = std::min(Size, 64);
+      *(u32 *)(Ptr - 8) = Depot.insert(Stack, Stack + Size);
+      *(u32 *)(Ptr - 4) = 0;
+    }
+#endif
 
     Chunk::UnpackedHeader Header = {};
     if (UNLIKELY(UnalignedUserPtr != UserPtr)) {
@@ -519,6 +539,14 @@ public:
           resizeTaggedChunk(reinterpret_cast<uptr>(OldTaggedPtr) + OldSize,
                             reinterpret_cast<uptr>(OldTaggedPtr) + NewSize,
                             BlockEnd);
+#if SCUDO_ANDROID && __ANDROID_API__ == 10000
+        if (TrackAllocationStacks) {
+          uptr Stack[64];
+          uptr Size = android_fast_backtrace(Stack, 64);
+          Size = std::min(Size, 64);
+          *(u32 *)(Ptr - 8) = Depot.insert(Stack, Stack + Size);
+        }
+#endif
         return OldTaggedPtr;
       }
     }
@@ -708,11 +736,14 @@ private:
 
   static const u32 BlockMarker = 0x44554353U;
 
+  static const bool TrackAllocationStacks = true;
+
   GlobalStats Stats;
   TSDRegistryT TSDRegistry;
   PrimaryT Primary;
   SecondaryT Secondary;
   QuarantineT Quarantine;
+  StackDepot Depot;
 
   u32 Cookie;
 
@@ -790,6 +821,14 @@ private:
       uptr TaggedBegin, TaggedEnd;
       setRandomTag(Ptr, Size, &TaggedBegin, &TaggedEnd);
     }
+#if SCUDO_ANDROID && __ANDROID_API__ == 10000
+    if (TrackAllocationStacks) {
+      uptr Stack[64];
+      uptr Size = android_fast_backtrace(Stack, 64);
+      Size = std::min(Size, 64);
+      *(u32 *)(Ptr - 4) = Depot.insert(Stack, Stack + Size);
+    }
+#endif
     // If the quarantine is disabled, the actual size of a chunk is 0 or larger
     // than the maximum allowed, we return a chunk directly to the backend.
     // Logical Or can be short-circuited, which introduces unnecessary
