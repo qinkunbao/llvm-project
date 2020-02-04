@@ -343,9 +343,19 @@ TEST(ScudoCombinedTest, ThreadedCombined) {
 #endif
 }
 
+
+struct DeathSizeClassConfig {
+  static const scudo::uptr NumBits = 1;
+  static const scudo::uptr MinSizeLog = 10;
+  static const scudo::uptr MidSizeLog = 10;
+  static const scudo::uptr MaxSizeLog = 10;
+  static const scudo::u32 MaxNumCachedHint = 1;
+  static const scudo::uptr MaxBytesCachedLog = 10;
+};
+
 struct DeathConfig {
   // Tiny allocator, its Primary only serves chunks of 1024 bytes.
-  using DeathSizeClassMap = scudo::SizeClassMap<1U, 10U, 10U, 10U, 1U, 10U>;
+  using DeathSizeClassMap = scudo::FixedSizeClassMap<DeathSizeClassConfig>;
   typedef scudo::SizeClassAllocator64<DeathSizeClassMap, 20U> Primary;
   typedef scudo::MapAllocator<scudo::MapAllocatorNoCache> Secondary;
   template <class A> using TSDRegistryT = scudo::TSDRegistrySharedT<A, 1U>;

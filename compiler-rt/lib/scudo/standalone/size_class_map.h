@@ -34,94 +34,138 @@ namespace scudo {
 // - MaxNumCachedHint is a hint for the max number of chunks cached per class.
 // - 2^MaxBytesCachedLog is the max number of bytes cached per class.
 
+inline uptr scaledLog2(uptr Size, uptr ZeroLog, uptr LogBits) {
+  const uptr L = getMostSignificantSetBitIndex(Size);
+  const uptr LBits = (Size >> (L - LogBits)) - (1 << LogBits);
+  const uptr HBits = (L - ZeroLog) << LogBits;
+  return LBits + HBits;
+}
+
 template <int NumClasses, uptr MinSizeLog, uptr MidSizeLog, uptr MaxSizeLog,
           uptr NumBits, const uptr (&Arr)[NumClasses]>
 struct GetClassIdBySizeFunc {
+  struct SizeTable {
+    constexpr SizeTable() {
+      uptr Pos = 1 << MidSizeLog;
+      uptr Inc = 1 << (MidSizeLog - NumBits);
+      for (uptr i = 0; i != getTableSize(); ++i) {
+        Pos += Inc;
+        if ((Pos & (Pos - 1)) == 0)
+          Inc *= 2;
+        Tab[i] = computeClassId(Pos + 16);
+      }
+    }
+
+    constexpr static u8 computeClassId(uptr Size) {
+      for (uptr i = 0; i != NumClasses; ++i) {
+        if (Size <= Arr[i])
+          return i + 1;
+      }
+      return -1;
+    }
+
+    constexpr static uptr getTableSize() {
+      return (MaxSizeLog - MidSizeLog) << NumBits;
+    }
+
+    u8 Tab[getTableSize()];
+  };
+
+  static constexpr SizeTable Table = {};
   static const u8 S = NumBits - 1;
-
-  constexpr GetClassIdBySizeFunc() {
-    uptr Pos = 1 << MidSizeLog;
-    uptr Inc = 1 << (MidSizeLog - NumBits);
-    for (uptr i = 0; i != getTableSize(); ++i) {
-      Pos += Inc;
-      if ((Pos & (Pos - 1)) == 0)
-        Inc *= 2;
-      arr[i] = computeClassId(Pos + 16);
-    }
-  }
-  
-  constexpr static u8 computeClassId(uptr Size) {
-    for (uptr i = 0; i != NumClasses; ++i) {
-      if (Size <= Arr[i])
-        return i + 1;
-    }
-    return -1;
-  }
-
-  constexpr static uptr getTableSize() {
-    return (MaxSizeLog - MidSizeLog) * (1 << NumBits);
-  }
 
   uptr operator()(uptr Size) const {
     Size -= 16;
     DCHECK_LE(Size, MaxSize);
     if (Size <= (1 << MidSizeLog))
       return ((Size - 1) >> MinSizeLog) + 1;
-    Size -= 1;
-    const uptr L = getMostSignificantSetBitIndex(Size);
-    const uptr LBits = (Size >> (L - S)) - (1 << S);
-    const uptr HBits = (L - MidSizeLog) << S;
-    return arr[LBits + HBits];
+    return Table.Tab[scaledLog2(Size - 1, MidSizeLog, S)];
   }
-
-  u8 arr[getTableSize()];
 };
 
-template <u8 NumBits, u8 MinSizeLog, u8 MidSizeLog, u8 MaxSizeLog,
-          u32 MaxNumCachedHintT, u8 MaxBytesCachedLog>
-class SizeClassMap {
-  static const uptr MinSize = 1UL << MinSizeLog;
-  static const uptr MidSize = 1UL << MidSizeLog;
+template <typename Config> struct SizeClassMapBase {
+  static u32 getMaxCachedHint(uptr Size) {
+    DCHECK_LE(Size, MaxSize);
+    DCHECK_NE(Size, 0);
+    u32 N;
+    // Force a 32-bit division if the template parameters allow for it.
+    if (Config::MaxBytesCachedLog > 31 || Config::MaxSizeLog > 31)
+      N = static_cast<u32>((1UL << Config::MaxBytesCachedLog) / Size);
+    else
+      N = (1U << Config::MaxBytesCachedLog) / static_cast<u32>(Size);
+    return Max(1U, Min(Config::MaxNumCachedHint, N));
+  }
+};
+
+template <typename Config>
+class TableSizeClassMap : public SizeClassMapBase<Config> {
+  static const uptr MinSize = 1UL << Config::MinSizeLog;
+  static const uptr MidSize = 1UL << Config::MidSizeLog;
   static const uptr MidClass = MidSize / MinSize;
-  static const u8 S = NumBits - 1;
+  static const u8 S = Config::NumBits - 1;
   static const uptr M = (1UL << S) - 1;
 
 public:
-  static const u32 MaxNumCachedHint = MaxNumCachedHintT;
+  static const u32 MaxNumCachedHint = Config::MaxNumCachedHint;
 
-  static const uptr MaxSize = 1UL << MaxSizeLog;
+  static const uptr MaxSize = 1UL << Config::MaxSizeLog;
   static const uptr NumClasses =
-      MidClass + ((MaxSizeLog - MidSizeLog) << S) + 1;
-  static_assert(NumClasses <= 256, "");
+      sizeof(Config::Classes) / sizeof(Config::Classes[0]) + 1;
+  static_assert(NumClasses < 256, "");
   static const uptr LargestClassId = NumClasses - 1;
   static const uptr BatchClassId = 0;
-  static constexpr uptr Classes[30] = {
-      32,   48,   64,   80,    96,    144,   160,   176,   208,   240,
-      336,  416,  448,  592,   800,   1040,  1552,  2320,  2576,  3088,
-      4368, 7184, 8464, 12560, 13840, 16400, 18192, 23312, 28944, 65552,
-  };
-  static constexpr GetClassIdBySizeFunc<30, 4, 6, 16, 4, Classes>
+
+  static constexpr GetClassIdBySizeFunc<NumClasses - 1, Config::MinSizeLog,
+                                        Config::MidSizeLog, Config::MaxSizeLog,
+                                        Config::NumBits, Config::Classes>
       GetClassIdBySize = {};
 
   static uptr getSizeByClassId(uptr ClassId) {
-    DCHECK_NE(ClassId, BatchClassId);
-    return Classes[ClassId - 1];
+    return Config::Classes[ClassId - 1];
   }
 
   static uptr getClassIdBySize(uptr Size) {
     return GetClassIdBySize(Size);
   }
 
-  static u32 getMaxCachedHint(uptr Size) {
+  static void print() {}
+  static void validate() {}
+};
+
+template <typename Config>
+class FixedSizeClassMap : public SizeClassMapBase<Config> {
+  typedef SizeClassMapBase<Config> Base;
+
+  static const uptr MinSize = 1UL << Config::MinSizeLog;
+  static const uptr MidSize = 1UL << Config::MidSizeLog;
+  static const uptr MidClass = MidSize / MinSize;
+  static const u8 S = Config::NumBits - 1;
+  static const uptr M = (1UL << S) - 1;
+
+public:
+  static const u32 MaxNumCachedHint = Config::MaxNumCachedHint;
+
+  static const uptr MaxSize = 1UL << Config::MaxSizeLog;
+  static const uptr NumClasses =
+      MidClass + ((Config::MaxSizeLog - Config::MidSizeLog) << S) + 1;
+  static_assert(NumClasses <= 256, "");
+  static const uptr LargestClassId = NumClasses - 1;
+  static const uptr BatchClassId = 0;
+
+  static uptr getSizeByClassId(uptr ClassId) {
+    DCHECK_NE(ClassId, BatchClassId);
+    if (ClassId <= MidClass)
+      return ClassId << Config::MinSizeLog;
+    ClassId -= MidClass;
+    const uptr T = MidSize << (ClassId >> S);
+    return T + (T >> S) * (ClassId & M);
+  }
+
+  static uptr getClassIdBySize(uptr Size) {
     DCHECK_LE(Size, MaxSize);
-    DCHECK_NE(Size, 0);
-    u32 N;
-    // Force a 32-bit division if the template parameters allow for it.
-    if (MaxBytesCachedLog > 31 || MaxSizeLog > 31)
-      N = static_cast<u32>((1UL << MaxBytesCachedLog) / Size);
-    else
-      N = (1U << MaxBytesCachedLog) / static_cast<u32>(Size);
-    return Max(1U, Min(MaxNumCachedHint, N));
+    if (Size <= MidSize)
+      return (Size + MinSize - 1) >> Config::MinSizeLog;
+    return MidClass + 1 + scaledLog2(Size - 1, Config::MidSizeLog, S);
   }
 
   static void print() {
@@ -137,10 +181,10 @@ public:
       const uptr D = S - PrevS;
       const uptr P = PrevS ? (D * 100 / PrevS) : 0;
       const uptr L = S ? getMostSignificantSetBitIndex(S) : 0;
-      const uptr Cached = getMaxCachedHint(S) * S;
+      const uptr Cached = Base::getMaxCachedHint(S) * S;
       Buffer.append(
           "C%02zu => S: %zu diff: +%zu %02zu%% L %zu Cached: %zu %zu; id %zu\n",
-          I, getSizeByClassId(I), D, P, L, getMaxCachedHint(S), Cached,
+          I, getSizeByClassId(I), D, P, L, Base::getMaxCachedHint(S), Cached,
           getClassIdBySize(S));
       TotalCached += Cached;
       PrevS = S;
@@ -163,7 +207,7 @@ public:
         CHECK_GT(getSizeByClassId(C), getSizeByClassId(C - 1));
     }
     // Do not perform the loop if the maximum size is too large.
-    if (MaxSizeLog > 19)
+    if (Config::MaxSizeLog > 19)
       return;
     for (uptr S = 1; S <= MaxSize; S++) {
       const uptr C = getClassIdBySize(S);
@@ -175,16 +219,64 @@ public:
   }
 };
 
-typedef SizeClassMap<3, 5, 8, 17, 8, 10> DefaultSizeClassMap;
+#if 0
+struct AndroidSizeClassConfig {
+  static const uptr NumBits = 4;
+  static const uptr MinSizeLog = 4;
+  static const uptr MidSizeLog = 6;
+  static const uptr MaxSizeLog = 16;
+  static const u32 MaxNumCachedHint = 14;
+  static const uptr MaxBytesCachedLog = 14;
 
-// TODO(kostyak): further tune class maps for Android & Fuchsia.
-#if SCUDO_WORDSIZE == 64U
-typedef SizeClassMap<4, 4, 8, 14, 4, 10> SvelteSizeClassMap;
-typedef SizeClassMap<2, 5, 9, 16, 14, 14> AndroidSizeClassMap;
+  static constexpr uptr Classes[30] = {
+      32,   48,   64,   80,    96,    144,   160,   176,   208,   240,
+      336,  416,  448,  592,   800,   1040,  1552,  2320,  2576,  3088,
+      4368, 7184, 8464, 12560, 13840, 16400, 18192, 23312, 28944, 65552,
+  };
+};
+typedef TableSizeClassMap<AndroidSizeClassConfig> AndroidSizeClassMap;
 #else
-typedef SizeClassMap<4, 3, 7, 14, 5, 10> SvelteSizeClassMap;
-typedef SizeClassMap<2, 5, 9, 16, 14, 14> AndroidSizeClassMap;
+struct AndroidSizeClassConfig {
+  static const uptr NumBits = 2;
+  static const uptr MinSizeLog = 5;
+  static const uptr MidSizeLog = 9;
+  static const uptr MaxSizeLog = 16;
+  static const u32 MaxNumCachedHint = 14;
+  static const uptr MaxBytesCachedLog = 14;
+};
+typedef FixedSizeClassMap<AndroidSizeClassConfig> AndroidSizeClassMap;
 #endif
+
+struct DefaultSizeClassConfig {
+  static const uptr NumBits = 3;
+  static const uptr MinSizeLog = 5;
+  static const uptr MidSizeLog = 8;
+  static const uptr MaxSizeLog = 17;
+  static const u32 MaxNumCachedHint = 8;
+  static const uptr MaxBytesCachedLog = 10;
+};
+
+typedef FixedSizeClassMap<DefaultSizeClassConfig> DefaultSizeClassMap;
+
+struct SvelteSizeClassConfig {
+#if SCUDO_WORDSIZE == 64U
+  static const uptr NumBits = 4;
+  static const uptr MinSizeLog = 4;
+  static const uptr MidSizeLog = 8;
+  static const uptr MaxSizeLog = 14;
+  static const u32 MaxNumCachedHint = 4;
+  static const uptr MaxBytesCachedLog = 10;
+#else
+  static const uptr NumBits = 4;
+  static const uptr MinSizeLog = 3;
+  static const uptr MidSizeLog = 7;
+  static const uptr MaxSizeLog = 14;
+  static const u32 MaxNumCachedHint = 5;
+  static const uptr MaxBytesCachedLog = 10;
+#endif
+};
+
+typedef FixedSizeClassMap<SvelteSizeClassConfig> SvelteSizeClassMap;
 
 } // namespace scudo
 
