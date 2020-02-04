@@ -34,6 +34,49 @@ namespace scudo {
 // - MaxNumCachedHint is a hint for the max number of chunks cached per class.
 // - 2^MaxBytesCachedLog is the max number of bytes cached per class.
 
+template <int NumClasses, uptr MinSizeLog, uptr MidSizeLog, uptr MaxSizeLog,
+          uptr NumBits, const uptr (&Arr)[NumClasses]>
+struct GetClassIdBySizeFunc {
+  static const u8 S = NumBits - 1;
+
+  constexpr GetClassIdBySizeFunc() {
+    uptr Pos = 1 << MidSizeLog;
+    uptr Inc = 1 << (MidSizeLog - NumBits);
+    for (uptr i = 0; i != getTableSize(); ++i) {
+      Pos += Inc;
+      if ((Pos & (Pos - 1)) == 0)
+        Inc *= 2;
+      arr[i] = computeClassId(Pos + 16);
+    }
+  }
+  
+  constexpr static u8 computeClassId(uptr Size) {
+    for (uptr i = 0; i != NumClasses; ++i) {
+      if (Size <= Arr[i])
+        return i + 1;
+    }
+    return -1;
+  }
+
+  constexpr static uptr getTableSize() {
+    return (MaxSizeLog - MidSizeLog) * (1 << NumBits);
+  }
+
+  uptr operator()(uptr Size) const {
+    Size -= 16;
+    DCHECK_LE(Size, MaxSize);
+    if (Size <= (1 << MidSizeLog))
+      return ((Size - 1) >> MinSizeLog) + 1;
+    Size -= 1;
+    const uptr L = getMostSignificantSetBitIndex(Size);
+    const uptr LBits = (Size >> (L - S)) - (1 << S);
+    const uptr HBits = (L - MidSizeLog) << S;
+    return arr[LBits + HBits];
+  }
+
+  u8 arr[getTableSize()];
+};
+
 template <u8 NumBits, u8 MinSizeLog, u8 MidSizeLog, u8 MaxSizeLog,
           u32 MaxNumCachedHintT, u8 MaxBytesCachedLog>
 class SizeClassMap {
@@ -52,25 +95,21 @@ public:
   static_assert(NumClasses <= 256, "");
   static const uptr LargestClassId = NumClasses - 1;
   static const uptr BatchClassId = 0;
+  static constexpr uptr Classes[30] = {
+      32,   48,   64,   80,    96,    144,   160,   176,   208,   240,
+      336,  416,  448,  592,   800,   1040,  1552,  2320,  2576,  3088,
+      4368, 7184, 8464, 12560, 13840, 16400, 18192, 23312, 28944, 65552,
+  };
+  static constexpr GetClassIdBySizeFunc<30, 4, 6, 16, 4, Classes>
+      GetClassIdBySize = {};
 
   static uptr getSizeByClassId(uptr ClassId) {
     DCHECK_NE(ClassId, BatchClassId);
-    if (ClassId <= MidClass)
-      return ClassId << MinSizeLog;
-    ClassId -= MidClass;
-    const uptr T = MidSize << (ClassId >> S);
-    return T + (T >> S) * (ClassId & M);
+    return Classes[ClassId - 1];
   }
 
   static uptr getClassIdBySize(uptr Size) {
-    DCHECK_LE(Size, MaxSize);
-    if (Size <= MidSize)
-      return (Size + MinSize - 1) >> MinSizeLog;
-    Size -= 1;
-    const uptr L = getMostSignificantSetBitIndex(Size);
-    const uptr LBits = (Size >> (L - S)) - (1 << S);
-    const uptr HBits = (L - MidSizeLog) << S;
-    return MidClass + 1 + HBits + LBits;
+    return GetClassIdBySize(Size);
   }
 
   static u32 getMaxCachedHint(uptr Size) {
