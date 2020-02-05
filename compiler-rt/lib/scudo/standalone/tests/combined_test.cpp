@@ -164,6 +164,7 @@ template <class Config> static void testAllocator() {
   for (scudo::sptr Delta = -32; Delta < 32; Delta += 8) {
     const scudo::uptr NewSize = DataSize + Delta;
     void *NewP = Allocator->reallocate(P, NewSize);
+    P = NewP;
     EXPECT_EQ(NewP, P);
     for (scudo::uptr I = 0; I < DataSize - 32; I++)
       EXPECT_EQ((reinterpret_cast<char *>(NewP))[I], Marker);

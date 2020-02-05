@@ -234,17 +234,18 @@ public:
 
 #if 1
 struct AndroidSizeClassConfig {
-  static const uptr NumBits = 7;
+  static const uptr NumBits = 5;
   static const uptr MinSizeLog = 4;
   static const uptr MidSizeLog = 6;
   static const uptr MaxSizeLog = 16;
   static const u32 MaxNumCachedHint = 14;
   static const uptr MaxBytesCachedLog = 14;
 
-  static constexpr uptr Classes[30] = {
-      32,   48,   64,   80,    96,    144,   160,   176,   208,   240,
-      336,  416,  448,  592,   800,   1040,  1552,  2320,  2576,  3088,
-      4368, 7184, 8464, 12560, 13840, 16400, 18192, 23312, 28944, 65552,
+  static constexpr uptr Classes[32] = {
+      0x20,   0x30,   0x40,   0x50,   0x60,   0x90,   0xa0,   0xb0,
+      0xd0,   0xf0,   0x150,  0x1a0,  0x1c0,  0x210,  0x250,  0x330,
+      0x450,  0x610,  0x810,  0xa10,  0xc10,  0x1010, 0x1310, 0x1c10,
+      0x2210, 0x3210, 0x3610, 0x4010, 0x4810, 0x5c10, 0x7410, 0x10010,
   };
 };
 typedef TableSizeClassMap<AndroidSizeClassConfig> AndroidSizeClassMap;
