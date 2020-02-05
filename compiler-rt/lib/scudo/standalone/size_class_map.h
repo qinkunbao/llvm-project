@@ -90,7 +90,7 @@ class TableSizeClassMap : public SizeClassMapBase<Config> {
     u8 Tab[getTableSize()] = {};
   };
 
-  static constexpr SizeTable Table =  {}; 
+  static constexpr SizeTable Table = {};
 
 public:
   static const u32 MaxNumCachedHint = Config::MaxNumCachedHint;
