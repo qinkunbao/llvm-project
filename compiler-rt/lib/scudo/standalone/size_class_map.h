@@ -47,12 +47,16 @@ struct GetClassIdBySizeFunc {
   struct SizeTable {
     constexpr SizeTable() {
       uptr Pos = 1 << MidSizeLog;
-      uptr Inc = 1 << (MidSizeLog - NumBits);
+      uptr Inc = 1 << (MidSizeLog - NumBits + 1);
       for (uptr i = 0; i != getTableSize(); ++i) {
         Pos += Inc;
         if ((Pos & (Pos - 1)) == 0)
           Inc *= 2;
         Tab[i] = computeClassId(Pos + 16);
+#if 0
+        static_assert(
+            computeClassId(Pos + 17) == computeClassId(Pos + Inc + 16), "");
+#endif
       }
     }
 
@@ -65,10 +69,10 @@ struct GetClassIdBySizeFunc {
     }
 
     constexpr static uptr getTableSize() {
-      return (MaxSizeLog - MidSizeLog) << NumBits;
+      return (MaxSizeLog - MidSizeLog) << (NumBits - 1);
     }
 
-    u8 Tab[getTableSize()];
+    u8 Tab[getTableSize()] = {};
   };
 
   static constexpr SizeTable Table = {};
@@ -77,8 +81,11 @@ struct GetClassIdBySizeFunc {
   uptr operator()(uptr Size) const {
     Size -= 16;
     DCHECK_LE(Size, MaxSize);
-    if (Size <= (1 << MidSizeLog))
+    if (Size <= (1 << MidSizeLog)) {
+      if (Size == 0)
+        return 1;
       return ((Size - 1) >> MinSizeLog) + 1;
+    }
     return Table.Tab[scaledLog2(Size - 1, MidSizeLog, S)];
   }
 };
@@ -219,9 +226,9 @@ public:
   }
 };
 
-#if 0
+#if 1
 struct AndroidSizeClassConfig {
-  static const uptr NumBits = 4;
+  static const uptr NumBits = 7;
   static const uptr MinSizeLog = 4;
   static const uptr MidSizeLog = 6;
   static const uptr MaxSizeLog = 16;
