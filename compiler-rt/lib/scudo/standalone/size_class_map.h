@@ -41,55 +41,6 @@ inline uptr scaledLog2(uptr Size, uptr ZeroLog, uptr LogBits) {
   return LBits + HBits;
 }
 
-template <int NumClasses, uptr MinSizeLog, uptr MidSizeLog, uptr MaxSizeLog,
-          uptr NumBits, const u32 (&Arr)[NumClasses]>
-struct GetClassIdBySizeFunc {
-  struct SizeTable {
-    constexpr SizeTable() {
-      uptr Pos = 1 << MidSizeLog;
-      uptr Inc = 1 << (MidSizeLog - NumBits + 1);
-      for (uptr i = 0; i != getTableSize(); ++i) {
-        Pos += Inc;
-        if ((Pos & (Pos - 1)) == 0)
-          Inc *= 2;
-        Tab[i] = computeClassId(Pos + 16);
-#if 0
-        static_assert(
-            computeClassId(Pos + 17) == computeClassId(Pos + Inc + 16), "");
-#endif
-      }
-    }
-
-    constexpr static u8 computeClassId(uptr Size) {
-      for (uptr i = 0; i != NumClasses; ++i) {
-        if (Size <= Arr[i])
-          return i + 1;
-      }
-      return -1;
-    }
-
-    constexpr static uptr getTableSize() {
-      return (MaxSizeLog - MidSizeLog) << (NumBits - 1);
-    }
-
-    u8 Tab[getTableSize()] = {};
-  };
-
-  __attribute__((visibility("hidden"))) static constexpr SizeTable Table = {};
-  static const u8 S = NumBits - 1;
-
-  uptr operator()(uptr Size) const {
-    Size -= 16;
-    DCHECK_LE(Size, MaxSize);
-    if (Size <= (1 << MidSizeLog)) {
-      if (Size == 0)
-        return 1;
-      return ((Size - 1) >> MinSizeLog) + 1;
-    }
-    return Table.Tab[scaledLog2(Size - 1, MidSizeLog, S)];
-  }
-};
-
 template <typename Config> struct SizeClassMapBase {
   static u32 getMaxCachedHint(uptr Size) {
     DCHECK_LE(Size, MaxSize);
@@ -111,28 +62,60 @@ class TableSizeClassMap : public SizeClassMapBase<Config> {
   static const uptr MidClass = MidSize / MinSize;
   static const u8 S = Config::NumBits - 1;
   static const uptr M = (1UL << S) - 1;
+  static const uptr ClassesSize =
+      sizeof(Config::Classes) / sizeof(Config::Classes[0]);
+
+  struct SizeTable {
+    constexpr SizeTable() {
+      uptr Pos = 1 << Config::MidSizeLog;
+      uptr Inc = 1 << (Config::MidSizeLog - S);
+      for (uptr i = 0; i != getTableSize(); ++i) {
+        Pos += Inc;
+        if ((Pos & (Pos - 1)) == 0)
+          Inc *= 2;
+        Tab[i] = computeClassId(Pos + 16);
+      }
+    }
+
+    constexpr static u8 computeClassId(uptr Size) {
+      for (uptr i = 0; i != ClassesSize; ++i) {
+        if (Size <= Config::Classes[i])
+          return i + 1;
+      }
+      return -1;
+    }
+
+    constexpr static uptr getTableSize() {
+      return (Config::MaxSizeLog - Config::MidSizeLog) << S;
+    }
+
+    u8 Tab[getTableSize()] = {};
+  };
+
+  static constexpr SizeTable Table =  {}; 
 
 public:
   static const u32 MaxNumCachedHint = Config::MaxNumCachedHint;
 
-  static const uptr NumClasses =
-      sizeof(Config::Classes) / sizeof(Config::Classes[0]) + 1;
+  static const uptr NumClasses = ClassesSize + 1;
   static_assert(NumClasses < 256, "");
   static const uptr LargestClassId = NumClasses - 1;
   static const uptr BatchClassId = 0;
   static const uptr MaxSize = Config::Classes[LargestClassId - 1];
-
-  static constexpr GetClassIdBySizeFunc<NumClasses - 1, Config::MinSizeLog,
-                                        Config::MidSizeLog, Config::MaxSizeLog,
-                                        Config::NumBits, Config::Classes>
-      GetClassIdBySize = {};
 
   static uptr getSizeByClassId(uptr ClassId) {
     return Config::Classes[ClassId - 1];
   }
 
   static uptr getClassIdBySize(uptr Size) {
-    return GetClassIdBySize(Size);
+    Size -= 16;
+    DCHECK_LE(Size, MaxSize);
+    if (Size <= (1 << Config::MidSizeLog)) {
+      if (Size == 0)
+        return 1;
+      return ((Size - 1) >> Config::MinSizeLog) + 1;
+    }
+    return Table.Tab[scaledLog2(Size - 1, Config::MidSizeLog, S)];
   }
 
   static void print() {}
