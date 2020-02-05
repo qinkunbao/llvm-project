@@ -42,7 +42,7 @@ inline uptr scaledLog2(uptr Size, uptr ZeroLog, uptr LogBits) {
 }
 
 template <int NumClasses, uptr MinSizeLog, uptr MidSizeLog, uptr MaxSizeLog,
-          uptr NumBits, const uptr (&Arr)[NumClasses]>
+          uptr NumBits, const u32 (&Arr)[NumClasses]>
 struct GetClassIdBySizeFunc {
   struct SizeTable {
     constexpr SizeTable() {
@@ -75,7 +75,7 @@ struct GetClassIdBySizeFunc {
     u8 Tab[getTableSize()] = {};
   };
 
-  static constexpr SizeTable Table = {};
+  __attribute__((visibility("hidden"))) static constexpr SizeTable Table = {};
   static const u8 S = NumBits - 1;
 
   uptr operator()(uptr Size) const {
@@ -241,7 +241,7 @@ struct AndroidSizeClassConfig {
   static const u32 MaxNumCachedHint = 14;
   static const uptr MaxBytesCachedLog = 14;
 
-  static constexpr uptr Classes[32] = {
+  static constexpr u32 Classes[32] = {
       0x20,   0x30,   0x40,   0x50,   0x60,   0x90,   0xa0,   0xb0,
       0xd0,   0xf0,   0x150,  0x1a0,  0x1c0,  0x210,  0x250,  0x330,
       0x450,  0x610,  0x810,  0xa10,  0xc10,  0x1010, 0x1310, 0x1c10,
