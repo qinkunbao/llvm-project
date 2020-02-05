@@ -58,9 +58,6 @@ template <typename Config> struct SizeClassMapBase {
 
 template <typename Config>
 class TableSizeClassMap : public SizeClassMapBase<Config> {
-  static const uptr MinSize = 1UL << Config::MinSizeLog;
-  static const uptr MidSize = 1UL << Config::MidSizeLog;
-  static const uptr MidClass = MidSize / MinSize;
   static const u8 S = Config::NumBits - 1;
   static const uptr M = (1UL << S) - 1;
   static const uptr ClassesSize =
