@@ -216,6 +216,7 @@ public:
 
 #if 1
 struct AndroidSizeClassConfig {
+#if SCUDO_WORDSIZE == 64U
   static const uptr NumBits = 5;
   static const uptr MinSizeLog = 4;
   static const uptr MidSizeLog = 6;
@@ -230,6 +231,22 @@ struct AndroidSizeClassConfig {
       0x2210, 0x3210, 0x3610, 0x4010, 0x4810, 0x5c10, 0x7410, 0x10010,
   };
   static const uptr SizeDelta = 16;
+#else
+  static const uptr NumBits = 5;
+  static const uptr MinSizeLog = 4;
+  static const uptr MidSizeLog = 7;
+  static const uptr MaxSizeLog = 16;
+  static const u32 MaxNumCachedHint = 14;
+  static const uptr MaxBytesCachedLog = 14;
+
+  static constexpr u32 Classes[] = {
+      0x00020, 0x00030, 0x00040, 0x00050, 0x00060, 0x00070, 0x00080, 0x00090,
+      0x000b0, 0x000e0, 0x00120, 0x00150, 0x001a0, 0x00230, 0x002b0, 0x00350,
+      0x00410, 0x00610, 0x00810, 0x00a10, 0x00b10, 0x00e10, 0x01010, 0x01110,
+      0x01810, 0x02010, 0x03210, 0x04010, 0x04810, 0x05c10, 0x07410, 0x10010,
+  };
+  static const uptr SizeDelta = 16;
+#endif
 };
 typedef TableSizeClassMap<AndroidSizeClassConfig> AndroidSizeClassMap;
 #else
