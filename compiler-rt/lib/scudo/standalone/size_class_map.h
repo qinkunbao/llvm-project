@@ -9,6 +9,7 @@
 #ifndef SCUDO_SIZE_CLASS_MAP_H_
 #define SCUDO_SIZE_CLASS_MAP_H_
 
+#include "chunk.h"
 #include "common.h"
 #include "string_utils.h"
 
@@ -73,7 +74,7 @@ class TableSizeClassMap : public SizeClassMapBase<Config> {
         Pos += Inc;
         if ((Pos & (Pos - 1)) == 0)
           Inc *= 2;
-        Tab[i] = computeClassId(Pos + 16);
+        Tab[i] = computeClassId(Pos + Config::SizeDelta);
       }
     }
 
@@ -108,13 +109,12 @@ public:
   }
 
   static uptr getClassIdBySize(uptr Size) {
-    Size -= 16;
+    if (Size <= Config::SizeDelta + (1 << Config::MinSizeLog))
+      return 1;
+    Size -= Config::SizeDelta;
     DCHECK_LE(Size, MaxSize);
-    if (Size <= (1 << Config::MidSizeLog)) {
-      if (Size == 0)
-        return 1;
+    if (Size <= (1 << Config::MidSizeLog))
       return ((Size - 1) >> Config::MinSizeLog) + 1;
-    }
     return Table.Tab[scaledLog2(Size - 1, Config::MidSizeLog, S)];
   }
 
@@ -132,7 +132,7 @@ class FixedSizeClassMap : public SizeClassMapBase<Config> {
   static const u8 S = Config::NumBits - 1;
   static const uptr M = (1UL << S) - 1;
 
-  static const uptr SizeDelta = 16;
+  static const uptr SizeDelta = Chunk::getHeaderSize();
 
 public:
   static const u32 MaxNumCachedHint = Config::MaxNumCachedHint;
@@ -154,6 +154,8 @@ public:
   }
 
   static uptr getClassIdBySize(uptr Size) {
+    if (Size <= SizeDelta + (1 << Config::MinSizeLog))
+      return 1;
     Size -= SizeDelta;
     DCHECK_LE(Size, MaxSize);
     if (Size <= MidSize) {
@@ -230,6 +232,7 @@ struct AndroidSizeClassConfig {
       0x450,  0x610,  0x810,  0xa10,  0xc10,  0x1010, 0x1310, 0x1c10,
       0x2210, 0x3210, 0x3610, 0x4010, 0x4810, 0x5c10, 0x7410, 0x10010,
   };
+  static const uptr SizeDelta = 16;
 };
 typedef TableSizeClassMap<AndroidSizeClassConfig> AndroidSizeClassMap;
 #else
