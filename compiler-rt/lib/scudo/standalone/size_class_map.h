@@ -109,7 +109,7 @@ public:
   }
 
   static uptr getClassIdBySize(uptr Size) {
-    if (Size <= Config::SizeDelta + (1 << Config::MinSizeLog))
+    if (Size <= Config::Classes[0])
       return 1;
     Size -= Config::SizeDelta;
     DCHECK_LE(Size, MaxSize);
