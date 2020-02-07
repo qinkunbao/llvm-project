@@ -108,10 +108,10 @@ public:
   static uptr getClassIdBySize(uptr Size) {
     if (Size <= Config::Classes[0])
       return 1;
-    Size -= Config::SizeDelta;
+    if (Size <= (1 << Config::MidSizeLog) + Config::SizeDelta)
+      return 2 + ((Size - 1 - Config::Classes[0]) >> Config::MinSizeLog);
     DCHECK_LE(Size, MaxSize);
-    if (Size <= (1 << Config::MidSizeLog))
-      return ((Size - 1) >> Config::MinSizeLog) + 1;
+    Size -= Config::SizeDelta;
     return Table.Tab[scaledLog2(Size - 1, Config::MidSizeLog, S)];
   }
 
@@ -234,14 +234,14 @@ struct AndroidSizeClassConfig {
 #else
   static const uptr NumBits = 5;
   static const uptr MinSizeLog = 4;
-  static const uptr MidSizeLog = 7;
+  static const uptr MidSizeLog = 6;
   static const uptr MaxSizeLog = 16;
   static const u32 MaxNumCachedHint = 14;
   static const uptr MaxBytesCachedLog = 14;
 
   static constexpr u32 Classes[] = {
-      0x00020, 0x00030, 0x00040, 0x00050, 0x00060, 0x00070, 0x00080, 0x00090,
-      0x000b0, 0x000e0, 0x00120, 0x00150, 0x001a0, 0x00230, 0x002b0, 0x00350,
+      0x00010, 0x00020, 0x00030, 0x00040, 0x00050, 0x00060, 0x00070, 0x00080,
+      0x000a0, 0x000b0, 0x000e0, 0x00120, 0x00150, 0x00190, 0x00230, 0x00350,
       0x00410, 0x00610, 0x00810, 0x00a10, 0x00b10, 0x00e10, 0x01010, 0x01110,
       0x01810, 0x02010, 0x03210, 0x04010, 0x04810, 0x05c10, 0x07410, 0x10010,
   };

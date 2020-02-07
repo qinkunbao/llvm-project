@@ -65,6 +65,7 @@ int main(int argc, char **argv) {
   size_t page_size = 4096;
   size_t largest_class = 65552;
   size_t header_size = 16;
+  size_t size_delta = 16;
   size_t num_classes = 32;
   size_t num_bits = 5;
 
@@ -83,8 +84,8 @@ int main(int argc, char **argv) {
       return false;
     };
     if (match_arg(page_size, "-p") || match_arg(largest_class, "-c") ||
-        match_arg(header_size, "-h") || match_arg(num_classes, "-n") ||
-        match_arg(num_bits, "-b"))
+        match_arg(header_size, "-h") || match_arg(size_delta, "-d") ||
+        match_arg(num_classes, "-n") || match_arg(num_bits, "-b"))
       continue;
     read_allocs(allocs, argv[i]);
     ++i;
@@ -101,8 +102,8 @@ int main(int argc, char **argv) {
     for (size_t new_class = 16; new_class != largest_class; new_class += 16) {
       // Skip classes with more than num_bits bits, ignoring leading or trailing
       // zero bits.
-      if (__builtin_ctzl(new_class - header_size) +
-              __builtin_clzl(new_class - header_size) <
+      if (__builtin_ctzl(new_class - size_delta) +
+              __builtin_clzl(new_class - size_delta) <
           sizeof(long) * 8 - num_bits)
         continue;
 
@@ -118,13 +119,13 @@ int main(int argc, char **argv) {
   }
 
   std::sort(classes.begin(), classes.end());
-  size_t min_size_log = log2_floor(header_size);
+  size_t min_size_log = log2_floor(size_delta);
   size_t mid_size_index = 0;
   while (classes[mid_size_index + 1] - classes[mid_size_index] ==
          (1 << min_size_log))
     mid_size_index++;
-  size_t mid_size_log = log2_floor(classes[mid_size_index] - header_size);
-  size_t max_size_log = log2_floor(classes.back() - header_size - 1) + 1;
+  size_t mid_size_log = log2_floor(classes[mid_size_index] - size_delta);
+  size_t max_size_log = log2_floor(classes.back() - size_delta - 1) + 1;
 
   printf(R"(// wastage = %zu
 
@@ -150,5 +151,5 @@ struct MySizeClassConfig {
   };
   static const uptr SizeDelta = %zu;
 };
-)", header_size);
+)", size_delta);
 }
