@@ -28,11 +28,12 @@ struct DefaultConfig {
 #if SCUDO_CAN_USE_PRIMARY64
   // 1GB Regions
   typedef SizeClassAllocator64<SizeClassMap, 30U> Primary;
+  typedef MapAllocator<MapAllocatorCache<>> Secondary;
 #else
   // 512KB regions
   typedef SizeClassAllocator32<SizeClassMap, 19U> Primary;
+  typedef MapAllocator<MapAllocatorCache<>, 8U> Secondary;
 #endif
-  typedef MapAllocator<MapAllocatorCache<>> Secondary;
   template <class A> using TSDRegistryT = TSDRegistryExT<A>; // Exclusive
 };
 
@@ -43,12 +44,14 @@ struct AndroidConfig {
   typedef SizeClassAllocator64<SizeClassMap, 28U,
                                /*MaySupportMemoryTagging=*/true>
       Primary;
+  // Cache blocks up to 2MB
+  typedef MapAllocator<MapAllocatorCache<32U, 2UL << 20>> Secondary;
 #else
   // 256KB regions
   typedef SizeClassAllocator32<SizeClassMap, 18U> Primary;
-#endif
   // Cache blocks up to 2MB
-  typedef MapAllocator<MapAllocatorCache<32U, 2UL << 20>> Secondary;
+  typedef MapAllocator<MapAllocatorCache<32U, 2UL << 20>, 8U> Secondary;
+#endif
   template <class A>
   using TSDRegistryT = TSDRegistrySharedT<A, 2U>; // Shared, max 2 TSDs.
 };
@@ -58,11 +61,12 @@ struct AndroidSvelteConfig {
 #if SCUDO_CAN_USE_PRIMARY64
   // 128MB regions
   typedef SizeClassAllocator64<SizeClassMap, 27U> Primary;
+  typedef MapAllocator<MapAllocatorCache<4U, 1UL << 18>> Secondary;
 #else
   // 64KB regions
   typedef SizeClassAllocator32<SizeClassMap, 16U> Primary;
+  typedef MapAllocator<MapAllocatorCache<4U, 1UL << 18>, 8U> Secondary;
 #endif
-  typedef MapAllocator<MapAllocatorCache<4U, 1UL << 18>> Secondary;
   template <class A>
   using TSDRegistryT = TSDRegistrySharedT<A, 1U>; // Shared, only 1 TSD.
 };

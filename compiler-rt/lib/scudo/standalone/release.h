@@ -147,7 +147,7 @@ private:
   uptr CurrentRangeStatePage = 0;
 };
 
-template <class TransferBatchT, class ReleaseRecorderT>
+template <uptr BlockOffsetT, class TransferBatchT, class ReleaseRecorderT>
 NOINLINE void
 releaseFreeMemoryToOS(const IntrusiveList<TransferBatchT> &FreeList, uptr Base,
                       uptr AllocatedPagesCount, uptr BlockSize,
@@ -188,6 +188,11 @@ releaseFreeMemoryToOS(const IntrusiveList<TransferBatchT> &FreeList, uptr Base,
     }
   }
 
+  if (BlockOffsetT != 0) {
+    ++FullPagesBlockCountMax;
+    SameBlockCountPerPage = false;
+  }
+
   PackedCounterArray Counters(AllocatedPagesCount, FullPagesBlockCountMax);
   if (!Counters.isAllocated())
     return;
@@ -197,7 +202,7 @@ releaseFreeMemoryToOS(const IntrusiveList<TransferBatchT> &FreeList, uptr Base,
 
   // Iterate over free chunks and count how many free chunks affect each
   // allocated page.
-  if (BlockSize <= PageSize && PageSize % BlockSize == 0) {
+  if (BlockSize <= PageSize && PageSize % BlockSize == 0 && BlockOffsetT == 0) {
     // Each chunk affects one page only.
     for (const auto &It : FreeList) {
       // If dealing with a TransferBatch, the first pointer of the batch will
@@ -246,12 +251,13 @@ releaseFreeMemoryToOS(const IntrusiveList<TransferBatchT> &FreeList, uptr Base,
     // up the number of chunks on the current page and checking on every step
     // whether the page boundary was crossed.
     uptr PrevPageBoundary = 0;
-    uptr CurrentBoundary = 0;
+    uptr CurrentBoundary = BlockOffsetT;
     for (uptr I = 0; I < Counters.getCount(); I++) {
       const uptr PageBoundary = PrevPageBoundary + PageSize;
       uptr BlocksPerPage = Pn;
       if (CurrentBoundary < PageBoundary) {
-        if (CurrentBoundary > PrevPageBoundary)
+        if (CurrentBoundary != BlockOffsetT &&
+            CurrentBoundary > PrevPageBoundary)
           BlocksPerPage++;
         CurrentBoundary += Pnc;
         if (CurrentBoundary < PageBoundary) {

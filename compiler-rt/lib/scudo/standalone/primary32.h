@@ -38,15 +38,17 @@ namespace scudo {
 // Memory used by this allocator is never unmapped but can be partially
 // reclaimed if the platform allows for it.
 
-template <class SizeClassMapT, uptr RegionSizeLog> class SizeClassAllocator32 {
+template <class SizeClassMapT, uptr RegionSizeLog, uptr BlockOffsetT = 8>
+class SizeClassAllocator32 {
 public:
   typedef SizeClassMapT SizeClassMap;
   // Regions should be large enough to hold the largest Block.
   static_assert((1UL << RegionSizeLog) >= SizeClassMap::MaxSize, "");
-  typedef SizeClassAllocator32<SizeClassMapT, RegionSizeLog> ThisT;
+  typedef SizeClassAllocator32<SizeClassMapT, RegionSizeLog, BlockOffsetT> ThisT;
   typedef SizeClassAllocatorLocalCache<ThisT> CacheT;
   typedef typename CacheT::TransferBatch TransferBatch;
   static const bool SupportsMemoryTagging = false;
+  static const uptr BlockOffset = BlockOffsetT;
 
   static uptr getSizeByClassId(uptr ClassId) {
     return (ClassId == SizeClassMap::BatchClassId)
@@ -149,8 +151,9 @@ public:
     for (uptr I = MinRegionIndex; I <= MaxRegionIndex; I++)
       if (PossibleRegions[I]) {
         const uptr BlockSize = getSizeByClassId(PossibleRegions[I]);
-        const uptr From = I * RegionSize;
-        const uptr To = From + (RegionSize / BlockSize) * BlockSize;
+        const uptr From = I * RegionSize + BlockOffset;
+        const uptr To =
+            From + ((RegionSize - BlockOffset) / BlockSize) * BlockSize;
         for (uptr Block = From; Block < To; Block += BlockSize)
           Callback(Block);
       }
@@ -311,14 +314,15 @@ private:
     const uptr Size = getSizeByClassId(ClassId);
     const u32 MaxCount = TransferBatch::getMaxCached(Size);
     DCHECK_GT(MaxCount, 0);
-    const uptr NumberOfBlocks = RegionSize / Size;
+    const uptr NumberOfBlocks = (RegionSize - BlockOffset) / Size;
     DCHECK_GT(NumberOfBlocks, 0);
     TransferBatch *B = nullptr;
     constexpr u32 ShuffleArraySize = 8U * TransferBatch::MaxNumCached;
     void *ShuffleArray[ShuffleArraySize];
     u32 Count = 0;
     const uptr AllocatedUser = Size * NumberOfBlocks;
-    for (uptr I = Region; I < Region + AllocatedUser; I += Size) {
+    for (uptr I = Region + BlockOffset;
+         I < Region + BlockOffset + AllocatedUser; I += Size) {
       ShuffleArray[Count++] = reinterpret_cast<void *>(I);
       if (Count == ShuffleArraySize) {
         if (UNLIKELY(!populateBatches(C, Sci, ClassId, &B, MaxCount,
@@ -395,8 +399,9 @@ private:
     for (uptr I = MinRegionIndex; I <= MaxRegionIndex; I++) {
       if (PossibleRegions[I] == ClassId) {
         ReleaseRecorder Recorder(I * RegionSize);
-        releaseFreeMemoryToOS(Sci->FreeList, I * RegionSize,
-                              RegionSize / PageSize, BlockSize, &Recorder);
+        releaseFreeMemoryToOS<BlockOffset>(Sci->FreeList, I * RegionSize,
+                                           RegionSize / PageSize, BlockSize,
+                                           &Recorder);
         if (Recorder.getReleasedRangesCount() > 0) {
           Sci->ReleaseInfo.PushedBlocksAtLastRelease = Sci->Stats.PushedBlocks;
           Sci->ReleaseInfo.RangesReleased += Recorder.getReleasedRangesCount();

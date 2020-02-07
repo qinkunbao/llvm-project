@@ -190,8 +190,8 @@ template <class SizeClassMap> void testReleaseFreeMemoryToOS() {
 
     // Release the memory.
     ReleasedPagesRecorder Recorder;
-    releaseFreeMemoryToOS(FreeList, 0, AllocatedPagesCount, BlockSize,
-                          &Recorder);
+    releaseFreeMemoryToOS<0>(FreeList, 0, AllocatedPagesCount, BlockSize,
+                             &Recorder);
 
     // Verify that there are no released pages touched by used chunks and all
     // ranges of free chunks big enough to contain the entire memory pages had

@@ -51,6 +51,7 @@ public:
   typedef typename CacheT::TransferBatch TransferBatch;
   static const bool SupportsMemoryTagging =
       MaySupportMemoryTagging && archSupportsMemoryTagging();
+  static const uptr BlockOffset = 0U;
 
   static uptr getSizeByClassId(uptr ClassId) {
     return (ClassId == SizeClassMap::BatchClassId)
@@ -405,9 +406,10 @@ private:
     }
 
     ReleaseRecorder Recorder(Region->RegionBeg, &Region->Data);
-    releaseFreeMemoryToOS(Region->FreeList, Region->RegionBeg,
-                          roundUpTo(Region->AllocatedUser, PageSize) / PageSize,
-                          BlockSize, &Recorder);
+    releaseFreeMemoryToOS<0>(Region->FreeList, Region->RegionBeg,
+                             roundUpTo(Region->AllocatedUser, PageSize) /
+                                 PageSize,
+                             BlockSize, &Recorder);
 
     if (Recorder.getReleasedRangesCount() > 0) {
       Region->ReleaseInfo.PushedBlocksAtLastRelease =

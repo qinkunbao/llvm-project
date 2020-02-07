@@ -237,8 +237,7 @@ public:
     // to be sure that there will be an address in the block that will satisfy
     // the alignment.
     const uptr NeededSize =
-        roundUpTo(Size, MinAlignment) +
-        ((Alignment > MinAlignment) ? Alignment : Chunk::getHeaderSize());
+        Chunk::getHeaderSize() + Size + Alignment - MinAlignment;
 
     // Takes care of extravagantly large sizes as well as integer overflows.
     static_assert(MaxAllowedMallocSize < UINTPTR_MAX - MaxAlignment, "");
@@ -673,6 +672,14 @@ private:
   static_assert(!PrimaryT::SupportsMemoryTagging ||
                     MinAlignment >= archMemoryTagGranuleSize(),
                 "");
+
+  static_assert(
+      PrimaryT::BlockOffset == SecondaryT::BlockOffset,
+      "Block offset needs to be consistent between primary and secondary");
+  static_assert(
+      (Chunk::getHeaderSize() + PrimaryT::BlockOffset) % MinAlignment == 0,
+      "Adding a header to an address with a block offset needs to put us at "
+      "a minimally aligned address");
 
   static const u32 BlockMarker = 0x44554353U;
 

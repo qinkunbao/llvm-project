@@ -38,14 +38,6 @@ constexpr uptr getHeaderSize() {
   return roundUpTo(sizeof(Header), 1U << SCUDO_MIN_ALIGNMENT_LOG);
 }
 
-static Header *getHeader(uptr Ptr) {
-  return reinterpret_cast<Header *>(Ptr - getHeaderSize());
-}
-
-static Header *getHeader(const void *Ptr) {
-  return getHeader(reinterpret_cast<uptr>(Ptr));
-}
-
 } // namespace LargeBlock
 
 class MapAllocatorNoCache {
@@ -218,8 +210,10 @@ private:
   s32 ReleaseToOsIntervalMs;
 };
 
-template <class CacheT> class MapAllocator {
+template <class CacheT, uptr BlockOffsetT = 0U> class MapAllocator {
 public:
+  static const uptr BlockOffset = BlockOffsetT;
+
   void initLinkerInitialized(GlobalStats *S, s32 ReleaseToOsInterval = -1) {
     Cache.initLinkerInitialized(ReleaseToOsInterval);
     Stats.initLinkerInitialized();
@@ -236,8 +230,17 @@ public:
 
   void deallocate(void *Ptr);
 
+  static LargeBlock::Header *getLargeBlockHeader(uptr Ptr) {
+    return reinterpret_cast<LargeBlock::Header *>(Ptr - BlockOffset -
+                                                  LargeBlock::getHeaderSize());
+  }
+
+  static LargeBlock::Header *getLargeBlockHeader(const void *Ptr) {
+    return getLargeBlockHeader(reinterpret_cast<uptr>(Ptr));
+  }
+
   static uptr getBlockEnd(void *Ptr) {
-    return LargeBlock::getHeader(Ptr)->BlockEnd;
+    return getLargeBlockHeader(Ptr)->BlockEnd;
   }
 
   static uptr getBlockSize(void *Ptr) {
@@ -258,7 +261,8 @@ public:
 
   template <typename F> void iterateOverBlocks(F Callback) const {
     for (const auto &H : InUseBlocks)
-      Callback(reinterpret_cast<uptr>(&H) + LargeBlock::getHeaderSize());
+      Callback(reinterpret_cast<uptr>(&H) + LargeBlock::getHeaderSize() +
+               BlockOffset);
   }
 
   static uptr canCache(uptr Size) { return CacheT::canCache(Size); }
@@ -289,21 +293,24 @@ private:
 // For allocations requested with an alignment greater than or equal to a page,
 // the committed memory will amount to something close to Size - AlignmentHint
 // (pending rounding and headers).
-template <class CacheT>
-void *MapAllocator<CacheT>::allocate(uptr Size, uptr AlignmentHint,
-                                     uptr *BlockEnd, bool ZeroContents) {
+template <class CacheT, uptr BlockOffsetT>
+void *MapAllocator<CacheT, BlockOffsetT>::allocate(uptr Size,
+                                                   uptr AlignmentHint,
+                                                   uptr *BlockEnd,
+                                                   bool ZeroContents) {
   DCHECK_GE(Size, AlignmentHint);
   const uptr PageSize = getPageSizeCached();
   const uptr RoundedSize =
-      roundUpTo(Size + LargeBlock::getHeaderSize(), PageSize);
+      roundUpTo(Size + LargeBlock::getHeaderSize() + BlockOffset, PageSize);
 
   if (AlignmentHint < PageSize && CacheT::canCache(RoundedSize)) {
     LargeBlock::Header *H;
     if (Cache.retrieve(RoundedSize, &H)) {
       if (BlockEnd)
         *BlockEnd = H->BlockEnd;
-      void *Ptr = reinterpret_cast<void *>(reinterpret_cast<uptr>(H) +
-                                           LargeBlock::getHeaderSize());
+      void *Ptr =
+          reinterpret_cast<void *>(reinterpret_cast<uptr>(H) +
+                                   LargeBlock::getHeaderSize() + BlockOffset);
       if (ZeroContents)
         memset(Ptr, 0, H->BlockEnd - reinterpret_cast<uptr>(Ptr));
       const uptr BlockSize = H->BlockEnd - reinterpret_cast<uptr>(H);
@@ -375,11 +382,12 @@ void *MapAllocator<CacheT>::allocate(uptr Size, uptr AlignmentHint,
     Stats.add(StatAllocated, CommitSize);
     Stats.add(StatMapped, H->MapSize);
   }
-  return reinterpret_cast<void *>(Ptr + LargeBlock::getHeaderSize());
+  return reinterpret_cast<void *>(Ptr + LargeBlock::getHeaderSize() +
+                                  BlockOffset);
 }
 
-template <class CacheT> void MapAllocator<CacheT>::deallocate(void *Ptr) {
-  LargeBlock::Header *H = LargeBlock::getHeader(Ptr);
+template <class CacheT, uptr BlockOffsetT> void MapAllocator<CacheT, BlockOffsetT>::deallocate(void *Ptr) {
+  LargeBlock::Header *H = getLargeBlockHeader(Ptr);
   const uptr Block = reinterpret_cast<uptr>(H);
   const uptr CommitSize = H->BlockEnd - Block;
   {
@@ -398,8 +406,8 @@ template <class CacheT> void MapAllocator<CacheT>::deallocate(void *Ptr) {
   unmap(Addr, Size, UNMAP_ALL, &Data);
 }
 
-template <class CacheT>
-void MapAllocator<CacheT>::getStats(ScopedString *Str) const {
+template <class CacheT, uptr BlockOffsetT>
+void MapAllocator<CacheT, BlockOffsetT>::getStats(ScopedString *Str) const {
   Str->append(
       "Stats: MapAllocator: allocated %zu times (%zuK), freed %zu times "
       "(%zuK), remains %zu (%zuK) max %zuM\n",
