@@ -90,6 +90,7 @@ inline u32 getRandomModN(u32 *State, u32 N) {
 }
 
 template <typename T> inline void shuffle(T *A, u32 N, u32 *RandState) {
+  return;
   if (N <= 1)
     return;
   u32 State = *RandState;
