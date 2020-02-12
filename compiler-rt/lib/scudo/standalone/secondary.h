@@ -246,7 +246,7 @@ public:
 
   template <typename F> void iterateOverBlocks(F Callback) const {
     for (const auto &H : InUseBlocks)
-      Callback(reinterpret_cast<uptr>(&H) + LargeBlock::getHeaderSize());
+      Callback(reinterpret_cast<uptr>(&H) + LargeBlock::getHeaderSize(), 0);
   }
 
   static uptr canCache(uptr Size) { return CacheT::canCache(Size); }

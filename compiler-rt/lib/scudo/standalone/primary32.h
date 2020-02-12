@@ -154,7 +154,7 @@ public:
         const uptr From = I * RegionSize;
         const uptr To = From + (RegionSize / BlockSize) * BlockSize;
         for (uptr Block = From; Block < To; Block += BlockSize)
-          Callback(Block);
+          Callback(Block, PossibleRegions[I] - 1U);
       }
   }
 

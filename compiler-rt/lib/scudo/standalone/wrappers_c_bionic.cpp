@@ -6,6 +6,13 @@
 //
 //===----------------------------------------------------------------------===//
 
+#define private public
+
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+
 #include "platform.h"
 
 // This is only used when compiled as part of Bionic.

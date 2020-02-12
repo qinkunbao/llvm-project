@@ -109,7 +109,7 @@ TEST(ScudoSecondaryTest, SecondaryIterate) {
   const scudo::uptr PageSize = scudo::getPageSizeCached();
   for (scudo::uptr I = 0; I < 32U; I++)
     V.push_back(L->allocate((std::rand() % 16) * PageSize));
-  auto Lambda = [V](scudo::uptr Block) {
+  auto Lambda = [V](scudo::uptr Block, unsigned) {
     EXPECT_NE(std::find(V.begin(), V.end(), reinterpret_cast<void *>(Block)),
               V.end());
   };

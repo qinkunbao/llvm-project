@@ -587,7 +587,7 @@ public:
     initThreadMaybe();
     const uptr From = Base;
     const uptr To = Base + Size;
-    auto Lambda = [this, From, To, Callback, Arg](uptr Block) {
+    auto Lambda = [this, From, To, Callback, Arg](uptr Block, unsigned) {
       if (Block < From || Block >= To)
         return;
       uptr Chunk;

@@ -116,7 +116,7 @@ template <typename Primary> static void testIteratePrimary() {
     V.push_back(std::make_pair(ClassId, P));
   }
   scudo::uptr Found = 0;
-  auto Lambda = [V, &Found](scudo::uptr Block) {
+  auto Lambda = [V, &Found](scudo::uptr Block, unsigned) {
     for (const auto &Pair : V) {
       if (Pair.second == reinterpret_cast<void *>(Block))
         Found++;

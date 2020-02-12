@@ -195,6 +195,38 @@ INTERFACE WEAK int SCUDO_PREFIX(malloc_info)(UNUSED int options, FILE *stream) {
   for (scudo::uptr i = 0; i != max_size; ++i)
     if (sizes[i])
       fprintf(stream, "<alloc size=\"%lu\" count=\"%lu\"/>\n", i, sizes[i]);
+  uintptr_t Page = (uintptr_t)-1ull;
+  int PMFD = open("/proc/self/pagemap", O_RDONLY);
+  auto callback2 = [&](uintptr_t Block, unsigned ClassID) {
+    if (Block >> 12 != Page) {
+      Page = Block >> 12;
+      lseek(PMFD, Page * 8, SEEK_SET);
+      uint64_t flags;
+      read(PMFD, &flags, 8);
+      fprintf(stream, "\nPAGE %zx CID %d ", Page, ClassID);
+      if (flags >> 63) {
+        fprintf(stream, "P ");
+      }
+    }
+    scudo::uptr C;
+    scudo::Chunk::UnpackedHeader Header;
+    if (!SCUDO_ALLOCATOR.getChunkFromBlock(Block, &C, &Header)) {
+      fprintf(stream, "C");
+      return;
+    }
+
+    if (Header.State == scudo::Chunk::State::Allocated) {
+      fprintf(stream, "A");
+    } else if (Header.State == scudo::Chunk::State::Quarantined) {
+      fprintf(stream, "Q");
+    } else if (Header.State == scudo::Chunk::State::Available) {
+      fprintf(stream, "V");
+    } else {
+      fprintf(stream, "?");
+    }
+  };
+  SCUDO_ALLOCATOR.Primary.iterateOverBlocks(callback2);
+  close(PMFD);
   fputs("</malloc>\n", stream);
   SCUDO_PREFIX(free)(sizes);
   return 0;

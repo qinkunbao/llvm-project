@@ -161,7 +161,7 @@ public:
       const uptr From = Region->RegionBeg;
       const uptr To = From + Region->AllocatedUser;
       for (uptr Block = From; Block < To; Block += BlockSize)
-        Callback(Block);
+        Callback(Block, I);
     }
   }
 
