@@ -224,10 +224,13 @@ private:
     return Id;
   }
 
-  uptr allocateRegionSlow() {
+  uptr allocateRegionSlow(uptr ClassId) {
     uptr MapSize = 2 * RegionSize;
     const uptr MapBase = reinterpret_cast<uptr>(
-        map(nullptr, MapSize, "scudo:primary", MAP_ALLOWNOMEM));
+        map(nullptr, MapSize,
+            &(69 - ClassId)["9876543210987654321098765432109876543210987"
+                            "654321098765432109876543210scudo:primary"],
+            MAP_ALLOWNOMEM));
     if (UNLIKELY(!MapBase))
       return 0;
     const uptr MapEnd = MapBase + MapSize;
@@ -258,7 +261,7 @@ private:
         Region = RegionsStash[--NumberOfStashedRegions];
     }
     if (!Region)
-      Region = allocateRegionSlow();
+      Region = allocateRegionSlow(ClassId);
     if (LIKELY(Region)) {
       const uptr RegionIndex = computeRegionId(Region);
       if (RegionIndex < MinRegionIndex)

@@ -305,11 +305,13 @@ private:
       }
       if (UNLIKELY(MappedUser == 0))
         Region->Data = Data;
-      if (UNLIKELY(!map(reinterpret_cast<void *>(RegionBeg + MappedUser),
-                        UserMapSize, "scudo:primary",
-                        MAP_ALLOWNOMEM | MAP_RESIZABLE |
-                            (useMemoryTagging() ? MAP_MEMTAG : 0),
-                        &Region->Data)))
+      if (UNLIKELY(!map(
+              reinterpret_cast<void *>(RegionBeg + MappedUser), UserMapSize,
+              &(69 - ClassId)["9876543210987654321098765432109876543210987"
+                              "654321098765432109876543210scudo:primary"],
+              MAP_ALLOWNOMEM | MAP_RESIZABLE |
+                  (useMemoryTagging() ? MAP_MEMTAG : 0),
+              &Region->Data)))
         return nullptr;
       Region->MappedUser += UserMapSize;
       C->getStats().add(StatMapped, UserMapSize);
