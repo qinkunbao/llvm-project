@@ -44,8 +44,6 @@ namespace scudo {
 
 enum class Option { ReleaseInterval };
 
-enum { kStackSize = 1 };
-
 template <class Params, void (*PostInitCallback)(void) = EmptyCallback>
 class Allocator {
 public:
@@ -233,6 +231,15 @@ public:
     return Ptr;
   }
 
+  NOINLINE u64 collectStackTrace() {
+    enum { kStackSize = 64 };
+    uptr Stack[kStackSize];
+    uptr Size = android_unsafe_frame_pointer_chase(Stack, kStackSize);
+    Size = Min<uptr>(Size, kStackSize);
+    // + 2 to discard collectStackTrace() frame and allocator function frame.
+    return Depot.insert(Stack + 2, Stack + Size);
+  }
+
   NOINLINE void *allocate(uptr Size, Chunk::Origin Origin,
                           uptr Alignment = MinAlignment,
                           bool ZeroContents = false) {
@@ -384,10 +391,7 @@ public:
 
 #if SCUDO_ANDROID && __ANDROID_API__ == 10000
     if (UNLIKELY(Options.TrackAllocationStacks)) {
-      uptr Stack[kStackSize];
-      uptr Size = android_unsafe_frame_pointer_chase(Stack, kStackSize);
-      Size = Min<uptr>(Size, kStackSize);
-      *(u32 *)(((uptr)Ptr) - 8) = Depot.insert(Stack, Stack + Size);
+      *(u32 *)(((uptr)Ptr) - 8) = collectStackTrace();
       *(u32 *)(((uptr)Ptr) - 4) = 0;
     }
 #endif
@@ -543,12 +547,8 @@ public:
                             reinterpret_cast<uptr>(OldTaggedPtr) + NewSize,
                             BlockEnd);
 #if SCUDO_ANDROID && __ANDROID_API__ == 10000
-        if (UNLIKELY(Options.TrackAllocationStacks)) {
-          uptr Stack[kStackSize];
-          uptr Size = android_unsafe_frame_pointer_chase(Stack, kStackSize);
-          Size = Min<uptr>(Size, kStackSize);
-          *(u32 *)(((uptr)OldPtr) - 8) = Depot.insert(Stack, Stack + Size);
-        }
+        if (UNLIKELY(Options.TrackAllocationStacks))
+          *(u32 *)(((uptr)OldPtr) - 8) = collectStackTrace();
 #endif
         return OldTaggedPtr;
       }
@@ -825,12 +825,8 @@ private:
       setRandomTag(Ptr, Size, &TaggedBegin, &TaggedEnd);
     }
 #if SCUDO_ANDROID && __ANDROID_API__ == 10000
-    if (UNLIKELY(Options.TrackAllocationStacks)) {
-      uptr Stack[kStackSize];
-      uptr Size = android_unsafe_frame_pointer_chase(Stack, kStackSize);
-      Size = Min<uptr>(Size, kStackSize);
-      *(u32 *)(((uptr)Ptr) - 4) = Depot.insert(Stack, Stack + Size);
-    }
+    if (UNLIKELY(Options.TrackAllocationStacks))
+      *(u32 *)(((uptr)Ptr) - 4) = collectStackTrace();
 #endif
     // If the quarantine is disabled, the actual size of a chunk is 0 or larger
     // than the maximum allowed, we return a chunk directly to the backend.
