@@ -151,6 +151,7 @@ public:
     Options.ZeroContents = getFlags()->zero_contents;
     Options.DeallocTypeMismatch = getFlags()->dealloc_type_mismatch;
     Options.DeleteSizeMismatch = getFlags()->delete_size_mismatch;
+    Options.TrackAllocationStacks = false;
     Options.QuarantineMaxChunkSize =
         static_cast<u32>(getFlags()->quarantine_max_chunk_size);
 
@@ -380,7 +381,7 @@ public:
     }
 
 #if SCUDO_ANDROID && __ANDROID_API__ == 10000
-    if (TrackAllocationStacks) {
+    if (Options.TrackAllocationStacks) {
       uptr Stack[64];
       uptr Size = android_unsafe_frame_pointer_chase(Stack, 64);
       Size = Min<uptr>(Size, 64);
@@ -540,7 +541,7 @@ public:
                             reinterpret_cast<uptr>(OldTaggedPtr) + NewSize,
                             BlockEnd);
 #if SCUDO_ANDROID && __ANDROID_API__ == 10000
-        if (TrackAllocationStacks) {
+        if (Options.TrackAllocationStacks) {
           uptr Stack[64];
           uptr Size = android_unsafe_frame_pointer_chase(Stack, 64);
           Size = Min<uptr>(Size, 64U);
@@ -736,8 +737,6 @@ private:
 
   static const u32 BlockMarker = 0x44554353U;
 
-  static const bool TrackAllocationStacks = true;
-
   GlobalStats Stats;
   TSDRegistryT TSDRegistry;
   PrimaryT Primary;
@@ -752,6 +751,7 @@ private:
     u8 ZeroContents : 1;        // zero_contents
     u8 DeallocTypeMismatch : 1; // dealloc_type_mismatch
     u8 DeleteSizeMismatch : 1;  // delete_size_mismatch
+    u8 TrackAllocationStacks : 1;
     u32 QuarantineMaxChunkSize; // quarantine_max_chunk_size
   } Options;
 
@@ -822,7 +822,7 @@ private:
       setRandomTag(Ptr, Size, &TaggedBegin, &TaggedEnd);
     }
 #if SCUDO_ANDROID && __ANDROID_API__ == 10000
-    if (TrackAllocationStacks) {
+    if (Options.TrackAllocationStacks) {
       uptr Stack[64];
       uptr Size = android_unsafe_frame_pointer_chase(Stack, 64);
       Size = Min<uptr>(Size, 64);
