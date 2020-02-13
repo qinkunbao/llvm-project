@@ -742,7 +742,6 @@ private:
   PrimaryT Primary;
   SecondaryT Secondary;
   QuarantineT Quarantine;
-  StackDepot Depot;
 
   u32 Cookie;
 
@@ -758,6 +757,8 @@ private:
 #ifdef GWP_ASAN_HOOKS
   gwp_asan::GuardedPoolAllocator GuardedAlloc;
 #endif // GWP_ASAN_HOOKS
+
+  StackDepot Depot;
 
   // The following might get optimized out by the compiler.
   NOINLINE void performSanityChecks() {
