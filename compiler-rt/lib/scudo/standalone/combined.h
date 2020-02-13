@@ -44,6 +44,8 @@ namespace scudo {
 
 enum class Option { ReleaseInterval };
 
+enum { kStackSize = 1 };
+
 template <class Params, void (*PostInitCallback)(void) = EmptyCallback>
 class Allocator {
 public:
@@ -381,10 +383,10 @@ public:
     }
 
 #if SCUDO_ANDROID && __ANDROID_API__ == 10000
-    if (Options.TrackAllocationStacks) {
-      uptr Stack[64];
-      uptr Size = android_unsafe_frame_pointer_chase(Stack, 64);
-      Size = Min<uptr>(Size, 64);
+    if (UNLIKELY(Options.TrackAllocationStacks)) {
+      uptr Stack[kStackSize];
+      uptr Size = android_unsafe_frame_pointer_chase(Stack, kStackSize);
+      Size = Min<uptr>(Size, kStackSize);
       *(u32 *)(((uptr)Ptr) - 8) = Depot.insert(Stack, Stack + Size);
       *(u32 *)(((uptr)Ptr) - 4) = 0;
     }
@@ -541,10 +543,10 @@ public:
                             reinterpret_cast<uptr>(OldTaggedPtr) + NewSize,
                             BlockEnd);
 #if SCUDO_ANDROID && __ANDROID_API__ == 10000
-        if (Options.TrackAllocationStacks) {
-          uptr Stack[64];
-          uptr Size = android_unsafe_frame_pointer_chase(Stack, 64);
-          Size = Min<uptr>(Size, 64U);
+        if (UNLIKELY(Options.TrackAllocationStacks)) {
+          uptr Stack[kStackSize];
+          uptr Size = android_unsafe_frame_pointer_chase(Stack, kStackSize);
+          Size = Min<uptr>(Size, kStackSize);
           *(u32 *)(((uptr)OldPtr) - 8) = Depot.insert(Stack, Stack + Size);
         }
 #endif
@@ -823,10 +825,10 @@ private:
       setRandomTag(Ptr, Size, &TaggedBegin, &TaggedEnd);
     }
 #if SCUDO_ANDROID && __ANDROID_API__ == 10000
-    if (Options.TrackAllocationStacks) {
-      uptr Stack[64];
-      uptr Size = android_unsafe_frame_pointer_chase(Stack, 64);
-      Size = Min<uptr>(Size, 64);
+    if (UNLIKELY(Options.TrackAllocationStacks)) {
+      uptr Stack[kStackSize];
+      uptr Size = android_unsafe_frame_pointer_chase(Stack, kStackSize);
+      Size = Min<uptr>(Size, kStackSize);
       *(u32 *)(((uptr)Ptr) - 4) = Depot.insert(Stack, Stack + Size);
     }
 #endif
