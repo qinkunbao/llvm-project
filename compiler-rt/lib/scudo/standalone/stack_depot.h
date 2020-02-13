@@ -13,6 +13,30 @@
 
 namespace scudo {
 
+class MurMur2HashBuilder {
+  static const u32 m = 0x5bd1e995;
+  static const u32 seed = 0x9747b28c;
+  static const u32 r = 24;
+  u32 h;
+
+ public:
+  explicit MurMur2HashBuilder(u32 init = 0) { h = seed ^ init; }
+  void add(u32 k) {
+    k *= m;
+    k ^= k >> r;
+    k *= m;
+    h *= m;
+    h ^= k;
+  }
+  u32 get() {
+    u32 x = h;
+    x ^= x >> 13;
+    x *= m;
+    x ^= x >> 15;
+    return x;
+  }
+};
+
 class StackDepot {
   HybridMutex ring_end_mu;
   u32 ring_end;
@@ -25,19 +49,19 @@ class StackDepot {
   static const uptr kRingBits = 19;
   static const uptr kRingSize = 1 << kRingBits;
   static const uptr kRingMask = kRingSize - 1;
-  uptr ring[kRingSize];
+  u64 ring[kRingSize];
 
 public:
   u32 insert(uptr *begin, uptr *end) {
     MurMur2HashBuilder b;
     for (uptr *i = begin; i != end; ++i)
-      b.add(*i);
+      b.add(u32(*i));
     u32 hash = b.get();
 
     u32 pos = hash & kTabMask;
     u32 ring_pos = tab[pos];
-    uptr entry = ring[ring_pos];
-    uptr id = ((end - begin) << 33) | (uptr(hash) << 1) | 1;
+    u64 entry = ring[ring_pos];
+    u64 id = (u64(end - begin) << 33) | (u64(hash) << 1) | 1;
     if (entry == id)
       return hash;
 
@@ -56,15 +80,15 @@ public:
   bool find(u32 hash) {
     u32 pos = hash & kTabMask;
     u32 ring_pos = tab[pos];
-    uptr entry = ring[ring_pos];
-    uptr hash_with_tag_bit = (uptr(hash) << 1) | 1;
+    u64 entry = ring[ring_pos];
+    u64 hash_with_tag_bit = (u64(hash) << 1) | 1;
     if ((entry & 0x1ffffffff) != hash_with_tag_bit)
       return false;
     u32 size = entry >> 33;
     MurMur2HashBuilder b;
     for (uptr i = 0; i != size; ++i) {
       ring_pos = (ring_pos + 1) & kRingMask;
-      b.add(ring[ring_pos]);
+      b.add(u32(ring[ring_pos]));
     }
     return b.get() == hash;
   }

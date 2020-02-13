@@ -36,7 +36,7 @@ extern "C" inline void EmptyCallback() {}
 // This function is not part of the NDK so it does not appear in any public
 // header files. We only declare/use it when targeting the platform (i.e. API
 // level 10000).
-extern "C" size_t android_unsafe_frame_pointer_chase(uintptr_t *buf,
+extern "C" size_t android_unsafe_frame_pointer_chase(scudo::uptr *buf,
                                                      size_t num_entries);
 #endif
 
@@ -383,9 +383,9 @@ public:
     if (TrackAllocationStacks) {
       uptr Stack[64];
       uptr Size = android_unsafe_frame_pointer_chase(Stack, 64);
-      Size = std::min(Size, 64);
-      *(u32 *)(Ptr - 8) = Depot.insert(Stack, Stack + Size);
-      *(u32 *)(Ptr - 4) = 0;
+      Size = Min<uptr>(Size, 64);
+      *(u32 *)(((uptr)Ptr) - 8) = Depot.insert(Stack, Stack + Size);
+      *(u32 *)(((uptr)Ptr) - 4) = 0;
     }
 #endif
 
@@ -542,9 +542,9 @@ public:
 #if SCUDO_ANDROID && __ANDROID_API__ == 10000
         if (TrackAllocationStacks) {
           uptr Stack[64];
-          uptr Size = android_fast_backtrace(Stack, 64);
-          Size = std::min(Size, 64);
-          *(u32 *)(Ptr - 8) = Depot.insert(Stack, Stack + Size);
+          uptr Size = android_unsafe_frame_pointer_chase(Stack, 64);
+          Size = Min<uptr>(Size, 64U);
+          *(u32 *)(((uptr)OldPtr) - 8) = Depot.insert(Stack, Stack + Size);
         }
 #endif
         return OldTaggedPtr;
@@ -824,9 +824,9 @@ private:
 #if SCUDO_ANDROID && __ANDROID_API__ == 10000
     if (TrackAllocationStacks) {
       uptr Stack[64];
-      uptr Size = android_fast_backtrace(Stack, 64);
-      Size = std::min(Size, 64);
-      *(u32 *)(Ptr - 4) = Depot.insert(Stack, Stack + Size);
+      uptr Size = android_unsafe_frame_pointer_chase(Stack, 64);
+      Size = Min<uptr>(Size, 64);
+      *(u32 *)(((uptr)Ptr) - 4) = Depot.insert(Stack, Stack + Size);
     }
 #endif
     // If the quarantine is disabled, the actual size of a chunk is 0 or larger
