@@ -232,12 +232,29 @@ public:
   }
 
   NOINLINE u64 collectStackTrace() {
+#if SCUDO_ANDROID && __ANDROID_API__ == 10000
     enum { kStackSize = 64 };
     uptr Stack[kStackSize];
     uptr Size = android_unsafe_frame_pointer_chase(Stack, kStackSize);
     Size = Min<uptr>(Size, kStackSize);
     // + 2 to discard collectStackTrace() frame and allocator function frame.
     return Depot.insert(Stack + 2, Stack + Size);
+#else
+    return 0;
+#endif
+  }
+
+  void storeAllocationStackMaybe(void *Ptr) {
+    if (UNLIKELY(Options.TrackAllocationStacks)) {
+      *(u32 *)(((uptr)Ptr) - 8) = collectStackTrace();
+      *(u32 *)(((uptr)Ptr) - 4) = 0;
+    }
+  }
+
+  void storeDeallocationStackMaybe(void *Ptr) {
+    if (UNLIKELY(Options.TrackAllocationStacks)) {
+      *(u32 *)(((uptr)Ptr) - 4) = collectStackTrace();
+    }
   }
 
   NOINLINE void *allocate(uptr Size, Chunk::Origin Origin,
@@ -381,20 +398,15 @@ public:
         } else {
           TaggedPtr = prepareTaggedChunk(Ptr, Size, BlockEnd);
         }
-
+        storeAllocationStackMaybe(Ptr);
       } else if (UNLIKELY(ZeroContents)) {
         // This condition is not necessarily unlikely, but since memset is
         // costly, we might as well mark it as such.
         memset(Block, 0, PrimaryT::getSizeByClassId(ClassId));
       }
+    } else if (UNLIKELY(useMemoryTagging())) {
+      storeAllocationStackMaybe(Ptr);
     }
-
-#if SCUDO_ANDROID && __ANDROID_API__ == 10000
-    if (UNLIKELY(Options.TrackAllocationStacks)) {
-      *(u32 *)(((uptr)Ptr) - 8) = collectStackTrace();
-      *(u32 *)(((uptr)Ptr) - 4) = 0;
-    }
-#endif
 
     Chunk::UnpackedHeader Header = {};
     if (UNLIKELY(UnalignedUserPtr != UserPtr)) {
@@ -542,14 +554,13 @@ public:
                      : BlockEnd - (reinterpret_cast<uptr>(OldPtr) + NewSize)) &
             Chunk::SizeOrUnusedBytesMask;
         Chunk::compareExchangeHeader(Cookie, OldPtr, &NewHeader, &OldHeader);
-        if (UNLIKELY(ClassId && useMemoryTagging()))
-          resizeTaggedChunk(reinterpret_cast<uptr>(OldTaggedPtr) + OldSize,
-                            reinterpret_cast<uptr>(OldTaggedPtr) + NewSize,
-                            BlockEnd);
-#if SCUDO_ANDROID && __ANDROID_API__ == 10000
-        if (UNLIKELY(Options.TrackAllocationStacks))
-          *(u32 *)(((uptr)OldPtr) - 8) = collectStackTrace();
-#endif
+        if (UNLIKELY(useMemoryTagging())) {
+          if (ClassId)
+            resizeTaggedChunk(reinterpret_cast<uptr>(OldTaggedPtr) + OldSize,
+                              reinterpret_cast<uptr>(OldTaggedPtr) + NewSize,
+                              BlockEnd);
+          storeAllocationStackMaybe(OldPtr);
+        }
         return OldTaggedPtr;
       }
     }
@@ -820,14 +831,14 @@ private:
   void quarantineOrDeallocateChunk(void *Ptr, Chunk::UnpackedHeader *Header,
                                    uptr Size) {
     Chunk::UnpackedHeader NewHeader = *Header;
-    if (UNLIKELY(NewHeader.ClassId && useMemoryTagging())) {
-      uptr TaggedBegin, TaggedEnd;
-      setRandomTag(Ptr, Size, &TaggedBegin, &TaggedEnd);
+    if (UNLIKELY(useMemoryTagging())) {
+      storeDeallocationStackMaybe(Ptr);
+      if (NewHeader.ClassId) {
+        uptr TaggedBegin, TaggedEnd;
+        setRandomTag(Ptr, Size, &TaggedBegin, &TaggedEnd);
+      }
     }
-#if SCUDO_ANDROID && __ANDROID_API__ == 10000
-    if (UNLIKELY(Options.TrackAllocationStacks))
-      *(u32 *)(((uptr)Ptr) - 4) = collectStackTrace();
-#endif
+
     // If the quarantine is disabled, the actual size of a chunk is 0 or larger
     // than the maximum allowed, we return a chunk directly to the backend.
     // Logical Or can be short-circuited, which introduces unnecessary
