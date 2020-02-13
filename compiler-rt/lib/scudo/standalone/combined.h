@@ -737,6 +737,15 @@ private:
 
   static const u32 BlockMarker = 0x44554353U;
 
+  GlobalStats Stats;
+  TSDRegistryT TSDRegistry;
+  PrimaryT Primary;
+  SecondaryT Secondary;
+  QuarantineT Quarantine;
+  StackDepot Depot;
+
+  u32 Cookie;
+
   struct {
     u8 MayReturnNull : 1;       // may_return_null
     u8 ZeroContents : 1;        // zero_contents
@@ -745,15 +754,6 @@ private:
     u8 TrackAllocationStacks : 1;
     u32 QuarantineMaxChunkSize; // quarantine_max_chunk_size
   } Options;
-
-  u32 Cookie;
-
-  GlobalStats Stats;
-  TSDRegistryT TSDRegistry;
-  PrimaryT Primary;
-  SecondaryT Secondary;
-  QuarantineT Quarantine;
-  StackDepot Depot;
 
 #ifdef GWP_ASAN_HOOKS
   gwp_asan::GuardedPoolAllocator GuardedAlloc;
