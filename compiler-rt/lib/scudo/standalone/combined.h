@@ -151,7 +151,7 @@ public:
     Options.ZeroContents = getFlags()->zero_contents;
     Options.DeallocTypeMismatch = getFlags()->dealloc_type_mismatch;
     Options.DeleteSizeMismatch = getFlags()->delete_size_mismatch;
-    Options.TrackAllocationStacks = false;
+    Options.TrackAllocationStacks = true;
     Options.QuarantineMaxChunkSize =
         static_cast<u32>(getFlags()->quarantine_max_chunk_size);
 
@@ -398,15 +398,13 @@ public:
         } else {
           TaggedPtr = prepareTaggedChunk(Ptr, Size, BlockEnd);
         }
-        storeAllocationStackMaybe(Ptr);
       } else if (UNLIKELY(ZeroContents)) {
         // This condition is not necessarily unlikely, but since memset is
         // costly, we might as well mark it as such.
         memset(Block, 0, PrimaryT::getSizeByClassId(ClassId));
       }
-    } else if (UNLIKELY(useMemoryTagging())) {
-      storeAllocationStackMaybe(Ptr);
     }
+    storeAllocationStackMaybe(Ptr);
 
     Chunk::UnpackedHeader Header = {};
     if (UNLIKELY(UnalignedUserPtr != UserPtr)) {
@@ -559,8 +557,8 @@ public:
             resizeTaggedChunk(reinterpret_cast<uptr>(OldTaggedPtr) + OldSize,
                               reinterpret_cast<uptr>(OldTaggedPtr) + NewSize,
                               BlockEnd);
-          storeAllocationStackMaybe(OldPtr);
         }
+        storeAllocationStackMaybe(OldPtr);
         return OldTaggedPtr;
       }
     }
@@ -831,8 +829,8 @@ private:
   void quarantineOrDeallocateChunk(void *Ptr, Chunk::UnpackedHeader *Header,
                                    uptr Size) {
     Chunk::UnpackedHeader NewHeader = *Header;
+    storeDeallocationStackMaybe(Ptr);
     if (UNLIKELY(useMemoryTagging())) {
-      storeDeallocationStackMaybe(Ptr);
       if (NewHeader.ClassId) {
         uptr TaggedBegin, TaggedEnd;
         setRandomTag(Ptr, Size, &TaggedBegin, &TaggedEnd);
