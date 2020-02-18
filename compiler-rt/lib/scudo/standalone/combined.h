@@ -245,16 +245,22 @@ public:
   }
 
   void storeAllocationStackMaybe(void *Ptr) {
+    (void)Ptr;
+#ifdef __aarch64__
     if (UNLIKELY(Options.TrackAllocationStacks)) {
       *(u32 *)(((uptr)Ptr) - 8) = collectStackTrace();
       *(u32 *)(((uptr)Ptr) - 4) = 0;
     }
+#endif
   }
 
   void storeDeallocationStackMaybe(void *Ptr) {
+    (void)Ptr;
+#ifdef __aarch64__
     if (UNLIKELY(Options.TrackAllocationStacks)) {
       *(u32 *)(((uptr)Ptr) - 4) = collectStackTrace();
     }
+#endif
   }
 
   NOINLINE void *allocate(uptr Size, Chunk::Origin Origin,
