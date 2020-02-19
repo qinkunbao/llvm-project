@@ -238,7 +238,7 @@ public:
     uptr Size = android_unsafe_frame_pointer_chase(Stack, kStackSize);
     Size = Min<uptr>(Size, kStackSize);
     // + 2 to discard collectStackTrace() frame and allocator function frame.
-    return Depot.insert(Stack + 2, Stack + Size);
+    return Depot.insert(Stack + Min<uptr>(2, Size), Stack + Size);
 #else
     return 0;
 #endif
@@ -246,21 +246,17 @@ public:
 
   void storeAllocationStackMaybe(void *Ptr) {
     (void)Ptr;
-#ifdef __aarch64__
     if (UNLIKELY(Options.TrackAllocationStacks)) {
       *(u32 *)(((uptr)Ptr) - 8) = collectStackTrace();
       *(u32 *)(((uptr)Ptr) - 4) = 0;
     }
-#endif
   }
 
   void storeDeallocationStackMaybe(void *Ptr) {
     (void)Ptr;
-#ifdef __aarch64__
     if (UNLIKELY(Options.TrackAllocationStacks)) {
       *(u32 *)(((uptr)Ptr) - 4) = collectStackTrace();
     }
-#endif
   }
 
   NOINLINE void *allocate(uptr Size, Chunk::Origin Origin,
