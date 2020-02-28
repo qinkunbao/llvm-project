@@ -209,6 +209,62 @@ public:
   }
   void disableMemoryTagging() { UseMemoryTagging = false; }
 
+  uptr getRegionInfoArrayPointer() {
+    return reinterpret_cast<uptr>(RegionInfoArray);
+  }
+
+  uptr getRegionInfoArraySize() {
+    return sizeof(RegionInfoArray);
+  }
+
+  struct BlockInfo {
+    uptr BlockBegin;
+    uptr BlockSize;
+    uptr RegionBegin;
+    uptr RegionEnd;
+  };
+
+  static BlockInfo findNearestBlock(const char *RegionInfoData, uptr Ptr) {
+    const RegionInfo *RegionInfoArray =
+        reinterpret_cast<const RegionInfo *>(RegionInfoData);
+    uptr ClassId;
+    uptr MinDistance = -1ULL;
+    for (uptr I = 0; I != NumClasses; ++I) {
+      if (I == SizeClassMap::BatchClassId)
+        continue;
+      uptr Begin = RegionInfoArray[I].RegionBeg;
+      uptr End = Begin + RegionInfoArray[I].AllocatedUser;
+      uptr RegionDistance;
+      if (Begin <= Ptr) {
+        if (Ptr < End)
+          RegionDistance = 0;
+        else
+          RegionDistance = Ptr - End;
+      } else {
+        RegionDistance = Begin - Ptr;
+      }
+
+      if (RegionDistance < MinDistance) {
+        MinDistance = RegionDistance;
+        ClassId = I;
+      }
+    }
+
+    BlockInfo B = {};
+    if (MinDistance <= 8192) {
+      B.RegionBegin = RegionInfoArray[ClassId].RegionBeg;
+      B.RegionEnd = B.RegionBegin + RegionInfoArray[ClassId].AllocatedUser;
+      B.BlockSize = SizeClassMap::getSizeByClassId(ClassId);
+      B.BlockBegin =
+          B.RegionBegin + (Ptr - B.RegionBegin) / B.BlockSize * B.BlockSize;
+      while (B.BlockBegin < B.RegionBegin)
+        B.BlockBegin += B.BlockSize;
+      while (B.RegionEnd < B.BlockBegin + B.BlockSize)
+        B.BlockBegin -= B.BlockSize;
+    }
+    return B;
+  }
+
 private:
   static const uptr RegionSize = 1UL << RegionSizeLog;
   static const uptr NumClasses = SizeClassMap::NumClasses;

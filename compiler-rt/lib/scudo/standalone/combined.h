@@ -231,7 +231,7 @@ public:
     return Ptr;
   }
 
-  NOINLINE u64 collectStackTrace() {
+  NOINLINE u32 collectStackTrace() {
 #if SCUDO_ANDROID && __ANDROID_API__ == 10000
     enum { kStackSize = 64 };
     uptr Stack[kStackSize];
@@ -834,6 +834,8 @@ private:
     storeDeallocationStackMaybe(Ptr);
     if (UNLIKELY(useMemoryTagging())) {
       if (NewHeader.ClassId) {
+        NewHeader.SizeOrUnusedBytes =
+            loadTag(reinterpret_cast<uptr>(Ptr)) >> 56;
         uptr TaggedBegin, TaggedEnd;
         setRandomTag(Ptr, Size, &TaggedBegin, &TaggedEnd);
       }
