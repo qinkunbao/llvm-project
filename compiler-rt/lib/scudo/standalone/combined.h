@@ -731,6 +731,21 @@ public:
 
   void disableMemoryTagging() { Primary.disableMemoryTagging(); }
 
+  uptr getStackDepotAddress() {
+    return reinterpret_cast<uptr>(&Depot);
+  }
+
+  uptr getRegionInfoArrayAddress() {
+    return Primary.getRegionInfoArrayAddress();
+  }
+
+  static uptr getChunkOffsetFromBlock(const char *Block) {
+    u32 Offset = 0;
+    if (reinterpret_cast<const u32 *>(Block)[0] == BlockMarker)
+      Offset = reinterpret_cast<const u32 *>(Block)[1];
+    return Offset + Chunk::getHeaderSize();
+  }
+
 private:
   using SecondaryT = typename Params::Secondary;
   typedef typename PrimaryT::SizeClassMap SizeClassMap;
@@ -875,10 +890,8 @@ private:
 
   bool getChunkFromBlock(uptr Block, uptr *Chunk,
                          Chunk::UnpackedHeader *Header) {
-    u32 Offset = 0;
-    if (reinterpret_cast<u32 *>(Block)[0] == BlockMarker)
-      Offset = reinterpret_cast<u32 *>(Block)[1];
-    *Chunk = Block + Offset + Chunk::getHeaderSize();
+    *Chunk =
+        Block + getChunkOffsetFromBlock(reinterpret_cast<const char *>(Block));
     return Chunk::isValid(Cookie, reinterpret_cast<void *>(*Chunk), Header);
   }
 

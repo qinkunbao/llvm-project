@@ -209,7 +209,7 @@ public:
   }
   void disableMemoryTagging() { UseMemoryTagging = false; }
 
-  uptr getRegionInfoArrayPointer() {
+  uptr getRegionInfoArrayAddress() {
     return reinterpret_cast<uptr>(RegionInfoArray);
   }
 
