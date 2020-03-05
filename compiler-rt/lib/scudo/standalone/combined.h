@@ -731,12 +731,16 @@ public:
 
   void disableMemoryTagging() { Primary.disableMemoryTagging(); }
 
-  uptr getStackDepotAddress() {
-    return reinterpret_cast<uptr>(&Depot);
+  const char *getStackDepotAddress() const {
+    return reinterpret_cast<const char *>(&Depot);
   }
 
-  uptr getRegionInfoArrayAddress() {
+  const char *getRegionInfoArrayAddress() const {
     return Primary.getRegionInfoArrayAddress();
+  }
+
+  static uptr getRegionInfoArraySize() {
+    return PrimaryT::getRegionInfoArraySize();
   }
 
   void getErrorInfo(struct scudo_error_info *error_info, uintptr_t ptr,
@@ -747,8 +751,7 @@ public:
 
     uptr UntaggedPtr = untagPointer(ptr);
     u8 PtrTag = extractTag(ptr);
-    typename PrimaryT::BlockInfo Info =
-        PrimaryT::findNearestBlock(region_info, UntaggedPtr);
+    BlockInfo Info = PrimaryT::findNearestBlock(region_info, UntaggedPtr);
 
     auto GetGranule = [&](uptr Addr, const char **Data, uint8_t *Tag) -> bool {
       if (Addr < memory_addr || Addr >= memory_addr + memory_size)
@@ -756,6 +759,7 @@ public:
       *Data = &memory[Addr - memory_addr];
       *Tag = uint8_t(
           memory_tags[(Addr - memory_addr) / archMemoryTagGranuleSize()]);
+      return true;
     };
 
     auto *StackDepotPtr = reinterpret_cast<const StackDepot *>(stack_depot);
@@ -810,7 +814,7 @@ public:
       return true;
     };
 
-    if (CheckOOB(Info.BlockBegin, BUFFER_OVERFLOW))
+    if (CheckOOB(Info.BlockBegin))
       return;
 
     // Check for OOB in the 30 surrounding blocks. Beyond that we are likely to

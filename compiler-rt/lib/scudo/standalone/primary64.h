@@ -209,26 +209,19 @@ public:
   }
   void disableMemoryTagging() { UseMemoryTagging = false; }
 
-  uptr getRegionInfoArrayAddress() {
-    return reinterpret_cast<uptr>(RegionInfoArray);
+  const char *getRegionInfoArrayAddress() const {
+    return reinterpret_cast<const char *>(RegionInfoArray);
   }
 
-  uptr getRegionInfoArraySize() {
+  static uptr getRegionInfoArraySize() {
     return sizeof(RegionInfoArray);
   }
-
-  struct BlockInfo {
-    uptr BlockBegin;
-    uptr BlockSize;
-    uptr RegionBegin;
-    uptr RegionEnd;
-  };
 
   static BlockInfo findNearestBlock(const char *RegionInfoData, uptr Ptr) {
     const RegionInfo *RegionInfoArray =
         reinterpret_cast<const RegionInfo *>(RegionInfoData);
     uptr ClassId;
-    uptr MinDistance = -1ULL;
+    uptr MinDistance = -1UL;
     for (uptr I = 0; I != NumClasses; ++I) {
       if (I == SizeClassMap::BatchClassId)
         continue;

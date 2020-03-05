@@ -173,6 +173,13 @@ void NORETURN dieOnMapUnmapError(bool OutOfMemory = false);
 
 void setAbortMessage(const char *Message);
 
+struct BlockInfo {
+  uptr BlockBegin;
+  uptr BlockSize;
+  uptr RegionBegin;
+  uptr RegionEnd;
+};
+
 } // namespace scudo
 
 #endif // SCUDO_COMMON_H_
