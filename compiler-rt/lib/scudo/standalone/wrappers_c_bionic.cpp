@@ -48,4 +48,13 @@ static scudo::Allocator<scudo::AndroidSvelteConfig,
 // TODO(kostyak): support both allocators.
 INTERFACE void __scudo_print_stats(void) { Allocator.printStats(); }
 
+INTERFACE void
+__scudo_get_error_info(struct scudo_allocation_info *alloc_info,
+                       const char *stack_depot, const char *region_info,
+                       const char *memory, const char *memory_tags,
+                       uintptr_t memory_addr, size_t memory_size) {
+  Allocator.getErrorInfo(alloc_info, stack_depot, region_info, memory,
+                         memory_tags, memory_addr, memory_size);
+}
+
 #endif // SCUDO_ANDROID && _BIONIC

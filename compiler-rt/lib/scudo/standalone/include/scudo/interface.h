@@ -22,6 +22,26 @@ void __scudo_print_stats(void);
 
 typedef void (*iterate_callback)(uintptr_t base, size_t size, void *arg);
 
+enum scudo_error_type {
+  UNKNOWN,
+  USE_AFTER_FREE,
+  BUFFER_OVERFLOW,
+  BUFFER_UNDERFLOW,
+};
+
+struct scudo_error_info {
+  enum scudo_error_type error_type;
+
+  uintptr_t allocation_trace[64];
+  uintptr_t deallocation_trace[64];
+};
+
+INTERFACE void
+__scudo_get_error_info(struct scudo_error_info *error_info,
+                       const char *stack_depot, const char *region_info,
+                       const char *memory, const char *memory_tags,
+                       uintptr_t memory_addr, size_t memory_size);
+
 } // extern "C"
 
 #endif // SCUDO_INTERFACE_H_

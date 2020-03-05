@@ -167,6 +167,10 @@ inline uptr loadTag(uptr Ptr) {
   return TaggedPtr;
 }
 
+inline uint8_t extractTag(uptr Ptr) {
+  return Ptr >> 56;
+}
+
 #else
 
 inline constexpr bool archSupportsMemoryTagging() { return false; }
@@ -220,6 +224,11 @@ inline void resizeTaggedChunk(uptr OldPtr, uptr NewPtr, uptr BlockEnd) {
 }
 
 inline uptr loadTag(uptr Ptr) {
+  (void)Ptr;
+  UNREACHABLE("memory tagging not supported");
+}
+
+inline uint8_t extractTag(uptr Ptr) {
   (void)Ptr;
   UNREACHABLE("memory tagging not supported");
 }

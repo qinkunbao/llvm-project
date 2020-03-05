@@ -739,6 +739,88 @@ public:
     return Primary.getRegionInfoArrayAddress();
   }
 
+  void getErrorInfo(struct scudo_error_info *error_info, uintptr_t ptr,
+                    const char *stack_depot, const char *region_info,
+                    const char *memory, const char *memory_tags,
+                    uintptr_t memory_addr, size_t memory_size) {
+    error_info = {};
+
+    uptr UntaggedPtr = untagPointer(ptr);
+    u8 PtrTag = extractTag(ptr);
+    typename PrimaryT::BlockInfo Info =
+        PrimaryT::findNearestBlock(region_info, UntaggedPtr);
+
+    auto GetGranule = [&](uptr Addr, const char **Data, uint8_t *Tag) -> bool {
+      if (Addr < memory_addr || Addr >= memory_addr + memory_size)
+        return false;
+      *Data = &memory[Addr - memory_addr];
+      *Tag = uint8_t(
+          memory_tags[(Addr - memory_addr) / archMemoryTagGranuleSize()]);
+    };
+
+    auto *StackDepotPtr = reinterpret_cast<const StackDepot *>(stack_depot);
+
+    auto MaybeCollectTrace = [&](uintptr_t(&Trace)[64], const char *HashPtr) {
+      auto Hash = *reinterpret_cast<const uint32_t *>(HashPtr);
+      uptr RingPos, Size;
+      if (!StackDepotPtr->find(Hash, &RingPos, &Size))
+        return;
+      for (unsigned I = 0; I != Size && I != 64; ++I)
+        Trace[I] = (*StackDepotPtr)[RingPos + I];
+    };
+
+    // First, check for UAF.
+    {
+      const char *Data;
+      uint8_t Tag;
+      if (GetGranule(Info.BlockBegin, &Data, &Tag)) {
+        uptr ChunkOffset = getChunkOffsetFromBlock(Data);
+        if (GetGranule(Info.BlockBegin + ChunkOffset - Chunk::getHeaderSize(),
+                       &Data, &Tag)) {
+          auto Header = *reinterpret_cast<const Chunk::UnpackedHeader *>(Data);
+          if (Header.State != Chunk::State::Allocated &&
+              Header.SizeOrUnusedBytes == PtrTag) {
+            error_info->error_type = USE_AFTER_FREE;
+            MaybeCollectTrace(error_info->allocation_trace, Data + 8);
+            MaybeCollectTrace(error_info->deallocation_trace, Data + 12);
+            return;
+          }
+        }
+      }
+    }
+
+    auto CheckOOB = [&](uptr BlockAddr) {
+      if (BlockAddr < Info.RegionBegin || BlockAddr >= Info.RegionEnd)
+        return false;
+      const char *Data;
+      uint8_t Tag;
+      if (!GetGranule(BlockAddr, &Data, &Tag))
+        return false;
+      uptr ChunkOffset = getChunkOffsetFromBlock(Data);
+      if (!GetGranule(BlockAddr + ChunkOffset, &Data, &Tag))
+        return false;
+      if (Tag != PtrTag)
+        return false;
+      if (UntaggedPtr < BlockAddr + ChunkOffset) {
+        error_info->error_type = BUFFER_UNDERFLOW;
+      } else {
+        error_info->error_type = BUFFER_OVERFLOW;
+      }
+      MaybeCollectTrace(error_info->allocation_trace, Data + 8);
+      return true;
+    };
+
+    if (CheckOOB(Info.BlockBegin, BUFFER_OVERFLOW))
+      return;
+
+    // Check for OOB in the 30 surrounding blocks. Beyond that we are likely to
+    // hit false positives.
+    for (int I = 1; I != 16; ++I)
+      if (CheckOOB(Info.BlockBegin + I * Info.BlockSize) ||
+          CheckOOB(Info.BlockBegin - I * Info.BlockSize))
+        return;
+  }
+
   static uptr getChunkOffsetFromBlock(const char *Block) {
     u32 Offset = 0;
     if (reinterpret_cast<const u32 *>(Block)[0] == BlockMarker)
@@ -850,7 +932,7 @@ private:
     if (UNLIKELY(useMemoryTagging())) {
       if (NewHeader.ClassId) {
         NewHeader.SizeOrUnusedBytes =
-            loadTag(reinterpret_cast<uptr>(Ptr)) >> 56;
+            extractTag(loadTag(reinterpret_cast<uptr>(Ptr)));
         uptr TaggedBegin, TaggedEnd;
         setRandomTag(Ptr, Size, &TaggedBegin, &TaggedEnd);
       }

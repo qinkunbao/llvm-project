@@ -77,7 +77,7 @@ public:
     return hash;
   }
 
-  bool find(u32 hash) {
+  bool find(u32 hash, uptr *ring_pos_ptr, uptr *size_ptr) const {
     u32 pos = hash & kTabMask;
     u32 ring_pos = tab[pos];
     u64 entry = ring[ring_pos];
@@ -85,6 +85,8 @@ public:
     if ((entry & 0x1ffffffff) != hash_with_tag_bit)
       return false;
     u32 size = entry >> 33;
+    *ring_pos_ptr = (ring_pos + 1) & kRingMask;
+    *size_ptr = size;
     MurMur2HashBuilder b;
     for (uptr i = 0; i != size; ++i) {
       ring_pos = (ring_pos + 1) & kRingMask;
@@ -92,6 +94,8 @@ public:
     }
     return b.get() == hash;
   }
+
+  u64 operator[](uptr ring_pos) const { return ring[ring_pos & kRingMask]; }
 };
 
 } // namespace scudo
