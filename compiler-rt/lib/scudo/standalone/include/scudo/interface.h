@@ -9,6 +9,8 @@
 #ifndef SCUDO_INTERFACE_H_
 #define SCUDO_INTERFACE_H_
 
+#include <stddef.h>
+
 extern "C" {
 
 __attribute__((weak)) const char *__scudo_default_options();
@@ -32,15 +34,22 @@ enum scudo_error_type {
 struct scudo_error_info {
   enum scudo_error_type error_type;
 
+  uintptr_t allocation_address;
+  uintptr_t allocation_size;
+
   uintptr_t allocation_trace[64];
   uintptr_t deallocation_trace[64];
 };
 
-INTERFACE void
-__scudo_get_error_info(struct scudo_error_info *error_info,
-                       const char *stack_depot, const char *region_info,
-                       const char *memory, const char *memory_tags,
-                       uintptr_t memory_addr, size_t memory_size);
+void __scudo_get_error_info(struct scudo_error_info *error_info, uintptr_t ptr,
+                            const char *stack_depot, const char *region_info,
+                            const char *memory, const char *memory_tags,
+                            uintptr_t memory_addr, size_t memory_size);
+
+const char *__scudo_get_stack_depot_addr();
+size_t __scudo_get_stack_depot_size();
+const char *__scudo_get_region_info_addr();
+size_t __scudo_get_region_info_size();
 
 } // extern "C"
 
