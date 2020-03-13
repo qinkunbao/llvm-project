@@ -747,7 +747,7 @@ public:
                     const char *stack_depot, const char *region_info,
                     const char *memory, const char *memory_tags,
                     uintptr_t memory_addr, size_t memory_size) {
-    error_info = {};
+    *error_info = {};
 
     uptr UntaggedPtr = untagPointer(ptr);
     u8 PtrTag = extractTag(ptr);
