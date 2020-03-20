@@ -748,6 +748,8 @@ public:
                     const char *memory, const char *memory_tags,
                     uintptr_t memory_addr, size_t memory_size) {
     *error_info = {};
+    if (!useMemoryTagging())
+      return;
 
     uptr UntaggedPtr = untagPointer(ptr);
     u8 PtrTag = extractTag(ptr);
