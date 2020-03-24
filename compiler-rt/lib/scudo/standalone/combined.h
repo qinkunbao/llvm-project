@@ -30,8 +30,6 @@
 #include "gwp_asan/optional/segv_handler.h"
 #endif // GWP_ASAN_HOOKS
 
-#include <android/log.h>
-
 extern "C" inline void EmptyCallback() {}
 
 #if SCUDO_ANDROID && __ANDROID_API__ == 10000
@@ -749,8 +747,6 @@ public:
                            const char *stack_depot, const char *region_info,
                            const char *memory, const char *memory_tags,
                            uintptr_t memory_addr, size_t memory_size) {
-    __android_log_write(ANDROID_LOG_INFO, "scudo", "in getErrorInfo");
-
     *error_info = {};
     if (!PrimaryT::SupportsMemoryTagging)
       return;
@@ -779,32 +775,21 @@ public:
         Trace[I] = (*StackDepotPtr)[RingPos + I];
     };
 
-    __android_log_write(ANDROID_LOG_INFO, "scudo",
-                        "about to check UAF for main block");
     // First, check for UAF.
     {
       const char *Data;
       uint8_t Tag;
       if (GetGranule(Info.BlockBegin, &Data, &Tag)) {
-        __android_log_write(ANDROID_LOG_INFO, "scudo", "UAF 1");
         uptr ChunkOffset = getChunkOffsetFromBlock(Data);
-        __android_log_write(ANDROID_LOG_INFO, "scudo", "UAF 2");
         if (GetGranule(Info.BlockBegin + ChunkOffset - Chunk::getHeaderSize(),
                        &Data, &Tag)) {
-          __android_log_write(ANDROID_LOG_INFO, "scudo", "UAF 3");
           auto Header = *reinterpret_cast<const Chunk::UnpackedHeader *>(Data);
           if (Header.State != Chunk::State::Allocated &&
               Header.SizeOrUnusedBytes == PtrTag) {
-            __android_log_write(ANDROID_LOG_INFO, "scudo", "UAF 4");
-            __android_log_print(ANDROID_LOG_INFO, "scudo", "error_info = %p", error_info);
             error_info->error_type = USE_AFTER_FREE;
             error_info->allocation_address = Info.BlockBegin;
-            __android_log_write(ANDROID_LOG_INFO, "scudo", "UAF 5");
             MaybeCollectTrace(error_info->allocation_trace, Data + 8);
-            __android_log_write(ANDROID_LOG_INFO, "scudo", "UAF 6");
             MaybeCollectTrace(error_info->deallocation_trace, Data + 12);
-            __android_log_write(ANDROID_LOG_INFO, "scudo",
-                                "UAF check succeeded");
             return;
           }
         }
@@ -833,12 +818,8 @@ public:
       return true;
     };
 
-    __android_log_write(ANDROID_LOG_INFO, "scudo",
-                        "about to check OOB for main block");
     if (CheckOOB(Info.BlockBegin))
       return;
-    __android_log_write(ANDROID_LOG_INFO, "scudo",
-                        "check OOB for main block failed");
 
     // Check for OOB in the 30 surrounding blocks. Beyond that we are likely to
     // hit false positives.
