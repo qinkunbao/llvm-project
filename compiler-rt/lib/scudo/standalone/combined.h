@@ -745,14 +745,14 @@ public:
     return PrimaryT::getRegionInfoArraySize();
   }
 
-  void getErrorInfo(struct scudo_error_info *error_info, uintptr_t ptr,
-                    const char *stack_depot, const char *region_info,
-                    const char *memory, const char *memory_tags,
-                    uintptr_t memory_addr, size_t memory_size) {
+  static void getErrorInfo(struct scudo_error_info *error_info, uintptr_t ptr,
+                           const char *stack_depot, const char *region_info,
+                           const char *memory, const char *memory_tags,
+                           uintptr_t memory_addr, size_t memory_size) {
     __android_log_write(ANDROID_LOG_INFO, "scudo", "in getErrorInfo");
 
     *error_info = {};
-    if (!useMemoryTagging())
+    if (!PrimaryT::SupportsMemoryTagging)
       return;
 
     uptr UntaggedPtr = untagPointer(ptr);
