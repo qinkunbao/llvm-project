@@ -752,11 +752,16 @@ public:
     __android_log_write(ANDROID_LOG_INFO, "scudo", "in getErrorInfo");
 
     *error_info = {};
-    if (!PrimaryT::SupportsMemoryTagging)
+    if (!PrimaryT::SupportsMemoryTagging) {
+      __android_log_write(ANDROID_LOG_INFO, "scudo", "return because !useMemoryTagging");
       return;
+    }
 
+    __android_log_write(ANDROID_LOG_INFO, "scudo", "untagPointer");
     uptr UntaggedPtr = untagPointer(ptr);
+    __android_log_write(ANDROID_LOG_INFO, "scudo", "extractTag");
     u8 PtrTag = extractTag(ptr);
+    __android_log_write(ANDROID_LOG_INFO, "scudo", "findNearestBlock");
     BlockInfo Info = PrimaryT::findNearestBlock(region_info, UntaggedPtr);
 
     auto GetGranule = [&](uptr Addr, const char **Data, uint8_t *Tag) -> bool {
