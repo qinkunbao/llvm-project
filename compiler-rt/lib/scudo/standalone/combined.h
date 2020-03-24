@@ -30,6 +30,8 @@
 #include "gwp_asan/optional/segv_handler.h"
 #endif // GWP_ASAN_HOOKS
 
+#include <android/log.h>
+
 extern "C" inline void EmptyCallback() {}
 
 #if SCUDO_ANDROID && __ANDROID_API__ == 10000
@@ -768,9 +770,13 @@ public:
 
     auto MaybeCollectTrace = [&](uintptr_t(&Trace)[64], const char *HashPtr) {
       auto Hash = *reinterpret_cast<const uint32_t *>(HashPtr);
+      __android_log_print(ANDROID_LOG_INFO, "scudo", "hash = %u", Hash);
       uptr RingPos, Size;
-      if (!StackDepotPtr->find(Hash, &RingPos, &Size))
+      if (!StackDepotPtr->find(Hash, &RingPos, &Size)) {
+        __android_log_print(ANDROID_LOG_INFO, "scudo", "could not find stack");
         return;
+      }
+      __android_log_print(ANDROID_LOG_INFO, "scudo", "found size = %lu", Size);
       for (unsigned I = 0; I != Size && I != 64; ++I)
         Trace[I] = (*StackDepotPtr)[RingPos + I];
     };
