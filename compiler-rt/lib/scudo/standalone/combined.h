@@ -820,7 +820,9 @@ public:
         error_info->error_type = BUFFER_OVERFLOW;
       }
       error_info->allocation_address = BlockAddr;
-      MaybeCollectTrace(error_info->allocation_trace, Data + 8);
+      if (GetGranule(BlockAddr + ChunkOffset - Chunk::getHeaderSize(), &Data,
+                     &Tag))
+        MaybeCollectTrace(error_info->allocation_trace, Data + 8);
       return true;
     };
 
