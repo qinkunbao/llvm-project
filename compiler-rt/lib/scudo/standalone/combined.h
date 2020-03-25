@@ -791,9 +791,10 @@ public:
                        &Data, &Tag)) {
           auto Header = *reinterpret_cast<const Chunk::UnpackedHeader *>(Data);
           if (Header.State != Chunk::State::Allocated &&
-              Header.SizeOrUnusedBytes == PtrTag) {
+              Header.Offset == PtrTag) {
             error_info->error_type = USE_AFTER_FREE;
             error_info->allocation_address = Info.BlockBegin + ChunkOffset;
+            error_info->allocation_size = Header.SizeOrUnusedBytes;
             MaybeCollectTrace(error_info->allocation_trace, Data + 8);
             MaybeCollectTrace(error_info->deallocation_trace, Data + 12);
             return;
@@ -821,8 +822,11 @@ public:
       }
       error_info->allocation_address = BlockAddr + ChunkOffset;
       if (GetGranule(BlockAddr + ChunkOffset - Chunk::getHeaderSize(), &Data,
-                     &Tag))
+                     &Tag)) {
+        auto Header = *reinterpret_cast<const Chunk::UnpackedHeader *>(Data);
+        error_info->allocation_size = Header.SizeOrUnusedBytes;
         MaybeCollectTrace(error_info->allocation_trace, Data + 8);
+      }
       return true;
     };
 
@@ -947,8 +951,7 @@ private:
     storeDeallocationStackMaybe(Ptr);
     if (UNLIKELY(useMemoryTagging())) {
       if (NewHeader.ClassId) {
-        NewHeader.SizeOrUnusedBytes =
-            extractTag(loadTag(reinterpret_cast<uptr>(Ptr)));
+        NewHeader.Offset = extractTag(loadTag(reinterpret_cast<uptr>(Ptr)));
         uptr TaggedBegin, TaggedEnd;
         setRandomTag(Ptr, Size, &TaggedBegin, &TaggedEnd);
       }
