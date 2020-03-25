@@ -793,7 +793,7 @@ public:
           if (Header.State != Chunk::State::Allocated &&
               Header.SizeOrUnusedBytes == PtrTag) {
             error_info->error_type = USE_AFTER_FREE;
-            error_info->allocation_address = Info.BlockBegin;
+            error_info->allocation_address = Info.BlockBegin + ChunkOffset;
             MaybeCollectTrace(error_info->allocation_trace, Data + 8);
             MaybeCollectTrace(error_info->deallocation_trace, Data + 12);
             return;
@@ -819,7 +819,7 @@ public:
       } else {
         error_info->error_type = BUFFER_OVERFLOW;
       }
-      error_info->allocation_address = BlockAddr;
+      error_info->allocation_address = BlockAddr + ChunkOffset;
       if (GetGranule(BlockAddr + ChunkOffset - Chunk::getHeaderSize(), &Data,
                      &Tag))
         MaybeCollectTrace(error_info->allocation_trace, Data + 8);
