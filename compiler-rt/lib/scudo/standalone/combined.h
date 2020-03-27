@@ -31,6 +31,7 @@
 #endif // GWP_ASAN_HOOKS
 
 #include <android/log.h>
+#include <unistd.h>
 
 extern "C" inline void EmptyCallback() {}
 
@@ -399,6 +400,8 @@ public:
             PrevEnd = NextPage;
           TaggedPtr = reinterpret_cast<void *>(TaggedUserPtr);
           resizeTaggedChunk(PrevEnd, TaggedUserPtr + Size, BlockEnd);
+          if (ZeroContents && Size)
+            *reinterpret_cast<char *>(TaggedPtr) = 0;
         } else {
           TaggedPtr = prepareTaggedChunk(Ptr, Size, BlockEnd);
         }
@@ -790,14 +793,17 @@ public:
         if (GetGranule(Info.BlockBegin + ChunkOffset - Chunk::getHeaderSize(),
                        &Data, &Tag)) {
           auto Header = *reinterpret_cast<const Chunk::UnpackedHeader *>(Data);
-          if (Header.State != Chunk::State::Allocated &&
-              Header.Offset == PtrTag) {
-            error_info->error_type = USE_AFTER_FREE;
-            error_info->allocation_address = Info.BlockBegin + ChunkOffset;
-            error_info->allocation_size = Header.SizeOrUnusedBytes;
-            MaybeCollectTrace(error_info->allocation_trace, Data + 8);
-            MaybeCollectTrace(error_info->deallocation_trace, Data + 12);
-            return;
+          if (Header.State != Chunk::State::Allocated) {
+            if (GetGranule(Info.BlockBegin + ChunkOffset, &Data, &Tag)) {
+              if (*Data == PtrTag) {
+                error_info->error_type = USE_AFTER_FREE;
+                error_info->allocation_address = Info.BlockBegin + ChunkOffset;
+                error_info->allocation_size = Header.SizeOrUnusedBytes;
+                MaybeCollectTrace(error_info->allocation_trace, Data - 8);
+                MaybeCollectTrace(error_info->deallocation_trace, Data - 4);
+                return;
+              }
+            }
           }
         }
       }
@@ -951,9 +957,24 @@ private:
     storeDeallocationStackMaybe(Ptr);
     if (UNLIKELY(useMemoryTagging())) {
       if (NewHeader.ClassId) {
-        NewHeader.Offset = extractTag(loadTag(reinterpret_cast<uptr>(Ptr)));
+        uint8_t PrevTag = extractTag(loadTag(reinterpret_cast<uptr>(Ptr)));
+        (void)PrevTag;
         uptr TaggedBegin, TaggedEnd;
         setRandomTag(Ptr, Size, &TaggedBegin, &TaggedEnd);
+#if 1
+#ifdef __aarch64__
+        size_t prev_tco_;
+        __asm__ __volatile__(".arch_extension mte; mrs %0, tco; msr tco, #1"
+                             : "=r"(prev_tco_));
+#endif
+        // if (getpid() > 250)
+          *reinterpret_cast<uint8_t *>(TaggedBegin) = PrevTag;
+#ifdef __aarch64__
+        __asm__ __volatile__(".arch_extension mte; msr tco, %0"
+                             :
+                             : "r"(prev_tco_));
+#endif
+#endif
       }
     }
 
