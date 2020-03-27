@@ -961,19 +961,16 @@ private:
         (void)PrevTag;
         uptr TaggedBegin, TaggedEnd;
         setRandomTag(Ptr, Size, &TaggedBegin, &TaggedEnd);
-#if 1
 #ifdef __aarch64__
         size_t prev_tco_;
         __asm__ __volatile__(".arch_extension mte; mrs %0, tco; msr tco, #1"
                              : "=r"(prev_tco_));
 #endif
-        // if (getpid() > 250)
-          *reinterpret_cast<uint8_t *>(TaggedBegin) = PrevTag;
+        *reinterpret_cast<uint8_t *>(TaggedBegin) = PrevTag;
 #ifdef __aarch64__
         __asm__ __volatile__(".arch_extension mte; msr tco, %0"
                              :
                              : "r"(prev_tco_));
-#endif
 #endif
       }
     }
