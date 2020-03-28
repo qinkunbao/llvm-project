@@ -37,7 +37,10 @@ struct scudo_error_info {
   uintptr_t allocation_address;
   uintptr_t allocation_size;
 
+  uint32_t allocation_tid;
   uintptr_t allocation_trace[64];
+
+  uint32_t deallocation_tid;
   uintptr_t deallocation_trace[64];
 };
 

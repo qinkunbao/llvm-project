@@ -24,6 +24,8 @@
 
 #include "scudo/interface.h"
 
+#include <unistd.h>
+
 #ifdef GWP_ASAN_HOOKS
 #include "gwp_asan/guarded_pool_allocator.h"
 #include "gwp_asan/optional/backtrace.h"
@@ -247,15 +249,31 @@ public:
   void storeAllocationStackMaybe(void *Ptr) {
     (void)Ptr;
     if (UNLIKELY(Options.TrackAllocationStacks)) {
-      *(u32 *)(((uptr)Ptr) - 8) = collectStackTrace();
-      *(u32 *)(((uptr)Ptr) - 4) = 0;
+      auto *Ptr32 = reinterpret_cast<u32 *>(Ptr);
+      Ptr32[-2] = collectStackTrace();
+      Ptr32[-1] = gettid();
     }
   }
 
-  void storeDeallocationStackMaybe(void *Ptr) {
+  void storeDeallocationStackMaybe(void *Ptr, uint8_t PrevTag) {
     (void)Ptr;
     if (UNLIKELY(Options.TrackAllocationStacks)) {
-      *(u32 *)(((uptr)Ptr) - 4) = collectStackTrace();
+#ifdef __aarch64__
+        size_t prev_tco_;
+        if (useMemoryTagging())
+          __asm__ __volatile__(".arch_extension mte; mrs %0, tco; msr tco, #1"
+                               : "=r"(prev_tco_));
+#endif
+      auto *Ptr32 = reinterpret_cast<u32 *>(Ptr);
+      Ptr32[0] = collectStackTrace();
+      Ptr32[1] = gettid();
+      Ptr32[2] = PrevTag;
+#ifdef __aarch64__
+        if (useMemoryTagging())
+          __asm__ __volatile__(".arch_extension mte; msr tco, %0"
+                               :
+                               : "r"(prev_tco_));
+#endif
     }
   }
 
@@ -398,7 +416,7 @@ public:
           TaggedPtr = reinterpret_cast<void *>(TaggedUserPtr);
           resizeTaggedChunk(PrevEnd, TaggedUserPtr + Size, BlockEnd);
           if (ZeroContents && Size)
-            *reinterpret_cast<char *>(TaggedPtr) = 0;
+            memset(TaggedPtr, 0, 16);
         } else {
           TaggedPtr = prepareTaggedChunk(Ptr, Size, BlockEnd);
         }
@@ -788,12 +806,16 @@ public:
           auto Header = *reinterpret_cast<const Chunk::UnpackedHeader *>(Data);
           if (Header.State != Chunk::State::Allocated) {
             if (GetGranule(Info.BlockBegin + ChunkOffset, &Data, &Tag)) {
-              if (*Data == PtrTag) {
+              if (Data[8] == PtrTag) {
                 error_info->error_type = USE_AFTER_FREE;
                 error_info->allocation_address = Info.BlockBegin + ChunkOffset;
                 error_info->allocation_size = Header.SizeOrUnusedBytes;
                 MaybeCollectTrace(error_info->allocation_trace, Data - 8);
-                MaybeCollectTrace(error_info->deallocation_trace, Data - 4);
+                error_info->allocation_tid =
+                    *reinterpret_cast<const u32 *>(Data - 4);
+                MaybeCollectTrace(error_info->deallocation_trace, Data);
+                error_info->deallocation_tid =
+                    *reinterpret_cast<const u32 *>(Data + 4);
                 return;
               }
             }
@@ -825,6 +847,7 @@ public:
         auto Header = *reinterpret_cast<const Chunk::UnpackedHeader *>(Data);
         error_info->allocation_size = Header.SizeOrUnusedBytes;
         MaybeCollectTrace(error_info->allocation_trace, Data + 8);
+        error_info->allocation_tid = *reinterpret_cast<const u32 *>(Data + 12);
       }
       return true;
     };
@@ -947,26 +970,15 @@ private:
   void quarantineOrDeallocateChunk(void *Ptr, Chunk::UnpackedHeader *Header,
                                    uptr Size) {
     Chunk::UnpackedHeader NewHeader = *Header;
-    storeDeallocationStackMaybe(Ptr);
+    uint8_t PrevTag = 0;
     if (UNLIKELY(useMemoryTagging())) {
       if (NewHeader.ClassId) {
-        uint8_t PrevTag = extractTag(loadTag(reinterpret_cast<uptr>(Ptr)));
-        (void)PrevTag;
+        PrevTag = extractTag(loadTag(reinterpret_cast<uptr>(Ptr)));
         uptr TaggedBegin, TaggedEnd;
         setRandomTag(Ptr, Size, &TaggedBegin, &TaggedEnd);
-#ifdef __aarch64__
-        size_t prev_tco_;
-        __asm__ __volatile__(".arch_extension mte; mrs %0, tco; msr tco, #1"
-                             : "=r"(prev_tco_));
-#endif
-        *reinterpret_cast<uint8_t *>(TaggedBegin) = PrevTag;
-#ifdef __aarch64__
-        __asm__ __volatile__(".arch_extension mte; msr tco, %0"
-                             :
-                             : "r"(prev_tco_));
-#endif
       }
     }
+    storeDeallocationStackMaybe(Ptr, PrevTag);
 
     // If the quarantine is disabled, the actual size of a chunk is 0 or larger
     // than the maximum allowed, we return a chunk directly to the backend.
