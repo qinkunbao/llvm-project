@@ -24,7 +24,6 @@
 
 #include "scudo/interface.h"
 
-#include <android/log.h>
 #include <unistd.h>
 
 #ifdef GWP_ASAN_HOOKS
@@ -798,21 +797,15 @@ public:
 
     // First, check for UAF.
     {
-      __android_log_print(ANDROID_LOG_INFO, "scudo", "UAF 1");
       const char *Data;
       uint8_t Tag;
       if (GetGranule(Info.BlockBegin, &Data, &Tag)) {
-      __android_log_print(ANDROID_LOG_INFO, "scudo", "UAF 2");
         uptr ChunkOffset = getChunkOffsetFromBlock(Data);
         if (GetGranule(Info.BlockBegin + ChunkOffset - Chunk::getHeaderSize(),
                        &Data, &Tag)) {
-      __android_log_print(ANDROID_LOG_INFO, "scudo", "UAF 3");
           auto Header = *reinterpret_cast<const Chunk::UnpackedHeader *>(Data);
           if (Header.State != Chunk::State::Allocated) {
-      __android_log_print(ANDROID_LOG_INFO, "scudo", "UAF 4");
             if (GetGranule(Info.BlockBegin + ChunkOffset, &Data, &Tag)) {
-              __android_log_print(ANDROID_LOG_INFO, "scudo",
-                                  "Data[8] = %u PtrTag = %u", Data[8], PtrTag);
               if (Data[8] == PtrTag) {
                 error_info->error_type = USE_AFTER_FREE;
                 error_info->allocation_address = Info.BlockBegin + ChunkOffset;
