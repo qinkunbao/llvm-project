@@ -784,10 +784,27 @@ public:
       return true;
     };
 
+    auto ReadBlock = [&](uptr Addr, uptr *ChunkAddr,
+                         Chunk::UnpackedHeader *Header, const u32 **Data,
+                         u8 *Tag) {
+      const char *BlockBegin;
+      u8 BlockBeginTag;
+      if (!GetGranule(Addr, &BlockBegin, &BlockBeginTag))
+        return false;
+      uptr ChunkOffset = getChunkOffsetFromBlock(BlockBegin);
+      *ChunkAddr = Addr + ChunkOffset;
+
+      const char *ChunkBegin;
+      if (!GetGranule(*ChunkAddr, &ChunkBegin, Tag))
+        return false;
+      *Header = *reinterpret_cast<const Chunk::UnpackedHeader *>(ChunkBegin);
+      *Data = reinterpret_cast<const u32 *>(ChunkBegin);
+      return true;
+    };
+
     auto *StackDepotPtr = reinterpret_cast<const StackDepot *>(stack_depot);
 
-    auto MaybeCollectTrace = [&](uintptr_t(&Trace)[64], const char *HashPtr) {
-      auto Hash = *reinterpret_cast<const uint32_t *>(HashPtr);
+    auto MaybeCollectTrace = [&](uintptr_t(&Trace)[64], u32 Hash) {
       uptr RingPos, Size;
       if (!StackDepotPtr->find(Hash, &RingPos, &Size))
         return;
@@ -799,55 +816,42 @@ public:
 
     // First, check for UAF.
     {
-      const char *Data;
+      uptr ChunkAddr;
+      Chunk::UnpackedHeader Header;
+      const u32 *Data;
       uint8_t Tag;
-      if (GetGranule(Info.BlockBegin, &Data, &Tag)) {
-        uptr ChunkOffset = getChunkOffsetFromBlock(Data);
-        if (GetGranule(Info.BlockBegin + ChunkOffset - Chunk::getHeaderSize(),
-                       &Data, &Tag)) {
-          auto Header = *reinterpret_cast<const Chunk::UnpackedHeader *>(Data);
-          if (Header.State != Chunk::State::Allocated) {
-            if (GetGranule(Info.BlockBegin + ChunkOffset, &Data, &Tag)) {
-              if (Data[8] == PtrTag) {
-                auto *R = &error_info->reports[NextErrorReport++];
-                R->error_type = USE_AFTER_FREE;
-                R->allocation_address = Info.BlockBegin + ChunkOffset;
-                R->allocation_size = Header.SizeOrUnusedBytes;
-                MaybeCollectTrace(R->allocation_trace, Data - 8);
-                R->allocation_tid = *reinterpret_cast<const u32 *>(Data - 4);
-                MaybeCollectTrace(R->deallocation_trace, Data);
-                R->deallocation_tid = *reinterpret_cast<const u32 *>(Data + 4);
-              }
-            }
-          }
-        }
+      if (ReadBlock(Info.BlockBegin, &ChunkAddr, &Header, &Data, &Tag) &&
+          Header.State != Chunk::State::Allocated && Data[2] == PtrTag) {
+        auto *R = &error_info->reports[NextErrorReport++];
+        R->error_type = USE_AFTER_FREE;
+        R->allocation_address = ChunkAddr;
+        R->allocation_size = Header.SizeOrUnusedBytes;
+        MaybeCollectTrace(R->allocation_trace, Data[-2]);
+        R->allocation_tid = Data[-1];
+        MaybeCollectTrace(R->deallocation_trace, Data[0]);
+        R->deallocation_tid = Data[1];
       }
     }
 
     auto CheckOOB = [&](uptr BlockAddr) {
       if (BlockAddr < Info.RegionBegin || BlockAddr >= Info.RegionEnd)
         return false;
-      const char *Data;
+
+      uptr ChunkAddr;
+      Chunk::UnpackedHeader Header;
+      const u32 *Data;
       uint8_t Tag;
-      if (!GetGranule(BlockAddr, &Data, &Tag))
-        return false;
-      uptr ChunkOffset = getChunkOffsetFromBlock(Data);
-      if (!GetGranule(BlockAddr + ChunkOffset, &Data, &Tag))
-        return false;
-      if (Tag != PtrTag)
-        return false;
-      if (!GetGranule(BlockAddr + ChunkOffset - Chunk::getHeaderSize(), &Data,
-                      &Tag))
+      if (!ReadBlock(BlockAddr, &ChunkAddr, &Header, &Data, &Tag) ||
+          Header.State != Chunk::State::Allocated || Tag != PtrTag)
         return false;
 
       auto *R = &error_info->reports[NextErrorReport++];
-      R->error_type = UntaggedPtr < BlockAddr + ChunkOffset ? BUFFER_UNDERFLOW
-                                                            : BUFFER_OVERFLOW;
-      R->allocation_address = BlockAddr + ChunkOffset;
-      auto Header = *reinterpret_cast<const Chunk::UnpackedHeader *>(Data);
+      R->error_type =
+          UntaggedPtr < ChunkAddr ? BUFFER_UNDERFLOW : BUFFER_OVERFLOW;
+      R->allocation_address = ChunkAddr;
       R->allocation_size = Header.SizeOrUnusedBytes;
-      MaybeCollectTrace(R->allocation_trace, Data + 8);
-      R->allocation_tid = *reinterpret_cast<const u32 *>(Data + 12);
+      MaybeCollectTrace(R->allocation_trace, Data[-2]);
+      R->allocation_tid = Data[-1];
       return NextErrorReport ==
              sizeof(error_info->reports) / sizeof(error_info->reports[0]);
     };
@@ -861,13 +865,6 @@ public:
       if (CheckOOB(Info.BlockBegin + I * Info.BlockSize) ||
           CheckOOB(Info.BlockBegin - I * Info.BlockSize))
         return;
-  }
-
-  static uptr getChunkOffsetFromBlock(const char *Block) {
-    u32 Offset = 0;
-    if (reinterpret_cast<const u32 *>(Block)[0] == BlockMarker)
-      Offset = reinterpret_cast<const u32 *>(Block)[1];
-    return Offset + Chunk::getHeaderSize();
   }
 
 private:
@@ -1017,6 +1014,13 @@ private:
     *Chunk =
         Block + getChunkOffsetFromBlock(reinterpret_cast<const char *>(Block));
     return Chunk::isValid(Cookie, reinterpret_cast<void *>(*Chunk), Header);
+  }
+
+  static uptr getChunkOffsetFromBlock(const char *Block) {
+    u32 Offset = 0;
+    if (reinterpret_cast<const u32 *>(Block)[0] == BlockMarker)
+      Offset = reinterpret_cast<const u32 *>(Block)[1];
+    return Offset + Chunk::getHeaderSize();
   }
 
   uptr getStats(ScopedString *Str) {
