@@ -31,7 +31,7 @@ enum scudo_error_type {
   BUFFER_UNDERFLOW,
 };
 
-struct scudo_error_info {
+struct scudo_error_report {
   enum scudo_error_type error_type;
 
   uintptr_t allocation_address;
@@ -42,6 +42,10 @@ struct scudo_error_info {
 
   uint32_t deallocation_tid;
   uintptr_t deallocation_trace[64];
+};
+
+struct scudo_error_info {
+  scudo_error_report reports[3];
 };
 
 void __scudo_get_error_info(struct scudo_error_info *error_info, uintptr_t ptr,

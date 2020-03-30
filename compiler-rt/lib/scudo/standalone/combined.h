@@ -795,6 +795,8 @@ public:
         Trace[I] = (*StackDepotPtr)[RingPos + I];
     };
 
+    size_t NextErrorReport =  0;
+
     // First, check for UAF.
     {
       const char *Data;
@@ -807,16 +809,14 @@ public:
           if (Header.State != Chunk::State::Allocated) {
             if (GetGranule(Info.BlockBegin + ChunkOffset, &Data, &Tag)) {
               if (Data[8] == PtrTag) {
-                error_info->error_type = USE_AFTER_FREE;
-                error_info->allocation_address = Info.BlockBegin + ChunkOffset;
-                error_info->allocation_size = Header.SizeOrUnusedBytes;
-                MaybeCollectTrace(error_info->allocation_trace, Data - 8);
-                error_info->allocation_tid =
-                    *reinterpret_cast<const u32 *>(Data - 4);
-                MaybeCollectTrace(error_info->deallocation_trace, Data);
-                error_info->deallocation_tid =
-                    *reinterpret_cast<const u32 *>(Data + 4);
-                return;
+                auto *R = &error_info->reports[NextErrorReport++];
+                R->error_type = USE_AFTER_FREE;
+                R->allocation_address = Info.BlockBegin + ChunkOffset;
+                R->allocation_size = Header.SizeOrUnusedBytes;
+                MaybeCollectTrace(R->allocation_trace, Data - 8);
+                R->allocation_tid = *reinterpret_cast<const u32 *>(Data - 4);
+                MaybeCollectTrace(R->deallocation_trace, Data);
+                R->deallocation_tid = *reinterpret_cast<const u32 *>(Data + 4);
               }
             }
           }
@@ -836,20 +836,20 @@ public:
         return false;
       if (Tag != PtrTag)
         return false;
-      if (UntaggedPtr < BlockAddr + ChunkOffset) {
-        error_info->error_type = BUFFER_UNDERFLOW;
-      } else {
-        error_info->error_type = BUFFER_OVERFLOW;
-      }
-      error_info->allocation_address = BlockAddr + ChunkOffset;
-      if (GetGranule(BlockAddr + ChunkOffset - Chunk::getHeaderSize(), &Data,
-                     &Tag)) {
-        auto Header = *reinterpret_cast<const Chunk::UnpackedHeader *>(Data);
-        error_info->allocation_size = Header.SizeOrUnusedBytes;
-        MaybeCollectTrace(error_info->allocation_trace, Data + 8);
-        error_info->allocation_tid = *reinterpret_cast<const u32 *>(Data + 12);
-      }
-      return true;
+      if (!GetGranule(BlockAddr + ChunkOffset - Chunk::getHeaderSize(), &Data,
+                      &Tag))
+        return false;
+
+      auto *R = &error_info->reports[NextErrorReport++];
+      R->error_type = UntaggedPtr < BlockAddr + ChunkOffset ? BUFFER_UNDERFLOW
+                                                            : BUFFER_OVERFLOW;
+      R->allocation_address = BlockAddr + ChunkOffset;
+      auto Header = *reinterpret_cast<const Chunk::UnpackedHeader *>(Data);
+      R->allocation_size = Header.SizeOrUnusedBytes;
+      MaybeCollectTrace(R->allocation_trace, Data + 8);
+      R->allocation_tid = *reinterpret_cast<const u32 *>(Data + 12);
+      return NextErrorReport ==
+             sizeof(error_info->reports) / sizeof(error_info->reports[0]);
     };
 
     if (CheckOOB(Info.BlockBegin))
