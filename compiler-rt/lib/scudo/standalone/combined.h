@@ -24,8 +24,6 @@
 
 #include "scudo/interface.h"
 
-#include <unistd.h>
-
 #ifdef GWP_ASAN_HOOKS
 #include "gwp_asan/guarded_pool_allocator.h"
 #include "gwp_asan/optional/backtrace.h"
@@ -1010,7 +1008,7 @@ private:
     if (UNLIKELY(Options.TrackAllocationStacks)) {
       auto *Ptr32 = reinterpret_cast<u32 *>(Ptr);
       Ptr32[MemTagAllocationTraceIndex] = collectStackTrace();
-      Ptr32[MemTagAllocationTidIndex] = gettid();
+      Ptr32[MemTagAllocationTidIndex] = getThreadID();
     }
   }
 
@@ -1021,7 +1019,7 @@ private:
       ScopedDisableMemoryTagChecks x;
       auto *Ptr32 = reinterpret_cast<u32 *>(Ptr);
       Ptr32[MemTagDeallocationTraceIndex] = collectStackTrace();
-      Ptr32[MemTagDeallocationTidIndex] = gettid();
+      Ptr32[MemTagDeallocationTidIndex] = getThreadID();
       Ptr32[MemTagPrevTagIndex] = PrevTag;
     }
   }

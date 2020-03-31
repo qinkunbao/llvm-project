@@ -133,6 +133,8 @@ const char *getEnv(const char *Name);
 
 u64 getMonotonicTime();
 
+u32 getThreadID();
+
 // Our randomness gathering function is limited to 256 bytes to ensure we get
 // as many bytes as requested, and avoid interruptions (on Linux).
 constexpr uptr MaxRandomLength = 256U;
