@@ -544,7 +544,7 @@ public:
                      : BlockEnd - (reinterpret_cast<uptr>(OldPtr) + NewSize)) &
             Chunk::SizeOrUnusedBytesMask;
         Chunk::compareExchangeHeader(Cookie, OldPtr, &NewHeader, &OldHeader);
-        if (UNLIKELY(useMemoryTagging() && ClassId)) {
+        if (UNLIKELY(ClassId && useMemoryTagging())) {
           resizeTaggedChunk(reinterpret_cast<uptr>(OldTaggedPtr) + OldSize,
                             reinterpret_cast<uptr>(OldTaggedPtr) + NewSize,
                             BlockEnd);
