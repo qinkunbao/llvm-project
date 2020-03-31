@@ -51,6 +51,20 @@ inline void enableMemoryTagChecksTestOnly() {
   __asm__ __volatile__(".arch_extension mte; msr tco, #0");
 }
 
+class ScopedDisableMemoryTagChecks {
+  size_t PrevTCO;
+
+ public:
+  ScopedDisableMemoryTagChecks() {
+    __asm__ __volatile__(".arch_extension mte; mrs %0, tco; msr tco, #1"
+                         : "=r"(PrevTCO));
+  }
+
+  ~ScopedDisableMemoryTagChecks() {
+    __asm__ __volatile__(".arch_extension mte; msr tco, %0" : : "r"(PrevTCO));
+  }
+};
+
 inline uptr untagPointer(uptr Ptr) { return Ptr & ((1ULL << 56) - 1); }
 
 inline void setRandomTag(void *Ptr, uptr Size, uptr *TaggedBegin,
@@ -194,6 +208,10 @@ inline void disableMemoryTagChecksTestOnly() {
 inline void enableMemoryTagChecksTestOnly() {
   UNREACHABLE("memory tagging not supported");
 }
+
+struct ScopedDisableMemoryTagChecks {
+  ScopedDisableMemoryTagChecks() {}
+};
 
 inline uptr untagPointer(uptr Ptr) {
   (void)Ptr;

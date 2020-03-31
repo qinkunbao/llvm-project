@@ -246,37 +246,6 @@ public:
 #endif
   }
 
-  void storeAllocationStackMaybe(void *Ptr) {
-    (void)Ptr;
-    if (UNLIKELY(Options.TrackAllocationStacks)) {
-      auto *Ptr32 = reinterpret_cast<u32 *>(Ptr);
-      Ptr32[MemTagAllocationTraceIndex] = collectStackTrace();
-      Ptr32[MemTagAllocationTidIndex] = gettid();
-    }
-  }
-
-  void storeDeallocationStackMaybe(void *Ptr, uint8_t PrevTag) {
-    (void)Ptr;
-    if (UNLIKELY(Options.TrackAllocationStacks)) {
-#ifdef __aarch64__
-        size_t prev_tco_;
-        if (useMemoryTagging())
-          __asm__ __volatile__(".arch_extension mte; mrs %0, tco; msr tco, #1"
-                               : "=r"(prev_tco_));
-#endif
-      auto *Ptr32 = reinterpret_cast<u32 *>(Ptr);
-      Ptr32[MemTagDeallocationTraceIndex] = collectStackTrace();
-      Ptr32[MemTagDeallocationTidIndex] = gettid();
-      Ptr32[MemTagPrevTagIndex] = PrevTag;
-#ifdef __aarch64__
-        if (useMemoryTagging())
-          __asm__ __volatile__(".arch_extension mte; msr tco, %0"
-                               :
-                               : "r"(prev_tco_));
-#endif
-    }
-  }
-
   NOINLINE void *allocate(uptr Size, Chunk::Origin Origin,
                           uptr Alignment = MinAlignment,
                           bool ZeroContents = false) {
@@ -415,8 +384,12 @@ public:
             PrevEnd = NextPage;
           TaggedPtr = reinterpret_cast<void *>(TaggedUserPtr);
           resizeTaggedChunk(PrevEnd, TaggedUserPtr + Size, BlockEnd);
-          if (ZeroContents && Size)
+          if (ZeroContents) {
+            // Clear any stack metadata that may have previously been stored in
+            // the chunk data.
             memset(TaggedPtr, 0, 16);
+          }
+          storeAllocationStackMaybe(Ptr);
         } else {
           TaggedPtr = prepareTaggedChunk(Ptr, Size, BlockEnd);
         }
@@ -426,7 +399,6 @@ public:
         memset(Block, 0, PrimaryT::getSizeByClassId(ClassId));
       }
     }
-    storeAllocationStackMaybe(Ptr);
 
     Chunk::UnpackedHeader Header = {};
     if (UNLIKELY(UnalignedUserPtr != UserPtr)) {
@@ -574,13 +546,12 @@ public:
                      : BlockEnd - (reinterpret_cast<uptr>(OldPtr) + NewSize)) &
             Chunk::SizeOrUnusedBytesMask;
         Chunk::compareExchangeHeader(Cookie, OldPtr, &NewHeader, &OldHeader);
-        if (UNLIKELY(useMemoryTagging())) {
-          if (ClassId)
-            resizeTaggedChunk(reinterpret_cast<uptr>(OldTaggedPtr) + OldSize,
-                              reinterpret_cast<uptr>(OldTaggedPtr) + NewSize,
-                              BlockEnd);
+        if (UNLIKELY(useMemoryTagging() && ClassId)) {
+          resizeTaggedChunk(reinterpret_cast<uptr>(OldTaggedPtr) + OldSize,
+                            reinterpret_cast<uptr>(OldTaggedPtr) + NewSize,
+                            BlockEnd);
+          storeAllocationStackMaybe(OldPtr);
         }
-        storeAllocationStackMaybe(OldPtr);
         return OldTaggedPtr;
       }
     }
@@ -982,14 +953,12 @@ private:
                                    uptr Size) {
     Chunk::UnpackedHeader NewHeader = *Header;
     uint8_t PrevTag = 0;
-    if (UNLIKELY(useMemoryTagging())) {
-      if (NewHeader.ClassId) {
-        PrevTag = extractTag(loadTag(reinterpret_cast<uptr>(Ptr)));
-        uptr TaggedBegin, TaggedEnd;
-        setRandomTag(Ptr, Size, &TaggedBegin, &TaggedEnd);
-      }
+    if (UNLIKELY(useMemoryTagging() && NewHeader.ClassId)) {
+      PrevTag = extractTag(loadTag(reinterpret_cast<uptr>(Ptr)));
+      uptr TaggedBegin, TaggedEnd;
+      setRandomTag(Ptr, Size, &TaggedBegin, &TaggedEnd);
+      storeDeallocationStackMaybe(Ptr, PrevTag);
     }
-    storeDeallocationStackMaybe(Ptr, PrevTag);
 
     // If the quarantine is disabled, the actual size of a chunk is 0 or larger
     // than the maximum allowed, we return a chunk directly to the backend.
@@ -1035,6 +1004,26 @@ private:
     if (reinterpret_cast<const u32 *>(Block)[0] == BlockMarker)
       Offset = reinterpret_cast<const u32 *>(Block)[1];
     return Offset + Chunk::getHeaderSize();
+  }
+
+  void storeAllocationStackMaybe(void *Ptr) {
+    if (UNLIKELY(Options.TrackAllocationStacks)) {
+      auto *Ptr32 = reinterpret_cast<u32 *>(Ptr);
+      Ptr32[MemTagAllocationTraceIndex] = collectStackTrace();
+      Ptr32[MemTagAllocationTidIndex] = gettid();
+    }
+  }
+
+  void storeDeallocationStackMaybe(void *Ptr, uint8_t PrevTag) {
+    if (UNLIKELY(Options.TrackAllocationStacks)) {
+      // Disable tag checks here so that we don't need to worry about zero sized
+      // allocations.
+      ScopedDisableMemoryTagChecks x;
+      auto *Ptr32 = reinterpret_cast<u32 *>(Ptr);
+      Ptr32[MemTagDeallocationTraceIndex] = collectStackTrace();
+      Ptr32[MemTagDeallocationTidIndex] = gettid();
+      Ptr32[MemTagPrevTagIndex] = PrevTag;
+    }
   }
 
   uptr getStats(ScopedString *Str) {
