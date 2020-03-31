@@ -382,7 +382,7 @@ public:
             PrevEnd = NextPage;
           TaggedPtr = reinterpret_cast<void *>(TaggedUserPtr);
           resizeTaggedChunk(PrevEnd, TaggedUserPtr + Size, BlockEnd);
-          if (ZeroContents) {
+          if (ZeroContents && Size) {
             // Clear any stack metadata that may have previously been stored in
             // the chunk data.
             memset(TaggedPtr, 0, 16);
