@@ -797,7 +797,8 @@ public:
       const char *ChunkBegin;
       if (!GetGranule(*ChunkAddr, &ChunkBegin, Tag))
         return false;
-      *Header = *reinterpret_cast<const Chunk::UnpackedHeader *>(ChunkBegin);
+      *Header = *reinterpret_cast<const Chunk::UnpackedHeader *>(
+          ChunkBegin - Chunk::getHeaderSize());
       *Data = reinterpret_cast<const u32 *>(ChunkBegin);
       return true;
     };
