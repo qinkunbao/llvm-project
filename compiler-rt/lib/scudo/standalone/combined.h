@@ -786,7 +786,7 @@ public:
         Trace[I] = (*StackDepotPtr)[RingPos + I];
     };
 
-    size_t NextErrorReport =  0;
+    size_t NextErrorReport = 0;
 
     // First, check for UAF.
     {
@@ -950,14 +950,12 @@ private:
   void quarantineOrDeallocateChunk(void *Ptr, Chunk::UnpackedHeader *Header,
                                    uptr Size) {
     Chunk::UnpackedHeader NewHeader = *Header;
-    uint8_t PrevTag = 0;
-    if (UNLIKELY(useMemoryTagging() && NewHeader.ClassId)) {
-      PrevTag = extractTag(loadTag(reinterpret_cast<uptr>(Ptr)));
+    if (UNLIKELY(NewHeader.ClassId && useMemoryTagging())) {
+      u8 PrevTag = extractTag(loadTag(reinterpret_cast<uptr>(Ptr)));
       uptr TaggedBegin, TaggedEnd;
       setRandomTag(Ptr, Size, &TaggedBegin, &TaggedEnd);
       storeDeallocationStackMaybe(Ptr, PrevTag);
     }
-
     // If the quarantine is disabled, the actual size of a chunk is 0 or larger
     // than the maximum allowed, we return a chunk directly to the backend.
     // Logical Or can be short-circuited, which introduces unnecessary
@@ -1005,23 +1003,24 @@ private:
   }
 
   void storeAllocationStackMaybe(void *Ptr) {
-    if (UNLIKELY(Options.TrackAllocationStacks)) {
-      auto *Ptr32 = reinterpret_cast<u32 *>(Ptr);
-      Ptr32[MemTagAllocationTraceIndex] = collectStackTrace();
-      Ptr32[MemTagAllocationTidIndex] = getThreadID();
-    }
+    if (!UNLIKELY(Options.TrackAllocationStacks))
+      return;
+    auto *Ptr32 = reinterpret_cast<u32 *>(Ptr);
+    Ptr32[MemTagAllocationTraceIndex] = collectStackTrace();
+    Ptr32[MemTagAllocationTidIndex] = getThreadID();
   }
 
   void storeDeallocationStackMaybe(void *Ptr, uint8_t PrevTag) {
-    if (UNLIKELY(Options.TrackAllocationStacks)) {
-      // Disable tag checks here so that we don't need to worry about zero sized
-      // allocations.
-      ScopedDisableMemoryTagChecks x;
-      auto *Ptr32 = reinterpret_cast<u32 *>(Ptr);
-      Ptr32[MemTagDeallocationTraceIndex] = collectStackTrace();
-      Ptr32[MemTagDeallocationTidIndex] = getThreadID();
-      Ptr32[MemTagPrevTagIndex] = PrevTag;
-    }
+    if (!UNLIKELY(Options.TrackAllocationStacks))
+      return;
+
+    // Disable tag checks here so that we don't need to worry about zero sized
+    // allocations.
+    ScopedDisableMemoryTagChecks x;
+    auto *Ptr32 = reinterpret_cast<u32 *>(Ptr);
+    Ptr32[MemTagDeallocationTraceIndex] = collectStackTrace();
+    Ptr32[MemTagDeallocationTidIndex] = getThreadID();
+    Ptr32[MemTagPrevTagIndex] = PrevTag;
   }
 
   uptr getStats(ScopedString *Str) {
