@@ -219,4 +219,9 @@ INTERFACE WEAK void SCUDO_PREFIX(malloc_disable_memory_tagging)() {
   SCUDO_ALLOCATOR.disableMemoryTagging();
 }
 
+INTERFACE WEAK void
+SCUDO_PREFIX(malloc_set_track_allocation_stacks)(int track) {
+  SCUDO_ALLOCATOR.setTrackAllocationStacks(track);
+}
+
 } // extern "C"

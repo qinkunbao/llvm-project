@@ -153,7 +153,7 @@ public:
     Options.ZeroContents = getFlags()->zero_contents;
     Options.DeallocTypeMismatch = getFlags()->dealloc_type_mismatch;
     Options.DeleteSizeMismatch = getFlags()->delete_size_mismatch;
-    Options.TrackAllocationStacks = true;
+    Options.TrackAllocationStacks = false;
     Options.QuarantineMaxChunkSize =
         static_cast<u32>(getFlags()->quarantine_max_chunk_size);
 
@@ -250,8 +250,8 @@ public:
     (void)Ptr;
     if (UNLIKELY(Options.TrackAllocationStacks)) {
       auto *Ptr32 = reinterpret_cast<u32 *>(Ptr);
-      Ptr32[-2] = collectStackTrace();
-      Ptr32[-1] = gettid();
+      Ptr32[MemTagAllocationTraceIndex] = collectStackTrace();
+      Ptr32[MemTagAllocationTidIndex] = gettid();
     }
   }
 
@@ -265,9 +265,9 @@ public:
                                : "=r"(prev_tco_));
 #endif
       auto *Ptr32 = reinterpret_cast<u32 *>(Ptr);
-      Ptr32[0] = collectStackTrace();
-      Ptr32[1] = gettid();
-      Ptr32[2] = PrevTag;
+      Ptr32[MemTagDeallocationTraceIndex] = collectStackTrace();
+      Ptr32[MemTagDeallocationTidIndex] = gettid();
+      Ptr32[MemTagPrevTagIndex] = PrevTag;
 #ifdef __aarch64__
         if (useMemoryTagging())
           __asm__ __volatile__(".arch_extension mte; msr tco, %0"
@@ -751,6 +751,10 @@ public:
 
   void disableMemoryTagging() { Primary.disableMemoryTagging(); }
 
+  void setTrackAllocationStacks(bool Track) {
+    Options.TrackAllocationStacks = Track;
+  }
+
   const char *getStackDepotAddress() const {
     return reinterpret_cast<const char *>(&Depot);
   }
@@ -822,15 +826,18 @@ public:
       const u32 *Data;
       uint8_t Tag;
       if (ReadBlock(Info.BlockBegin, &ChunkAddr, &Header, &Data, &Tag) &&
-          Header.State != Chunk::State::Allocated && Data[2] == PtrTag) {
+          Header.State != Chunk::State::Allocated &&
+          Data[MemTagPrevTagIndex] == PtrTag) {
         auto *R = &error_info->reports[NextErrorReport++];
         R->error_type = USE_AFTER_FREE;
         R->allocation_address = ChunkAddr;
         R->allocation_size = Header.SizeOrUnusedBytes;
-        MaybeCollectTrace(R->allocation_trace, Data[-2]);
-        R->allocation_tid = Data[-1];
-        MaybeCollectTrace(R->deallocation_trace, Data[0]);
-        R->deallocation_tid = Data[1];
+        MaybeCollectTrace(R->allocation_trace,
+                          Data[MemTagAllocationTraceIndex]);
+        R->allocation_tid = Data[MemTagAllocationTidIndex];
+        MaybeCollectTrace(R->deallocation_trace,
+                          Data[MemTagDeallocationTraceIndex]);
+        R->deallocation_tid = Data[MemTagDeallocationTidIndex];
       }
     }
 
@@ -851,8 +858,8 @@ public:
           UntaggedPtr < ChunkAddr ? BUFFER_UNDERFLOW : BUFFER_OVERFLOW;
       R->allocation_address = ChunkAddr;
       R->allocation_size = Header.SizeOrUnusedBytes;
-      MaybeCollectTrace(R->allocation_trace, Data[-2]);
-      R->allocation_tid = Data[-1];
+      MaybeCollectTrace(R->allocation_trace, Data[MemTagAllocationTraceIndex]);
+      R->allocation_tid = Data[MemTagAllocationTidIndex];
       return NextErrorReport ==
              sizeof(error_info->reports) / sizeof(error_info->reports[0]);
     };
@@ -886,6 +893,12 @@ private:
                 "");
 
   static const u32 BlockMarker = 0x44554353U;
+
+  static const uptr MemTagAllocationTraceIndex = -2;
+  static const uptr MemTagAllocationTidIndex = -1;
+  static const uptr MemTagDeallocationTraceIndex = 0;
+  static const uptr MemTagDeallocationTidIndex = 1;
+  static const uptr MemTagPrevTagIndex = 2;
 
   GlobalStats Stats;
   TSDRegistryT TSDRegistry;
