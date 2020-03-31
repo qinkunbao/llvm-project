@@ -387,10 +387,10 @@ public:
             // the chunk data.
             memset(TaggedPtr, 0, 16);
           }
-          storeAllocationStackMaybe(Ptr);
         } else {
           TaggedPtr = prepareTaggedChunk(Ptr, Size, BlockEnd);
         }
+        storeAllocationStackMaybe(Ptr);
       } else if (UNLIKELY(ZeroContents)) {
         // This condition is not necessarily unlikely, but since memset is
         // costly, we might as well mark it as such.
