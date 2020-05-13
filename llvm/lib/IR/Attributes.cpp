@@ -2159,7 +2159,7 @@ static void setOR(Function &Caller, const Function &Callee) {
 /// If the inlined function had a higher stack protection level than the
 /// calling function, then bump up the caller's stack protection level.
 static void adjustCallerSSPLevel(Function &Caller, const Function &Callee) {
-#ifndef NDEBUG
+#if 0
   if (!Callee.hasFnAttribute(Attribute::AlwaysInline)) {
     assert(!(!Callee.hasStackProtectorFnAttr() &&
              Caller.hasStackProtectorFnAttr()) &&

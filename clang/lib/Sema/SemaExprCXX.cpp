@@ -1140,6 +1140,7 @@ static QualType adjustCVQualifiersForCXXThisWithinLambda(
   // 2) We've run out of ScopeInfos but check if CurDC is a lambda (which can
   // happen during instantiation of its nested generic lambda call operator)
   if (isLambdaCallOperator(CurDC)) {
+#if 0
     assert(CurLSI && "While computing 'this' capture-type for a generic "
                      "lambda, we must have a corresponding LambdaScopeInfo");
     assert(isGenericLambdaCallOperatorSpecialization(CurLSI->CallOperator) &&
@@ -1148,6 +1149,7 @@ static QualType adjustCVQualifiersForCXXThisWithinLambda(
            "lambda-call-operator we must be (i.e. Current LSI) in a generic "
            "lambda call oeprator");
     assert(CurDC == getLambdaAwareParentOfDeclContext(CurLSI->CallOperator));
+#endif
 
     auto IsThisCaptured =
         [](CXXRecordDecl *Closure, bool &IsByCopy, bool &IsConst) {
