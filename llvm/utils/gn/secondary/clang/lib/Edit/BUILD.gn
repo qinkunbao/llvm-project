@@ -10,6 +10,8 @@ static_library("Edit") {
   sources = [
     "Commit.cpp",
     "EditedSource.cpp",
+    "FillInMissingProtocolStubs.cpp",
+    "FillInMissingSwitchEnumCases.cpp",
     "RewriteObjCFoundationAPI.cpp",
   ]
 }

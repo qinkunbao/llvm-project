@@ -13,12 +13,17 @@ static_library("Index") {
     "//llvm/lib/Support",
   ]
   sources = [
+    "ClangIndexRecordWriter.cpp",
     "CommentToXML.cpp",
     "FileIndexRecord.cpp",
     "IndexBody.cpp",
+    "IndexDataStoreUtils.cpp",
     "IndexDecl.cpp",
+    "IndexRecordHasher.cpp",
+    "IndexRecordWriter.cpp",
     "IndexSymbol.cpp",
     "IndexTypeSourceInfo.cpp",
+    "IndexUnitWriter.cpp",
     "IndexingAction.cpp",
     "IndexingContext.cpp",
     "IndexingContext.h",
