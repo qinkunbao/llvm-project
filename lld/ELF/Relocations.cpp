@@ -1406,6 +1406,20 @@ static void scanReloc(InputSectionBase &sec, OffsetGetter &getOffset, RelTy *&i,
     return;
   }
 
+  if (config->emachine == EM_AARCH64 && type == R_AARCH64_AUTH64) {
+    if (sym.isPreemptible) {
+      sec.getPartition().relaDyn->addReloc(type, &sec, offset, &sym, addend,
+                                           R_ADDEND, type);
+    } else if (in.relaAuth) {
+      in.relaAuth->addReloc(
+          {R_AARCH64_AUTH_RELATIVE, &sec, offset, true, &sym, addend});
+    } else {
+      sec.getPartition().relaDyn->addReloc(
+          {R_AARCH64_AUTH_RELATIVE, &sec, offset, true, &sym, addend});
+    }
+    return;
+  }
+
   // We were asked not to generate PLT entries for ifuncs. Instead, pass the
   // direct relocation on through.
   if (sym.isGnuIFunc() && config->zIfuncNoplt) {

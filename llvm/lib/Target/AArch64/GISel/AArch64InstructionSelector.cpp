@@ -5418,6 +5418,8 @@ bool AArch64InstructionSelector::selectPtrAuthGlobalValue(
 
   auto AddrDiscVal = getConstantVRegVal(AddrDisc, MRI);
   bool HasAddrDisc = !AddrDiscVal.hasValue() || AddrDiscVal.getValue() != 0;
+  bool RequiresStaticMaterialization =
+      STI.isTargetMachO() && GV->hasExternalWeakLinkage();
 
   // Two of the lowerings are straightforward:
   // - No GOT load needed -> MOVaddrPAC
@@ -5425,7 +5427,7 @@ bool AArch64InstructionSelector::selectPtrAuthGlobalValue(
   //   Note that we disallow extern_weak refs to avoid null checks later.
   //   We also require this for offsets >=32, because of the shared cache.
   if (!NeedsGOTLoad ||
-      (AArch64PtrAuthGlobalDynamicMat && !GV->hasExternalWeakLinkage()) ||
+      (AArch64PtrAuthGlobalDynamicMat && !RequiresStaticMaterialization) ||
       !isUInt<5>(Offset)) {
     MIB.buildInstr(TargetOpcode::IMPLICIT_DEF, {AArch64::X16}, {});
     MIB.buildInstr(TargetOpcode::IMPLICIT_DEF, {AArch64::X17}, {});
@@ -5448,7 +5450,7 @@ bool AArch64InstructionSelector::selectPtrAuthGlobalValue(
   // offset alone as a pointer if the symbol wasn't available, which probably
   // breaking null checks in users.
   // ptrauth complicates things further: error out.
-  if (Offset && GV->hasExternalWeakLinkage())
+  if (Offset && RequiresStaticMaterialization)
     report_fatal_error("Unsupported offset in weak ptrauth global reference");
 
   // With an address discriminator, the relocated pointer would be signed with
