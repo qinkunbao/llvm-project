@@ -205,8 +205,12 @@ unsigned AArch64ELFObjectWriter::getRelocType(MCContext &Ctx,
                         "ILP32 8 byte absolute data "
                         "relocation not supported (LP64 eqv: ABS64)");
         return ELF::R_AARCH64_NONE;
-      } else
+      } else if (SymLoc == AArch64MCExpr::VK_AUTH ||
+                 SymLoc == AArch64MCExpr::VK_AUTHADDR) {
+        return ELF::R_AARCH64_AUTH64;
+      } else {
         return ELF::R_AARCH64_ABS64;
+      }
     case AArch64::fixup_aarch64_add_imm12:
       if (RefKind == AArch64MCExpr::VK_DTPREL_HI12)
         return R_CLS(TLSLD_ADD_DTPREL_HI12);

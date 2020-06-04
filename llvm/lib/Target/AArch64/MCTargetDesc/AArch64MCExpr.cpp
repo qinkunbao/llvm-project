@@ -198,5 +198,5 @@ bool AArch64AuthMCExpr::evaluateAsRelocatableImpl(MCValue &Res,
 }
 
 void AArch64AuthMCExpr::fixELFSymbolsInTLSFixups(MCAssembler &Asm) const {
-  llvm_unreachable("ELF support for auth relocs not implemented yet");
+  return;
 }
