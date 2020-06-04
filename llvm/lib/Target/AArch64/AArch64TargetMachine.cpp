@@ -320,6 +320,7 @@ AArch64TargetMachine::AArch64TargetMachine(const Target &T, const Triple &TT,
   if (getOptLevel() <= EnableGlobalISelAtO &&
       TT.getArch() != Triple::aarch64_32 &&
       TT.getArchName() != "arm64e" &&
+      false && // XXX GlobalISel does not support call PAC
       !(getCodeModel() == CodeModel::Large && TT.isOSBinFormatMachO())) {
     setGlobalISel(true);
     setGlobalISelAbort(GlobalISelAbortMode::Disable);

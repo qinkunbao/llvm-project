@@ -1621,7 +1621,7 @@ void RelocationBaseSection::finalizeContents() {
     getParent()->flags |= ELF::SHF_INFO_LINK;
     getParent()->info = in.gotPlt->getParent()->sectionIndex;
   }
-  if (in.relaIplt == this) {
+  if (in.relaIplt == this && in.igotPlt->getParent()->isLive()) {
     getParent()->flags |= ELF::SHF_INFO_LINK;
     getParent()->info = in.igotPlt->getParent()->sectionIndex;
   }

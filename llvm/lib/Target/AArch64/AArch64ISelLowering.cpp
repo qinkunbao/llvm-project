@@ -6290,7 +6290,7 @@ SDValue AArch64TargetLowering::LowerPtrAuthGlobalAddressViaGOT(
 
   // Both key allocation and the wrapper usage support are target-specific.
   if (!Subtarget->isTargetMachO())
-    llvm_unreachable("Unimplemented ptrauth global lowering");
+    return SDValue();
 
   // Process-specific keys are dangerous when used in relocations.
   if (Key == AArch64PACKey::IB || Key == AArch64PACKey::DB) {

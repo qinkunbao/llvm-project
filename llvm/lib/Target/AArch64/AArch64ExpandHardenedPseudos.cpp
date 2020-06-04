@@ -193,17 +193,31 @@ bool AArch64ExpandHardenedPseudos::expandMI(MachineInstr &MI) {
   // - address discriminator (with potentially folded immediate discriminator):
   //     pacia x16, xAddrDisc
 
-  MachineOperand GAHiOp(GAOp);
-  MachineOperand GALoOp(GAOp);
-  GAHiOp.setTargetFlags(AArch64II::MO_GOT | AArch64II::MO_PAGE);
-  GALoOp.setTargetFlags(AArch64II::MO_GOT | AArch64II::MO_PAGEOFF);
+  if (GAOp.getGlobal()->isDSOLocal()) {
+    MachineOperand GAHiOp(GAOp);
+    MachineOperand GALoOp(GAOp);
+    GAHiOp.setTargetFlags(AArch64II::MO_PAGE);
+    GALoOp.setTargetFlags(AArch64II::MO_PAGEOFF | AArch64II::MO_NC);
 
-  BuildMI(MBB, MBBI, DL, TII->get(AArch64::ADRP), AArch64::X16)
-    .add(GAHiOp);
+    BuildMI(MBB, MBBI, DL, TII->get(AArch64::ADRP), AArch64::X16).add(GAHiOp);
 
-  BuildMI(MBB, MBBI, DL, TII->get(AArch64::LDRXui), AArch64::X16)
-    .addReg(AArch64::X16)
-    .add(GALoOp);
+    BuildMI(MBB, MBBI, DL, TII->get(AArch64::ADDXri), AArch64::X16)
+        .addReg(AArch64::X16)
+        .add(GALoOp)
+        .addImm(0);
+  } else {
+    MachineOperand GAHiOp(GAOp);
+    MachineOperand GALoOp(GAOp);
+    GAHiOp.setTargetFlags(AArch64II::MO_GOT | AArch64II::MO_PAGE);
+    GALoOp.setTargetFlags(AArch64II::MO_GOT | AArch64II::MO_PAGEOFF |
+                          AArch64II::MO_NC);
+
+    BuildMI(MBB, MBBI, DL, TII->get(AArch64::ADRP), AArch64::X16).add(GAHiOp);
+
+    BuildMI(MBB, MBBI, DL, TII->get(AArch64::LDRXui), AArch64::X16)
+        .addReg(AArch64::X16)
+        .add(GALoOp);
+  }
 
   if (Offset) {
     if (!isUInt<32>(Offset))

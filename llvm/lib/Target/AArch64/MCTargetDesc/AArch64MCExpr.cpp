@@ -201,5 +201,5 @@ bool AArch64AuthMCExpr::evaluateAsRelocatableImpl(MCValue &Res,
 }
 
 void AArch64AuthMCExpr::fixELFSymbolsInTLSFixups(MCAssembler &Asm) const {
-  llvm_unreachable("FIXME");
+  return;
 }
