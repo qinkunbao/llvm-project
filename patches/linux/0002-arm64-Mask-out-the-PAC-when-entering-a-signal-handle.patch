@@ -1,0 +1,34 @@
+From dc8d450f8b1eb6cd22654bc26f9df78cdd7817a0 Mon Sep 17 00:00:00 2001
+From: Peter Collingbourne <pcc@google.com>
+Date: Thu, 11 Jun 2020 11:24:18 -0700
+Subject: [PATCH 2/2] arm64: Mask out the PAC when entering a signal handler
+
+---
+ arch/arm64/kernel/signal.c | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm64/kernel/signal.c b/arch/arm64/kernel/signal.c
+index e377d77c065e..00d822049e98 100644
+--- a/arch/arm64/kernel/signal.c
++++ b/arch/arm64/kernel/signal.c
+@@ -726,11 +726,16 @@ static void setup_return(struct pt_regs *regs, struct k_sigaction *ka,
+ 			 struct rt_sigframe_user_layout *user, int usig)
+ {
+ 	__sigrestore_t sigtramp;
++	unsigned long handler;
+ 
+ 	regs->regs[0] = usig;
+ 	regs->sp = (unsigned long)user->sigframe;
+ 	regs->regs[29] = (unsigned long)&user->next_frame->fp;
+-	regs->pc = (unsigned long)ka->sa.sa_handler;
++
++	handler = (unsigned long)ka->sa.sa_handler;
++	if (system_supports_address_auth())
++		handler &= USER_DS;
++	regs->pc = handler;
+ 
+ 	/* TCO (Tag Check Override) always cleared for signal handlers */
+ 	regs->pstate &= ~PSR_TCO_BIT;
+-- 
+2.27.0.278.ge193c7cf3a9-goog
+

@@ -34,10 +34,10 @@ index e571e5a0..39d52ad4 100644
  		}, &remoteexec.REParams{
  			Labels:       map[string]string{"type": "abi-dump", "tool": "header-abi-dumper"},
 diff --git a/cc/compiler.go b/cc/compiler.go
-index 681b1ab9..dca3cfcb 100644
+index 681b1ab9..a2d5e080 100644
 --- a/cc/compiler.go
 +++ b/cc/compiler.go
-@@ -357,6 +357,40 @@ func (compiler *baseCompiler) compilerFlags(ctx ModuleContext, flags Flags, deps
+@@ -357,6 +357,24 @@ func (compiler *baseCompiler) compilerFlags(ctx ModuleContext, flags Flags, deps
  	flags.Local.ConlyFlags = config.ClangFilterUnknownCflags(flags.Local.ConlyFlags)
  	flags.Local.LdFlags = config.ClangFilterUnknownCflags(flags.Local.LdFlags)
  
@@ -53,22 +53,6 @@ index 681b1ab9..dca3cfcb 100644
 +		var cppflags []string
 +		for _, f := range flags.Local.CppFlags {
 +			if f != "-fwhole-program-vtables" {
-+				cppflags = append(cppflags, f)
-+			}
-+		}
-+		flags.Local.CppFlags = cppflags
-+	} else {
-+		var cflags []string
-+		for _, f := range flags.Local.CFlags {
-+			if f != "-fno-ptrauth-calls" {
-+				cflags = append(cflags, f)
-+			}
-+		}
-+		flags.Local.CFlags = cflags
-+
-+		var cppflags []string
-+		for _, f := range flags.Local.CppFlags {
-+			if f != "-fno-ptrauth-calls" {
 +				cppflags = append(cppflags, f)
 +			}
 +		}

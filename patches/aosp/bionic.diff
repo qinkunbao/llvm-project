@@ -1,15 +1,3 @@
-diff --git a/libc/Android.bp b/libc/Android.bp
-index b7295b7d7..e0a862dbb 100644
---- a/libc/Android.bp
-+++ b/libc/Android.bp
-@@ -1987,6 +1987,7 @@ cc_defaults {
-         "-Wno-gcc-compat",
-         "-Wall",
-         "-Werror",
-+        "-fno-ptrauth-calls",
-     ],
-     sanitize: {
-         never: true,
 diff --git a/libc/bionic/__libc_init_main_thread.cpp b/libc/bionic/__libc_init_main_thread.cpp
 index 56a848888..188726554 100644
 --- a/libc/bionic/__libc_init_main_thread.cpp
@@ -75,22 +63,8 @@ index 437de78ce..0c66b6377 100644
 +  }
 +}
 +#endif
-diff --git a/libc/bionic/libc_init_dynamic.cpp b/libc/bionic/libc_init_dynamic.cpp
-index c9da02eab..317015289 100644
---- a/libc/bionic/libc_init_dynamic.cpp
-+++ b/libc/bionic/libc_init_dynamic.cpp
-@@ -148,6 +148,9 @@ __noreturn void __libc_init(void* raw_args,
-     __cxa_atexit(__libc_fini,structors->fini_array,nullptr);
-   }
- 
-+#ifdef ANDROID_EXPERIMENTAL_PAC
-+  slingshot = __builtin_ptrauth_sign_unauthenticated(slingshot, 0, 0);
-+#endif
-   exit(slingshot(args.argc - __libc_shared_globals()->initial_linker_arg_count,
-                  args.argv + __libc_shared_globals()->initial_linker_arg_count,
-                  args.envp));
 diff --git a/libc/bionic/libc_init_static.cpp b/libc/bionic/libc_init_static.cpp
-index cf5423e00..6064e26a7 100644
+index cf5423e00..3b65ae876 100644
 --- a/libc/bionic/libc_init_static.cpp
 +++ b/libc/bionic/libc_init_static.cpp
 @@ -63,7 +63,11 @@ extern "C" int __cxa_atexit(void (*)(void *), void *, void *);
@@ -132,16 +106,6 @@ index cf5423e00..6064e26a7 100644
    apply_gnu_relro();
  
    // Several Linux ABIs don't pass the onexit pointer, and the ones that
-@@ -192,6 +203,9 @@ __noreturn static void __real_libc_init(void *raw_args,
-     __cxa_atexit(__libc_fini,structors->fini_array,nullptr);
-   }
- 
-+#ifdef ANDROID_EXPERIMENTAL_PAC
-+  slingshot = __builtin_ptrauth_sign_unauthenticated(slingshot, 0, 0);
-+#endif
-   exit(slingshot(args.argc, args.argv, args.envp));
- }
- 
 diff --git a/libc/bionic/vdso.cpp b/libc/bionic/vdso.cpp
 index dbca9c013..619cd7a14 100644
 --- a/libc/bionic/vdso.cpp

@@ -1,0 +1,17 @@
+diff --git a/libunwindstack/RegsArm64.cpp b/libunwindstack/RegsArm64.cpp
+index 5b7431a57..2a49a55a3 100644
+--- a/libunwindstack/RegsArm64.cpp
++++ b/libunwindstack/RegsArm64.cpp
+@@ -45,6 +45,12 @@ uint64_t RegsArm64::sp() {
+ }
+ 
+ void RegsArm64::set_pc(uint64_t pc) {
++#if defined(__aarch64__)
++  register uint64_t x30 __asm("x30") = pc;
++  // This is XPACLRI.
++  asm("hint 0x7" : "+r"(x30));
++  pc = x30;
++#endif
+   regs_[ARM64_REG_PC] = pc;
+ }
+ 
