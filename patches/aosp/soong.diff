@@ -1,0 +1,171 @@
+diff --git a/android/env.go b/android/env.go
+index c7c96d5c..341fe5a6 100644
+--- a/android/env.go
++++ b/android/env.go
+@@ -36,6 +36,8 @@ var soongDelveListen string
+ var soongDelvePath string
+ var soongDelveEnv []string
+ 
++var TargetExperimentalPac string
++
+ func init() {
+ 	// Delve support needs to read this environment variable very early, before NewConfig has created a way to
+ 	// access originalEnv with dependencies.  Store the value where soong_build can find it, it will manually
+@@ -55,6 +57,8 @@ func init() {
+ 		}
+ 	}
+ 
++	TargetExperimentalPac = os.Getenv("TARGET_EXPERIMENTAL_PAC")
++
+ 	// Clear the environment to prevent use of os.Getenv(), which would not provide dependencies on environment
+ 	// variable values.  The environment is available through ctx.Config().Getenv, ctx.Config().IsEnvTrue, etc.
+ 	os.Clearenv()
+diff --git a/cc/builder.go b/cc/builder.go
+index e571e5a0..39d52ad4 100644
+--- a/cc/builder.go
++++ b/cc/builder.go
+@@ -204,7 +204,7 @@ var (
+ 	// -w has been added since header-abi-dumper does not need to produce any sort of diagnostic information.
+ 	sAbiDump, sAbiDumpRE = remoteexec.StaticRules(pctx, "sAbiDump",
+ 		blueprint.RuleParams{
+-			Command:     "rm -f $out && $reTemplate$sAbiDumper -o ${out} $in $exportDirs -- $cFlags -w -isystem prebuilts/clang-tools/${config.HostPrebuiltTag}/clang-headers",
++			Command:     "rm -f $out && $reTemplate$sAbiDumper -o ${out} $in $exportDirs -- $cFlags -UANDROID_EXPERIMENTAL_PAC -w -isystem prebuilts/clang-tools/${config.HostPrebuiltTag}/clang-headers",
+ 			CommandDeps: []string{"$sAbiDumper"},
+ 		}, &remoteexec.REParams{
+ 			Labels:       map[string]string{"type": "abi-dump", "tool": "header-abi-dumper"},
+diff --git a/cc/compiler.go b/cc/compiler.go
+index 681b1ab9..dca3cfcb 100644
+--- a/cc/compiler.go
++++ b/cc/compiler.go
+@@ -357,6 +357,40 @@ func (compiler *baseCompiler) compilerFlags(ctx ModuleContext, flags Flags, deps
+ 	flags.Local.ConlyFlags = config.ClangFilterUnknownCflags(flags.Local.ConlyFlags)
+ 	flags.Local.LdFlags = config.ClangFilterUnknownCflags(flags.Local.LdFlags)
+ 
++	if ctx.Config().Getenv("TARGET_EXPERIMENTAL_PAC") != "" {
++		var cflags []string
++		for _, f := range flags.Local.CFlags {
++			if f != "-fwhole-program-vtables" {
++				cflags = append(cflags, f)
++			}
++		}
++		flags.Local.CFlags = cflags
++
++		var cppflags []string
++		for _, f := range flags.Local.CppFlags {
++			if f != "-fwhole-program-vtables" {
++				cppflags = append(cppflags, f)
++			}
++		}
++		flags.Local.CppFlags = cppflags
++	} else {
++		var cflags []string
++		for _, f := range flags.Local.CFlags {
++			if f != "-fno-ptrauth-calls" {
++				cflags = append(cflags, f)
++			}
++		}
++		flags.Local.CFlags = cflags
++
++		var cppflags []string
++		for _, f := range flags.Local.CppFlags {
++			if f != "-fno-ptrauth-calls" {
++				cppflags = append(cppflags, f)
++			}
++		}
++		flags.Local.CppFlags = cppflags
++	}
++
+ 	target := "-target " + tc.ClangTriple()
+ 	if ctx.Os().Class == android.Device {
+ 		version := ctx.sdkVersion()
+diff --git a/cc/config/arm64_device.go b/cc/config/arm64_device.go
+index 93834630..8efbf4dd 100644
+--- a/cc/config/arm64_device.go
++++ b/cc/config/arm64_device.go
+@@ -207,6 +207,10 @@ func arm64ToolchainFactory(arch android.Arch) Toolchain {
+ 	toolchainClangCflags = append(toolchainClangCflags,
+ 		variantOrDefault(arm64ClangCpuVariantCflagsVar, arch.CpuVariant))
+ 
++	if android.TargetExperimentalPac != "" {
++		toolchainClangCflags = append(toolchainClangCflags, "-DANDROID_EXPERIMENTAL_PAC", "-march=armv8.3a", "-fptrauth-returns", "-fptrauth-intrinsics", "-fptrauth-calls", "-fptrauth-indirect-gotos", "-fptrauth-auth-traps")
++	}
++
+ 	var extraLdflags string
+ 	switch arch.CpuVariant {
+ 	case "cortex-a53", "cortex-a72", "cortex-a73", "kryo", "exynos-m1", "exynos-m2":
+diff --git a/cc/config/global.go b/cc/config/global.go
+index 1dd8a2d0..50df9244 100644
+--- a/cc/config/global.go
++++ b/cc/config/global.go
+@@ -86,7 +86,6 @@ var (
+ 		"-Wl,--build-id=md5",
+ 		"-Wl,--warn-shared-textrel",
+ 		"-Wl,--fatal-warnings",
+-		"-Wl,--no-undefined-version",
+ 		"-Wl,--exclude-libs,libgcc.a",
+ 		"-Wl,--exclude-libs,libgcc_stripped.a",
+ 		"-Wl,--exclude-libs,libunwind_llvm.a",
+diff --git a/cc/lto.go b/cc/lto.go
+index 4489fc7d..2a19202d 100644
+--- a/cc/lto.go
++++ b/cc/lto.go
+@@ -87,15 +87,17 @@ func (lto *lto) flags(ctx BaseModuleContext, flags Flags) Flags {
+ 	}
+ 
+ 	if lto.LTO() {
+-		var ltoFlag string
+-		if Bool(lto.Properties.Lto.Thin) {
+-			ltoFlag = "-flto=thin -fsplit-lto-unit"
+-		} else {
+-			ltoFlag = "-flto"
+-		}
++		if ctx.Config().Getenv("TARGET_EXPERIMENTAL_PAC") == "" {
++			var ltoFlag string
++			if Bool(lto.Properties.Lto.Thin) {
++				ltoFlag = "-flto=thin -fsplit-lto-unit"
++			} else {
++				ltoFlag = "-flto"
++			}
+ 
+-		flags.Local.CFlags = append(flags.Local.CFlags, ltoFlag)
+-		flags.Local.LdFlags = append(flags.Local.LdFlags, ltoFlag)
++			flags.Local.CFlags = append(flags.Local.CFlags, ltoFlag)
++			flags.Local.LdFlags = append(flags.Local.LdFlags, ltoFlag)
++		}
+ 
+ 		if ctx.Config().IsEnvTrue("USE_THINLTO_CACHE") && Bool(lto.Properties.Lto.Thin) && lto.useClangLld(ctx) {
+ 			// Set appropriate ThinLTO cache policy
+diff --git a/cc/sanitize.go b/cc/sanitize.go
+index aaaf694d..e3f94ecd 100644
+--- a/cc/sanitize.go
++++ b/cc/sanitize.go
+@@ -519,7 +519,7 @@ func (sanitize *sanitize) flags(ctx ModuleContext, flags Flags) Flags {
+ 		flags.Local.LdFlags = append(flags.Local.LdFlags, `-Wl,-rpath,\$$ORIGIN`)
+ 	}
+ 
+-	if Bool(sanitize.Properties.Sanitize.Cfi) {
++	if Bool(sanitize.Properties.Sanitize.Cfi) && ctx.Config().Getenv("TARGET_EXPERIMENTAL_PAC") == "" {
+ 		if ctx.Arch().ArchType == android.Arm {
+ 			// __cfi_check needs to be built as Thumb (see the code in linker_cfi.cpp). LLVM is not set up
+ 			// to do this on a function basis, so force Thumb on the entire module.
+@@ -545,8 +545,18 @@ func (sanitize *sanitize) flags(ctx ModuleContext, flags Flags) Flags {
+ 		flags.Local.CFlags = append(flags.Local.CFlags, intOverflowCflags...)
+ 	}
+ 
+-	if len(sanitize.Properties.Sanitizers) > 0 {
+-		sanitizeArg := "-fsanitize=" + strings.Join(sanitize.Properties.Sanitizers, ",")
++	sanitizers := sanitize.Properties.Sanitizers
++	if ctx.Config().Getenv("TARGET_EXPERIMENTAL_PAC") != "" {
++		sanitizers = nil
++		for _, s := range sanitize.Properties.Sanitizers {
++			if !strings.HasPrefix(s, "cfi") {
++				sanitizers = append(sanitizers, s)
++			}
++		}
++	}
++
++	if len(sanitizers) > 0 {
++		sanitizeArg := "-fsanitize=" + strings.Join(sanitizers, ",")
+ 
+ 		flags.Local.CFlags = append(flags.Local.CFlags, sanitizeArg)
+ 		flags.Local.AsFlags = append(flags.Local.AsFlags, sanitizeArg)

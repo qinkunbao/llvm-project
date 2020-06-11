@@ -1,0 +1,15 @@
+diff --git a/src/crypto/fipsmodule/bcm.c b/src/crypto/fipsmodule/bcm.c
+index 567a0cdf..f927cf76 100644
+--- a/src/crypto/fipsmodule/bcm.c
++++ b/src/crypto/fipsmodule/bcm.c
+@@ -122,6 +122,10 @@ extern const uint8_t BORINGSSL_bcm_rodata_end[];
+ // aborts otherwise.
+ static void assert_within(const void *start, const void *symbol,
+                           const void *end) {
++#ifdef ANDROID_EXPERIMENTAL_PAC
++  symbol = __builtin_ptrauth_strip(symbol, 0);
++#endif
++
+   const uintptr_t start_val = (uintptr_t) start;
+   const uintptr_t symbol_val = (uintptr_t) symbol;
+   const uintptr_t end_val = (uintptr_t) end;

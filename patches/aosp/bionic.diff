@@ -1,0 +1,302 @@
+diff --git a/libc/Android.bp b/libc/Android.bp
+index b7295b7d7..e0a862dbb 100644
+--- a/libc/Android.bp
++++ b/libc/Android.bp
+@@ -1987,6 +1987,7 @@ cc_defaults {
+         "-Wno-gcc-compat",
+         "-Wall",
+         "-Werror",
++        "-fno-ptrauth-calls",
+     ],
+     sanitize: {
+         never: true,
+diff --git a/libc/bionic/__libc_init_main_thread.cpp b/libc/bionic/__libc_init_main_thread.cpp
+index 56a848888..188726554 100644
+--- a/libc/bionic/__libc_init_main_thread.cpp
++++ b/libc/bionic/__libc_init_main_thread.cpp
+@@ -82,6 +82,9 @@ extern "C" void __libc_init_main_thread_early(const KernelArgumentBlock& args,
+   main_thread.tid = __getpid();
+   main_thread.set_cached_pid(main_thread.tid);
+   main_thread.stack_top = reinterpret_cast<uintptr_t>(args.argv);
++
++#define PR_PAC_SET_ENABLED_KEYS 59
++  // prctl(PR_PAC_SET_ENABLED_KEYS, PR_PAC_APIBKEY, 0, 0, 0);
+ }
+ 
+ // This code is used both by each new pthread and the code that initializes the main thread.
+diff --git a/libc/bionic/bionic_call_ifunc_resolver.cpp b/libc/bionic/bionic_call_ifunc_resolver.cpp
+index 437de78ce..0c66b6377 100644
+--- a/libc/bionic/bionic_call_ifunc_resolver.cpp
++++ b/libc/bionic/bionic_call_ifunc_resolver.cpp
+@@ -47,7 +47,16 @@ ElfW(Addr) __bionic_call_ifunc_resolver(ElfW(Addr) resolver_addr) {
+     arg._hwcap = getauxval(AT_HWCAP);
+     arg._hwcap2 = getauxval(AT_HWCAP2);
+   }
+-  return reinterpret_cast<ifunc_resolver_t>(resolver_addr)(arg._hwcap | _IFUNC_ARG_HWCAP, &arg);
++#ifdef ANDROID_EXPERIMENTAL_PAC
++  resolver_addr = reinterpret_cast<ElfW(Addr)>(
++      __builtin_ptrauth_sign_unauthenticated(reinterpret_cast<void*>(resolver_addr), 0, 0));
++#endif
++  ElfW(Addr) addr =
++      reinterpret_cast<ifunc_resolver_t>(resolver_addr)(arg._hwcap | _IFUNC_ARG_HWCAP, &arg);
++#ifdef ANDROID_EXPERIMENTAL_PAC
++  addr = reinterpret_cast<ElfW(Addr)>(__builtin_ptrauth_strip(reinterpret_cast<void*>(addr), 0));
++#endif
++  return addr;
+ #elif defined(__arm__)
+   typedef ElfW(Addr) (*ifunc_resolver_t)(unsigned long);
+   static unsigned long hwcap;
+@@ -62,3 +71,28 @@ ElfW(Addr) __bionic_call_ifunc_resolver(ElfW(Addr) resolver_addr) {
+   return reinterpret_cast<ifunc_resolver_t>(resolver_addr)();
+ #endif
+ }
++
++#ifdef ANDROID_EXPERIMENTAL_PAC
++ElfW(Addr) __bionic_pac_sign_ptr(ElfW(Addr) addr, ElfW(Addr)* place) {
++  uintptr_t data = *place;
++  uint64_t discriminator = data & 0xffff;
++  if (data & (1 << 16)) {
++    discriminator =
++        (discriminator << 48) | (reinterpret_cast<uintptr_t>(place) & ((1ULL << 48) - 1));
++  }
++  switch ((data >> 17) & 3) {
++    case 0:
++      return reinterpret_cast<uintptr_t>(
++          __builtin_ptrauth_sign_unauthenticated(reinterpret_cast<void*>(addr), 0, discriminator));
++    case 1:
++      return reinterpret_cast<uintptr_t>(
++          __builtin_ptrauth_sign_unauthenticated(reinterpret_cast<void*>(addr), 1, discriminator));
++    case 2:
++      return reinterpret_cast<uintptr_t>(
++          __builtin_ptrauth_sign_unauthenticated(reinterpret_cast<void*>(addr), 2, discriminator));
++    case 3:
++      return reinterpret_cast<uintptr_t>(
++          __builtin_ptrauth_sign_unauthenticated(reinterpret_cast<void*>(addr), 3, discriminator));
++  }
++}
++#endif
+diff --git a/libc/bionic/libc_init_dynamic.cpp b/libc/bionic/libc_init_dynamic.cpp
+index c9da02eab..317015289 100644
+--- a/libc/bionic/libc_init_dynamic.cpp
++++ b/libc/bionic/libc_init_dynamic.cpp
+@@ -148,6 +148,9 @@ __noreturn void __libc_init(void* raw_args,
+     __cxa_atexit(__libc_fini,structors->fini_array,nullptr);
+   }
+ 
++#ifdef ANDROID_EXPERIMENTAL_PAC
++  slingshot = __builtin_ptrauth_sign_unauthenticated(slingshot, 0, 0);
++#endif
+   exit(slingshot(args.argc - __libc_shared_globals()->initial_linker_arg_count,
+                  args.argv + __libc_shared_globals()->initial_linker_arg_count,
+                  args.envp));
+diff --git a/libc/bionic/libc_init_static.cpp b/libc/bionic/libc_init_static.cpp
+index cf5423e00..6064e26a7 100644
+--- a/libc/bionic/libc_init_static.cpp
++++ b/libc/bionic/libc_init_static.cpp
+@@ -63,7 +63,11 @@ extern "C" int __cxa_atexit(void (*)(void *), void *, void *);
+ static void call_array(void(**list)()) {
+   // First element is -1, list is null-terminated
+   while (*++list) {
+-    (*list)();
++    void (*fptr)() = *list;
++#ifdef ANDROID_EXPERIMENTAL_PAC
++    fptr = __builtin_ptrauth_sign_unauthenticated(fptr, 0, 0);
++#endif
++    fptr();
+   }
+ }
+ 
+@@ -85,6 +89,13 @@ static void call_ifunc_resolvers() {
+   for (ElfW(Rela) *r = __rela_iplt_start; r != __rela_iplt_end; ++r) {
+     ElfW(Addr)* offset = reinterpret_cast<ElfW(Addr)*>(r->r_offset);
+     ElfW(Addr) resolver = r->r_addend;
++#if defined(ANDROID_EXPERIMENTAL_PAC)
++#define R_AARCH64_AUTH_RELATIVE 0x4ff
++    if (ELF64_R_TYPE(r->r_info) == R_AARCH64_AUTH_RELATIVE) {
++      *offset = __bionic_pac_sign_ptr(resolver, offset);
++      continue;
++    }
++#endif
+     *offset = __bionic_call_ifunc_resolver(resolver);
+   }
+ }
+@@ -173,10 +184,10 @@ __noreturn static void __real_libc_init(void *raw_args,
+   __libc_init_AT_SECURE(args.envp);
+   layout_static_tls(args);
+   __libc_init_main_thread_final();
++  call_ifunc_resolvers();
+   __libc_init_common();
+   __libc_init_fork_handler();
+ 
+-  call_ifunc_resolvers();
+   apply_gnu_relro();
+ 
+   // Several Linux ABIs don't pass the onexit pointer, and the ones that
+@@ -192,6 +203,9 @@ __noreturn static void __real_libc_init(void *raw_args,
+     __cxa_atexit(__libc_fini,structors->fini_array,nullptr);
+   }
+ 
++#ifdef ANDROID_EXPERIMENTAL_PAC
++  slingshot = __builtin_ptrauth_sign_unauthenticated(slingshot, 0, 0);
++#endif
+   exit(slingshot(args.argc, args.argv, args.envp));
+ }
+ 
+diff --git a/libc/bionic/vdso.cpp b/libc/bionic/vdso.cpp
+index dbca9c013..619cd7a14 100644
+--- a/libc/bionic/vdso.cpp
++++ b/libc/bionic/vdso.cpp
+@@ -37,6 +37,9 @@ int clock_gettime(int clock_id, timespec* tp) {
+   auto vdso_clock_gettime = reinterpret_cast<decltype(&clock_gettime)>(
+     __libc_globals->vdso[VDSO_CLOCK_GETTIME].fn);
+   if (__predict_true(vdso_clock_gettime)) {
++#ifdef ANDROID_EXPERIMENTAL_PAC
++    vdso_clock_gettime = __builtin_ptrauth_sign_unauthenticated(vdso_clock_gettime, 0, 0);
++#endif
+     return vdso_return(vdso_clock_gettime(clock_id, tp));
+   }
+   return __clock_gettime(clock_id, tp);
+@@ -46,6 +49,9 @@ int clock_getres(int clock_id, timespec* tp) {
+   auto vdso_clock_getres = reinterpret_cast<decltype(&clock_getres)>(
+     __libc_globals->vdso[VDSO_CLOCK_GETRES].fn);
+   if (__predict_true(vdso_clock_getres)) {
++#ifdef ANDROID_EXPERIMENTAL_PAC
++    vdso_clock_getres = __builtin_ptrauth_sign_unauthenticated(vdso_clock_getres, 0, 0);
++#endif
+     return vdso_return(vdso_clock_getres(clock_id, tp));
+   }
+   return __clock_getres(clock_id, tp);
+@@ -55,6 +61,9 @@ int gettimeofday(timeval* tv, struct timezone* tz) {
+   auto vdso_gettimeofday = reinterpret_cast<decltype(&gettimeofday)>(
+     __libc_globals->vdso[VDSO_GETTIMEOFDAY].fn);
+   if (__predict_true(vdso_gettimeofday)) {
++#ifdef ANDROID_EXPERIMENTAL_PAC
++    vdso_gettimeofday = __builtin_ptrauth_sign_unauthenticated(vdso_gettimeofday, 0, 0);
++#endif
+     return vdso_return(vdso_gettimeofday(tv, tz));
+   }
+   return __gettimeofday(tv, tz);
+@@ -63,6 +72,9 @@ int gettimeofday(timeval* tv, struct timezone* tz) {
+ time_t time(time_t* t) {
+   auto vdso_time = reinterpret_cast<decltype(&time)>(__libc_globals->vdso[VDSO_TIME].fn);
+   if (__predict_true(vdso_time)) {
++#ifdef ANDROID_EXPERIMENTAL_PAC
++    vdso_time = __builtin_ptrauth_sign_unauthenticated(vdso_time, 0, 0);
++#endif
+     return vdso_time(t);
+   }
+ 
+diff --git a/libc/private/bionic_call_ifunc_resolver.h b/libc/private/bionic_call_ifunc_resolver.h
+index e0ea35bba..b92de0620 100644
+--- a/libc/private/bionic_call_ifunc_resolver.h
++++ b/libc/private/bionic_call_ifunc_resolver.h
+@@ -32,3 +32,4 @@
+ #include <sys/cdefs.h>
+ 
+ __LIBC_HIDDEN__ ElfW(Addr) __bionic_call_ifunc_resolver(ElfW(Addr) resolver_addr);
++__LIBC_HIDDEN__ ElfW(Addr) __bionic_pac_sign_ptr(ElfW(Addr) addr, ElfW(Addr)* place);
+diff --git a/linker/linker.cpp b/linker/linker.cpp
+index edf0329c9..0a679e61a 100644
+--- a/linker/linker.cpp
++++ b/linker/linker.cpp
+@@ -2287,6 +2287,11 @@ bool do_dlsym(void* handle,
+       } else {
+         *symbol = reinterpret_cast<void*>(found->resolve_symbol_address(sym));
+       }
++#ifdef ANDROID_EXPERIMENTAL_PAC
++      if (type == STT_FUNC || type == STT_GNU_IFUNC) {
++        *symbol = __builtin_ptrauth_sign_unauthenticated(*symbol, 0, 0);
++      }
++#endif
+       failure_guard.Disable();
+       LD_LOG(kLogDlsym,
+              "... dlsym successful: sym_name=\"%s\", sym_ver=\"%s\", found in=\"%s\", address=%p",
+diff --git a/linker/linker_main.cpp b/linker/linker_main.cpp
+index 41bb4baee..1475b2a70 100644
+--- a/linker/linker_main.cpp
++++ b/linker/linker_main.cpp
+@@ -578,6 +578,12 @@ static void call_ifunc_resolvers(ElfW(Addr) load_bias) {
+   for (ElfW(Rela) *r = __rela_iplt_start; r != __rela_iplt_end; ++r) {
+     ElfW(Addr)* offset = reinterpret_cast<ElfW(Addr)*>(r->r_offset + load_bias);
+     ElfW(Addr) resolver = r->r_addend + load_bias;
++#if defined(__aarch64__) && defined(ANDROID_EXPERIMENTAL_PAC)
++#define R_AARCH64_AUTH_RELATIVE 0x4ff
++    if (ELF64_R_TYPE(r->r_info) == R_AARCH64_AUTH_RELATIVE) {
++      continue;
++    }
++#endif
+     *offset = __bionic_call_ifunc_resolver(resolver);
+   }
+ }
+@@ -702,7 +708,11 @@ __linker_init_post_relocation(KernelArgumentBlock& args, soinfo& tmp_linker_so)
+   // as PT_INTERP, AT_ENTRY will refer to the loaded executable rather than the
+   // linker's _start.
+   const char* exe_to_load = nullptr;
+-  if (getauxval(AT_ENTRY) == reinterpret_cast<uintptr_t>(&_start)) {
++  void (*start_ptr)() = _start;
++#ifdef ANDROID_EXPERIMENTAL_PAC
++  start_ptr = __builtin_ptrauth_strip(start_ptr, 0);
++#endif
++  if (getauxval(AT_ENTRY) == reinterpret_cast<uintptr_t>(start_ptr)) {
+     if (args.argc == 3 && !strcmp(args.argv[1], "--list")) {
+       // We're being asked to behave like ldd(1).
+       g_is_ldd = true;
+diff --git a/linker/linker_relocate.cpp b/linker/linker_relocate.cpp
+index 72be5f74c..780c24f03 100644
+--- a/linker/linker_relocate.cpp
++++ b/linker/linker_relocate.cpp
+@@ -42,6 +42,7 @@
+ #include "linker_reloc_iterators.h"
+ #include "linker_sleb128.h"
+ #include "linker_soinfo.h"
++#include "private/bionic_call_ifunc_resolver.h"
+ #include "private/bionic_globals.h"
+ 
+ static bool is_tls_reloc(ElfW(Word) type) {
+@@ -464,6 +465,22 @@ static bool process_relocation_impl(Relocator& relocator, const rel_t& reloc) {
+         }
+       }
+       break;
++#define R_AARCH64_AUTH64 0x1ff
++#define R_AARCH64_AUTH_RELATIVE 0x4ff
++#if defined(ANDROID_EXPERIMENTAL_PAC)
++    case R_AARCH64_AUTH64: {
++      const ElfW(Addr) result =
++          __bionic_pac_sign_ptr(sym_addr, static_cast<ElfW(Addr)*>(rel_target)) + get_addend_rel();
++      *static_cast<ElfW(Addr)*>(rel_target) = result;
++      break;
++    }
++    case R_AARCH64_AUTH_RELATIVE: {
++      const ElfW(Addr) result = __bionic_pac_sign_ptr(relocator.si->load_bias + get_addend_rel(),
++                                                      static_cast<ElfW(Addr)*>(rel_target));
++      *static_cast<ElfW(Addr)*>(rel_target) = result;
++      break;
++    }
++#endif  // defined(ANDROID_EXPERIMENTAL_PAC)
+ #endif  // defined(__aarch64__)
+ 
+ #if defined(__x86_64__)
+diff --git a/linker/linker_soinfo.cpp b/linker/linker_soinfo.cpp
+index 4f67003b8..8ac5136f5 100644
+--- a/linker/linker_soinfo.cpp
++++ b/linker/linker_soinfo.cpp
+@@ -468,6 +468,9 @@ static void call_function(const char* function_name __unused,
+   }
+ 
+   TRACE("[ Calling c-tor %s @ %p for '%s' ]", function_name, function, realpath);
++#ifdef ANDROID_EXPERIMENTAL_PAC
++  function = __builtin_ptrauth_sign_unauthenticated(function, 0, 0);
++#endif
+   function(g_argc, g_argv, g_envp);
+   TRACE("[ Done calling c-tor %s @ %p for '%s' ]", function_name, function, realpath);
+ }
+@@ -480,6 +483,9 @@ static void call_function(const char* function_name __unused,
+   }
+ 
+   TRACE("[ Calling d-tor %s @ %p for '%s' ]", function_name, function, realpath);
++#ifdef ANDROID_EXPERIMENTAL_PAC
++  function = __builtin_ptrauth_sign_unauthenticated(function, 0, 0);
++#endif
+   function();
+   TRACE("[ Done calling d-tor %s @ %p for '%s' ]", function_name, function, realpath);
+ }
