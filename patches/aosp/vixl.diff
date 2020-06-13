@@ -1,0 +1,55 @@
+diff --git a/src/aarch64/assembler-aarch64.cc b/src/aarch64/assembler-aarch64.cc
+index 9e73ffaa..285c9d86 100644
+--- a/src/aarch64/assembler-aarch64.cc
++++ b/src/aarch64/assembler-aarch64.cc
+@@ -196,7 +196,7 @@ void Assembler::ret(const Register& xn) {
+ 
+ 
+ void Assembler::braaz(const Register& xn) {
+-  VIXL_ASSERT(CPUHas(CPUFeatures::kPAuth));
++  // VIXL_ASSERT(CPUHas(CPUFeatures::kPAuth));
+   VIXL_ASSERT(xn.Is64Bits());
+   Emit(BRAAZ | Rn(xn) | Rd_mask);
+ }
+@@ -208,7 +208,7 @@ void Assembler::brabz(const Register& xn) {
+ }
+ 
+ void Assembler::blraaz(const Register& xn) {
+-  VIXL_ASSERT(CPUHas(CPUFeatures::kPAuth));
++  // VIXL_ASSERT(CPUHas(CPUFeatures::kPAuth));
+   VIXL_ASSERT(xn.Is64Bits());
+   Emit(BLRAAZ | Rn(xn) | Rd_mask);
+ }
+@@ -1081,7 +1081,7 @@ void Assembler::pacga(const Register& xd,
+ }
+ 
+ void Assembler::xpaci(const Register& xd) {
+-  VIXL_ASSERT(CPUHas(CPUFeatures::kPAuth));
++  // VIXL_ASSERT(CPUHas(CPUFeatures::kPAuth));
+   VIXL_ASSERT(xd.Is64Bits());
+   Emit(SF(xd) | XPACI | Rd(xd));
+ }
+@@ -2542,7 +2542,7 @@ void Assembler::mov(const Register& rd, const Register& rm) {
+ }
+ 
+ void Assembler::xpaclri() {
+-  VIXL_ASSERT(CPUHas(CPUFeatures::kPAuth));
++  // VIXL_ASSERT(CPUHas(CPUFeatures::kPAuth));
+   Emit(XPACLRI);
+ }
+ 
+diff --git a/src/aarch64/constants-aarch64.h b/src/aarch64/constants-aarch64.h
+index 36f5568d..94b34ceb 100644
+--- a/src/aarch64/constants-aarch64.h
++++ b/src/aarch64/constants-aarch64.h
+@@ -1306,8 +1306,8 @@ enum DataProcessing1SourceOp {
+   AUTIZB = DataProcessing1SourceFixed | 0x80013400,
+   AUTDZA = DataProcessing1SourceFixed | 0x80013800,
+   AUTDZB = DataProcessing1SourceFixed | 0x80013C00,
+-  XPACI  = DataProcessing1SourceFixed | 0x80014000,
+-  XPACD  = DataProcessing1SourceFixed | 0x80014400
++  XPACI  = DataProcessing1SourceFixed | 0x800143E0,
++  XPACD  = DataProcessing1SourceFixed | 0x800147E0
+ };
+ 
+ // Data processing 2 source.

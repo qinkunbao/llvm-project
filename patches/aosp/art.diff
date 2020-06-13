@@ -1,0 +1,202 @@
+diff --git a/compiler/optimizing/code_generator_arm64.cc b/compiler/optimizing/code_generator_arm64.cc
+index fd5f689c9d..e1f83ff605 100644
+--- a/compiler/optimizing/code_generator_arm64.cc
++++ b/compiler/optimizing/code_generator_arm64.cc
+@@ -1128,7 +1128,11 @@ void CodeGeneratorARM64::MaybeIncrementHotness(bool is_frame_entry) {
+       __ Ldr(lr, MemOperand(tr, entrypoint_offset));
+       // Note: we don't record the call here (and therefore don't generate a stack
+       // map), as the entrypoint should never be suspended.
+-      __ Blr(lr);
++      if (HasPAC()) {
++        __ Blraaz(lr);
++      } else {
++        __ Blr(lr);
++      }
+       if (HasEmptyFrame()) {
+         CHECK(is_frame_entry);
+         __ Ldr(lr, MemOperand(sp, 8));
+@@ -1784,6 +1788,9 @@ void CodeGeneratorARM64::InvokeRuntime(QuickEntrypointEnum entrypoint,
+   // For JIT, thunk sharing is per-method, so the gains would be smaller or even negative.
+   if (slow_path == nullptr || GetCompilerOptions().IsJitCompiler()) {
+     __ Ldr(lr, MemOperand(tr, entrypoint_offset.Int32Value()));
++    if (HasPAC()) {
++      __ Xpaclri();
++    }
+     // Ensure the pc position is recorded immediately after the `blr` instruction.
+     ExactAssemblyScope eas(GetVIXLAssembler(), kInstructionSize, CodeBufferCheckScope::kExactSize);
+     __ blr(lr);
+@@ -1805,7 +1812,11 @@ void CodeGeneratorARM64::InvokeRuntimeWithoutRecordingPcInfo(int32_t entry_point
+                                                              SlowPathCode* slow_path) {
+   ValidateInvokeRuntimeWithoutRecordingPcInfo(instruction, slow_path);
+   __ Ldr(lr, MemOperand(tr, entry_point_offset));
+-  __ Blr(lr);
++  if (HasPAC()) {
++    __ Blraaz(lr);
++  } else {
++    __ Blr(lr);
++  }
+ }
+ 
+ void InstructionCodeGeneratorARM64::GenerateClassInitializationCheck(SlowPathCodeARM64* slow_path,
+@@ -4263,6 +4274,7 @@ void InstructionCodeGeneratorARM64::VisitInvokeInterface(HInvokeInterface* invok
+   __ Ldr(temp, MemOperand(temp, method_offset));
+   // lr = temp->GetEntryPoint();
+   __ Ldr(lr, MemOperand(temp, entry_point.Int32Value()));
++  __ Xpaclri();
+ 
+   {
+     // Ensure the pc position is recorded immediately after the `blr` instruction.
+@@ -4390,6 +4402,7 @@ void CodeGeneratorARM64::GenerateStaticOrDirectCall(
+       __ Ldr(lr, MemOperand(
+           XRegisterFrom(callee_method),
+           ArtMethod::EntryPointFromQuickCompiledCodeOffset(kArm64PointerSize).Int32Value()));
++      __ xpaclri();
+       {
+         // Use a scope to help guarantee that `RecordPcInfo()` records the correct pc.
+         ExactAssemblyScope eas(GetVIXLAssembler(),
+@@ -4443,6 +4456,7 @@ void CodeGeneratorARM64::GenerateVirtualCall(
+   __ Ldr(temp, MemOperand(temp, method_offset));
+   // lr = temp->GetEntryPoint();
+   __ Ldr(lr, MemOperand(temp, entry_point.SizeValue()));
++  __ Xpaclri();
+   {
+     // Use a scope to help guarantee that `RecordPcInfo()` records the correct pc.
+     ExactAssemblyScope eas(GetVIXLAssembler(), kInstructionSize, CodeBufferCheckScope::kExactSize);
+diff --git a/compiler/utils/arm64/assembler_arm64.cc b/compiler/utils/arm64/assembler_arm64.cc
+index d722e00646..a073f70e08 100644
+--- a/compiler/utils/arm64/assembler_arm64.cc
++++ b/compiler/utils/arm64/assembler_arm64.cc
+@@ -54,6 +54,9 @@ static void SetVIXLCPUFeaturesFromART(vixl::aarch64::MacroAssembler* vixl_masm_,
+   if (art_features->HasLSE()) {
+     features->Combine(vixl::CPUFeatures::kAtomics);
+   }
++  if (HasPAC()) {
++    features->Combine(vixl::CPUFeatures::kPAuth);
++  }
+ }
+ 
+ Arm64Assembler::Arm64Assembler(ArenaAllocator* allocator,
+@@ -101,6 +104,9 @@ void Arm64Assembler::JumpTo(ManagedRegister m_base, Offset offs, ManagedRegister
+   UseScratchRegisterScope temps(&vixl_masm_);
+   temps.Exclude(reg_x(base.AsXRegister()), reg_x(scratch.AsXRegister()));
+   ___ Ldr(reg_x(scratch.AsXRegister()), MEM_OP(reg_x(base.AsXRegister()), offs.Int32Value()));
++  if (HasPAC()) {
++    ___ Xpaci(reg_x(scratch.AsXRegister()));
++  }
+   ___ Br(reg_x(scratch.AsXRegister()));
+ }
+ 
+diff --git a/compiler/utils/arm64/assembler_arm64.h b/compiler/utils/arm64/assembler_arm64.h
+index fe2f1766c2..5fe4890f80 100644
+--- a/compiler/utils/arm64/assembler_arm64.h
++++ b/compiler/utils/arm64/assembler_arm64.h
+@@ -43,6 +43,17 @@ class Arm64InstructionSetFeatures;
+ 
+ namespace arm64 {
+ 
++inline bool HasPAC() {
++#if !defined(__aarch64__)
++  static bool is_pac = getenv("TARGET_EXPERIMENTAL_PAC");
++  return is_pac;
++#elif defined(ANDROID_EXPERIMENTAL_PAC)
++  return true;
++#else
++  return false;
++#endif
++}
++
+ static inline dwarf::Reg DWARFReg(vixl::aarch64::CPURegister reg) {
+   if (reg.IsFPRegister()) {
+     return dwarf::Reg::Arm64Fp(reg.GetCode());
+diff --git a/compiler/utils/arm64/jni_macro_assembler_arm64.cc b/compiler/utils/arm64/jni_macro_assembler_arm64.cc
+index bb93a96ebe..d453a9247f 100644
+--- a/compiler/utils/arm64/jni_macro_assembler_arm64.cc
++++ b/compiler/utils/arm64/jni_macro_assembler_arm64.cc
+@@ -629,21 +629,33 @@ void Arm64JNIMacroAssembler::Jump(ManagedRegister m_base, Offset offs) {
+   UseScratchRegisterScope temps(asm_.GetVIXLAssembler());
+   Register scratch = temps.AcquireX();
+   ___ Ldr(scratch, MEM_OP(reg_x(base.AsXRegister()), offs.Int32Value()));
+-  ___ Br(scratch);
++  if (HasPAC()) {
++    ___ Braaz(scratch);
++  } else {
++    ___ Br(scratch);
++  }
+ }
+ 
+ void Arm64JNIMacroAssembler::Call(ManagedRegister m_base, Offset offs) {
+   Arm64ManagedRegister base = m_base.AsArm64();
+   CHECK(base.IsXRegister()) << base;
+   ___ Ldr(lr, MEM_OP(reg_x(base.AsXRegister()), offs.Int32Value()));
+-  ___ Blr(lr);
++  if (HasPAC()) {
++    ___ Blraaz(lr);
++  } else {
++    ___ Blr(lr);
++  }
+ }
+ 
+ void Arm64JNIMacroAssembler::Call(FrameOffset base, Offset offs) {
+   // Call *(*(SP + base) + offset)
+   ___ Ldr(lr, MEM_OP(reg_x(SP), base.Int32Value()));
+   ___ Ldr(lr, MEM_OP(lr, offs.Int32Value()));
+-  ___ Blr(lr);
++  if (HasPAC()) {
++    ___ Blraaz(lr);
++  } else {
++    ___ Blr(lr);
++  }
+ }
+ 
+ void Arm64JNIMacroAssembler::CallFromThread(ThreadOffset64 offset ATTRIBUTE_UNUSED) {
+@@ -773,7 +785,11 @@ void Arm64JNIMacroAssembler::EmitExceptionPoll(Arm64Exception* exception) {
+           MEM_OP(reg_x(TR),
+                  QUICK_ENTRYPOINT_OFFSET(kArm64PointerSize, pDeliverException).Int32Value()));
+ 
+-  ___ Blr(lr);
++  if (HasPAC()) {
++    ___ Blraaz(lr);
++  } else {
++    ___ Blr(lr);
++  }
+   // Call should never return.
+   ___ Brk();
+ }
+diff --git a/runtime/arch/arm64/quick_entrypoints_arm64.S b/runtime/arch/arm64/quick_entrypoints_arm64.S
+index 634c762040..e04bf96c7b 100644
+--- a/runtime/arch/arm64/quick_entrypoints_arm64.S
++++ b/runtime/arch/arm64/quick_entrypoints_arm64.S
+@@ -342,7 +342,13 @@ NO_ARG_RUNTIME_EXCEPTION art_quick_throw_stack_overflow, artThrowStackOverflowFr
+     RESTORE_SAVE_REFS_AND_ARGS_FRAME
+     REFRESH_MARKING_REGISTER
+     cbz    x0, 1f                         // did we find the target? if not go to exception delivery
++#ifdef ANDROID_EXPERIMENTAL_PAC
++    // braaz  xIP0                           // tail call to target
++    xpaci xIP0
+     br     xIP0                           // tail call to target
++#else
++    br     xIP0                           // tail call to target
++#endif
+ 1:
+     DELIVER_PENDING_EXCEPTION
+ .endm
+@@ -405,6 +411,9 @@ SAVE_SIZE=6*8   // x4, x5, x19, x20, FP, LR saved.
+     // load method-> METHOD_QUICK_CODE_OFFSET
+     ldr x9, [x0, #ART_METHOD_QUICK_CODE_OFFSET_64]
+     // Branch to method.
++#ifdef ANDROID_EXPERIMENTAL_PAC
++    xpaci x9
++#endif
+     blr x9
+ 
+     // Pop the ArtMethod* (null), arguments and alignment padding from the stack.
+@@ -1800,6 +1809,9 @@ ENTRY art_quick_resolution_trampoline
+     ldr x0, [sp, #0]        // artQuickResolutionTrampoline puts called method in *SP.
+     RESTORE_SAVE_REFS_AND_ARGS_FRAME
+     REFRESH_MARKING_REGISTER
++#ifdef ANDROID_EXPERIMENTAL_PAC
++    xpaci xIP0 // check this
++#endif
+     br xIP0
+ 1:
+     RESTORE_SAVE_REFS_AND_ARGS_FRAME

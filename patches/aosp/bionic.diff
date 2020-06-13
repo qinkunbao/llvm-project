@@ -175,6 +175,26 @@ index edf0329c9..0a679e61a 100644
        failure_guard.Disable();
        LD_LOG(kLogDlsym,
               "... dlsym successful: sym_name=\"%s\", sym_ver=\"%s\", found in=\"%s\", address=%p",
+diff --git a/linker/linker_cfi.cpp b/linker/linker_cfi.cpp
+index 5995013b4..45538fec6 100644
+--- a/linker/linker_cfi.cpp
++++ b/linker/linker_cfi.cpp
+@@ -199,9 +199,13 @@ bool CFIShadowWriter::NotifyLibDl(soinfo* solist, uintptr_t p) {
+     return false;
+   }
+ 
+-  uintptr_t cfi_init = soinfo_find_symbol(libdl, "__cfi_init");
++  auto cfi_init =
++      reinterpret_cast<uintptr_t* (*)(uintptr_t)>(soinfo_find_symbol(libdl, "__cfi_init"));
+   CHECK(cfi_init != 0);
+-  shadow_start = reinterpret_cast<uintptr_t* (*)(uintptr_t)>(cfi_init)(p);
++#ifdef ANDROID_EXPERIMENTAL_PAC
++  cfi_init = __builtin_ptrauth_sign_unauthenticated(cfi_init, 0, 0);
++#endif
++  shadow_start = cfi_init(p);
+   CHECK(shadow_start != nullptr);
+   CHECK(*shadow_start == p);
+   mprotect(shadow_start, PAGE_SIZE, PROT_READ);
 diff --git a/linker/linker_main.cpp b/linker/linker_main.cpp
 index 41bb4baee..1475b2a70 100644
 --- a/linker/linker_main.cpp
@@ -206,7 +226,7 @@ index 41bb4baee..1475b2a70 100644
        // We're being asked to behave like ldd(1).
        g_is_ldd = true;
 diff --git a/linker/linker_relocate.cpp b/linker/linker_relocate.cpp
-index 72be5f74c..780c24f03 100644
+index 72be5f74c..f16622aac 100644
 --- a/linker/linker_relocate.cpp
 +++ b/linker/linker_relocate.cpp
 @@ -42,6 +42,7 @@
@@ -226,7 +246,7 @@ index 72be5f74c..780c24f03 100644
 +#if defined(ANDROID_EXPERIMENTAL_PAC)
 +    case R_AARCH64_AUTH64: {
 +      const ElfW(Addr) result =
-+          __bionic_pac_sign_ptr(sym_addr, static_cast<ElfW(Addr)*>(rel_target)) + get_addend_rel();
++          __bionic_pac_sign_ptr(sym_addr + get_addend_rel(), static_cast<ElfW(Addr)*>(rel_target));
 +      *static_cast<ElfW(Addr)*>(rel_target) = result;
 +      break;
 +    }

@@ -153,3 +153,39 @@ index aaaf694d..e3f94ecd 100644
  
  		flags.Local.CFlags = append(flags.Local.CFlags, sanitizeArg)
  		flags.Local.AsFlags = append(flags.Local.AsFlags, sanitizeArg)
+diff --git a/dexpreopt/dexpreopt.go b/dexpreopt/dexpreopt.go
+index 5275e8fd..e3f17c1f 100644
+--- a/dexpreopt/dexpreopt.go
++++ b/dexpreopt/dexpreopt.go
+@@ -377,9 +377,13 @@ func dexpreoptCommand(ctx android.PathContext, globalSoong *GlobalSoongConfig, g
+ 		dexLocationArg = strings.TrimPrefix(dexLocationArg, "/system")
+ 	}
+ 
+-	cmd := rule.Command().
+-		Text(`ANDROID_LOG_TAGS="*:e"`).
+-		Tool(globalSoong.Dex2oat).
++	cmd := rule.Command().Text(`ANDROID_LOG_TAGS="*:e"`)
++
++	if ctx.Config().Getenv("TARGET_EXPERIMENTAL_PAC") != "" {
++		cmd = cmd.Text("TARGET_EXPERIMENTAL_PAC=1")
++	}
++
++	cmd = cmd.Tool(globalSoong.Dex2oat).
+ 		Flag("--avoid-storing-invocation").
+ 		FlagWithOutput("--write-invocation-to=", invocationPath).ImplicitOutput(invocationPath).
+ 		Flag("--runtime-arg").FlagWithArg("-Xms", global.Dex2oatXms).
+diff --git a/java/dexpreopt_bootjars.go b/java/dexpreopt_bootjars.go
+index ed61d4bd..5ebc999c 100644
+--- a/java/dexpreopt_bootjars.go
++++ b/java/dexpreopt_bootjars.go
+@@ -399,6 +399,10 @@ func buildBootImageVariant(ctx android.SingletonContext, image *bootImageVariant
+ 		cmd.Text(`ANDROID_LOG_TAGS="*:v"`)
+ 	}
+ 
++	if ctx.Config().Getenv("TARGET_EXPERIMENTAL_PAC") != "" {
++		cmd.Text("TARGET_EXPERIMENTAL_PAC=1")
++	}
++
+ 	invocationPath := outputPath.ReplaceExtension(ctx, "invocation")
+ 
+ 	cmd.Tool(globalSoong.Dex2oat).
