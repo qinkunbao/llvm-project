@@ -1,0 +1,31 @@
+diff --git a/src/Reactor/LLVMJIT.cpp b/src/Reactor/LLVMJIT.cpp
+index 02ec371db..7a2abf904 100644
+--- a/src/Reactor/LLVMJIT.cpp
++++ b/src/Reactor/LLVMJIT.cpp
+@@ -666,7 +666,11 @@ public:
+ 			auto symbol = compileLayer.findSymbolIn(moduleKey, mangledNames[i], false);
+ 			if(auto address = symbol.getAddress())
+ 			{
+-				addresses[i] = reinterpret_cast<void *>(static_cast<intptr_t>(address.get()));
++				auto ptr = reinterpret_cast<void *>(static_cast<intptr_t>(address.get()));
++#ifdef ANDROID_EXPERIMENTAL_PAC
++				ptr = __builtin_ptrauth_sign_unauthenticated(ptr, 0, 0);
++#endif
++				addresses[i] = ptr;
+ 			}
+ 		}
+ 	}
+diff --git a/src/Reactor/SubzeroReactor.cpp b/src/Reactor/SubzeroReactor.cpp
+index bc01e01d0..fdd669af8 100644
+--- a/src/Reactor/SubzeroReactor.cpp
++++ b/src/Reactor/SubzeroReactor.cpp
+@@ -786,6 +786,9 @@ public:
+ 	void setEntry(int index, const void *func)
+ 	{
+ 		ASSERT(func);
++#ifdef ANDROID_EXPERIMENTAL_PAC
++		func = __builtin_ptrauth_sign_unauthenticated(func, 0, 0);
++#endif
+ 		funcs[index] = func;
+ 	}
+ 
