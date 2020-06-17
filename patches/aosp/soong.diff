@@ -119,6 +119,23 @@ index 4489fc7d..2a19202d 100644
  
  		if ctx.Config().IsEnvTrue("USE_THINLTO_CACHE") && Bool(lto.Properties.Lto.Thin) && lto.useClangLld(ctx) {
  			// Set appropriate ThinLTO cache policy
+diff --git a/cc/ndk_prebuilt.go b/cc/ndk_prebuilt.go
+index c4d77083..8341454a 100644
+--- a/cc/ndk_prebuilt.go
++++ b/cc/ndk_prebuilt.go
+@@ -155,7 +155,11 @@ func NdkPrebuiltStaticStlFactory() android.Module {
+ 
+ func getNdkStlLibDir(ctx android.ModuleContext) android.SourcePath {
+ 	libDir := "prebuilts/ndk/current/sources/cxx-stl/llvm-libc++/libs"
+-	return android.PathForSource(ctx, libDir).Join(ctx, ctx.Arch().Abi[0])
++	abi := ctx.Arch().Abi[0]
++	if abi == "arm64-v8a" && ctx.Config().Getenv("TARGET_EXPERIMENTAL_PAC") != "" {
++		abi = "arm64-v9a"
++	}
++	return android.PathForSource(ctx, libDir).Join(ctx, abi)
+ }
+ 
+ func (ndk *ndkPrebuiltStlLinker) link(ctx ModuleContext, flags Flags,
 diff --git a/cc/sanitize.go b/cc/sanitize.go
 index aaaf694d..e3f94ecd 100644
 --- a/cc/sanitize.go

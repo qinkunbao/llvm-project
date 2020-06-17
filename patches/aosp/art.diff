@@ -265,7 +265,7 @@ index 8a34662645..553271f412 100644
  1:
      ret             // restore regs and return to caller to handle exception.
 diff --git a/runtime/arch/arm64/quick_entrypoints_arm64.S b/runtime/arch/arm64/quick_entrypoints_arm64.S
-index 634c762040..7f684e53b9 100644
+index 634c762040..af70d6e12f 100644
 --- a/runtime/arch/arm64/quick_entrypoints_arm64.S
 +++ b/runtime/arch/arm64/quick_entrypoints_arm64.S
 @@ -342,7 +342,13 @@ NO_ARG_RUNTIME_EXCEPTION art_quick_throw_stack_overflow, artThrowStackOverflowFr
@@ -292,7 +292,18 @@ index 634c762040..7f684e53b9 100644
      blr x9
  
      // Pop the ArtMethod* (null), arguments and alignment padding from the stack.
-@@ -1744,6 +1753,9 @@ ENTRY art_quick_imt_conflict_trampoline
+@@ -878,6 +887,10 @@ ENTRY art_quick_do_long_jump
+ 
+     REFRESH_MARKING_REGISTER
+ 
++#ifdef ANDROID_EXPERIMENTAL_PAC
++    // this can go to art_quick_to_interpreter_bridge
++    xpaci xIP1
++#endif
+     br  xIP1
+ END art_quick_do_long_jump
+ 
+@@ -1744,6 +1757,9 @@ ENTRY art_quick_imt_conflict_trampoline
      // and jump to it.
      ldr x0, [xIP1, #__SIZEOF_POINTER__]
      ldr xIP0, [x0, #ART_METHOD_QUICK_CODE_OFFSET_64]
@@ -302,7 +313,7 @@ index 634c762040..7f684e53b9 100644
      br xIP0
  .Lconflict_trampoline:
      // Call the runtime stub to populate the ImtConflictTable and jump to the
-@@ -1800,6 +1812,9 @@ ENTRY art_quick_resolution_trampoline
+@@ -1800,6 +1816,9 @@ ENTRY art_quick_resolution_trampoline
      ldr x0, [sp, #0]        // artQuickResolutionTrampoline puts called method in *SP.
      RESTORE_SAVE_REFS_AND_ARGS_FRAME
      REFRESH_MARKING_REGISTER
@@ -312,7 +323,7 @@ index 634c762040..7f684e53b9 100644
      br xIP0
  1:
      RESTORE_SAVE_REFS_AND_ARGS_FRAME
-@@ -1916,7 +1931,12 @@ ENTRY art_quick_generic_jni_trampoline
+@@ -1916,7 +1935,12 @@ ENTRY art_quick_generic_jni_trampoline
      // Apply the new SP for out args, releasing unneeded reserved area.
      mov sp, xIP1
  

@@ -16,12 +16,14 @@ builddirver=$(grep CLANG_VERSION_STRING $builddir/gen/clang/include/clang/Basic/
 
 ver=$(grep 'ClangDefaultVersion.*=' $androiddir/build/soong/cc/config/global.go | cut -d\" -f2)
 shortver=$(grep 'ClangDefaultShortVersion.*=' $androiddir/build/soong/cc/config/global.go | cut -d\" -f2)
+majorver=$(echo $shortver | cut -d. -f1)
 origpath=$androiddir/prebuilts/clang/host/linux-x86/$ver
 
 rm -rf $treepath
 cp -r $origpath $treepath
 mkdir $treepath/bin.real
 cp $builddir/bin/clang $treepath/bin.real/clang
+cp $builddir/bin/clang $treepath/bin/clang-$majorver
 ln -sf clang $treepath/bin.real/clang++
 ln -sf ../bin/ld.lld $treepath/bin.real/ld.lld
 echo '#!/bin/sh
