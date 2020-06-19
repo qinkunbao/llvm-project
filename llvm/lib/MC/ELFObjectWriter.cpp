@@ -629,6 +629,7 @@ void ELFWriter::computeSymbolTable(
 
   // Add the data for the symbols.
   bool HasLargeSectionIndex = false;
+  bool NeedsAArch64Auth = false;
   for (const MCSymbol &S : Asm.symbols()) {
     const auto &Symbol = cast<MCSymbolELF>(S);
     bool Used = Symbol.isUsedInReloc();
@@ -692,6 +693,9 @@ void ELFWriter::computeSymbolTable(
         HasLargeSectionIndex = true;
     }
 
+    if (Symbol.AArch64Auth != 0)
+      NeedsAArch64Auth = true;
+
     StringRef Name = Symbol.getName();
 
     // Sections have their own string table
@@ -714,6 +718,14 @@ void ELFWriter::computeSymbolTable(
         Ctx.getELFSection(".symtab_shndx", ELF::SHT_SYMTAB_SHNDX, 0, 4, "");
     SymtabShndxSectionIndex = addToSectionTable(SymtabShndxSection);
     SymtabShndxSection->setAlignment(Align(4));
+  }
+
+  unsigned AArch64AuthSectionIndex = 0;
+  if (NeedsAArch64Auth) {
+    MCSectionELF *AArch64AuthSection =
+        Ctx.getELFSection(".symauth", ELF::SHT_AARCH64_AUTH, 0, 4, "");
+    AArch64AuthSectionIndex = addToSectionTable(AArch64AuthSection);
+    AArch64AuthSection->setAlignment(Align(4));
   }
 
   ArrayRef<std::string> FileNames = Asm.getFileNames();
@@ -757,6 +769,16 @@ void ELFWriter::computeSymbolTable(
 
   uint64_t SecEnd = W.OS.tell();
   SectionOffsets[SymtabSection] = std::make_pair(SecStart, SecEnd);
+
+  if (AArch64AuthSectionIndex != 0) {
+    const MCSectionELF *AArch64AuthSection =
+        SectionTable[AArch64AuthSectionIndex - 1];
+    SecStart = W.OS.tell();
+    for (ELFSymbolData &MSD : ExternalSymbolData)
+      write(MSD.Symbol->AArch64Auth);
+    SecEnd = W.OS.tell();
+    SectionOffsets[AArch64AuthSection] = std::make_pair(SecStart, SecEnd);
+  }
 
   ArrayRef<uint32_t> ShndxIndexes = Writer.getShndxIndexes();
   if (ShndxIndexes.empty()) {
@@ -1014,6 +1036,7 @@ void ELFWriter::writeSection(const SectionIndexMapTy &SectionIndexMap,
   case ELF::SHT_SYMTAB_SHNDX:
   case ELF::SHT_LLVM_CALL_GRAPH_PROFILE:
   case ELF::SHT_LLVM_ADDRSIG:
+  case ELF::SHT_AARCH64_AUTH:
     sh_link = SymbolTableIndex;
     break;
 

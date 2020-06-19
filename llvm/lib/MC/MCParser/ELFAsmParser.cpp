@@ -69,6 +69,7 @@ public:
       &ELFAsmParser::ParseDirectivePushSection>(".pushsection");
     addDirectiveHandler<&ELFAsmParser::ParseDirectivePopSection>(".popsection");
     addDirectiveHandler<&ELFAsmParser::ParseDirectiveSize>(".size");
+    addDirectiveHandler<&ELFAsmParser::ParseDirectiveAArch64Auth>(".auth");
     addDirectiveHandler<&ELFAsmParser::ParseDirectivePrevious>(".previous");
     addDirectiveHandler<&ELFAsmParser::ParseDirectiveType>(".type");
     addDirectiveHandler<&ELFAsmParser::ParseDirectiveIdent>(".ident");
@@ -141,6 +142,7 @@ public:
   bool ParseDirectivePopSection(StringRef, SMLoc);
   bool ParseDirectiveSection(StringRef, SMLoc);
   bool ParseDirectiveSize(StringRef, SMLoc);
+  bool ParseDirectiveAArch64Auth(StringRef, SMLoc);
   bool ParseDirectivePrevious(StringRef, SMLoc);
   bool ParseDirectiveType(StringRef, SMLoc);
   bool ParseDirectiveIdent(StringRef, SMLoc);
@@ -233,6 +235,29 @@ bool ELFAsmParser::ParseDirectiveSize(StringRef, SMLoc) {
   Lex();
 
   getStreamer().emitELFSize(Sym, Expr);
+  return false;
+}
+
+bool ELFAsmParser::ParseDirectiveAArch64Auth(StringRef, SMLoc) {
+  StringRef Name;
+  if (getParser().parseIdentifier(Name))
+    return TokError("expected identifier in directive");
+  MCSymbolELF *Sym = cast<MCSymbolELF>(getContext().getOrCreateSymbol(Name));
+
+  if (getLexer().isNot(AsmToken::Comma))
+    return TokError("unexpected token in directive");
+  Lex();
+
+  int64_t Auth;
+  if (getParser().parseIntToken(
+          Auth, "expected integer in '.auth' directive"))
+    return true;
+
+  if (getLexer().isNot(AsmToken::EndOfStatement))
+    return TokError("unexpected token in directive");
+  Lex();
+
+  getStreamer().emitELFAArch64Auth(Sym, Auth);
   return false;
 }
 

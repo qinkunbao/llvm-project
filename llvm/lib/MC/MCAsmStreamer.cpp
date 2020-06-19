@@ -185,6 +185,7 @@ public:
                                 StringRef Rename) override;
 
   void emitELFSize(MCSymbol *Symbol, const MCExpr *Value) override;
+  void emitELFAArch64Auth(MCSymbol *Symbol, uint32_t Auth) override;
   void emitCommonSymbol(MCSymbol *Symbol, uint64_t Size,
                         unsigned ByteAlignment) override;
 
@@ -881,6 +882,13 @@ void MCAsmStreamer::emitELFSize(MCSymbol *Symbol, const MCExpr *Value) {
   Symbol->print(OS, MAI);
   OS << ", ";
   Value->print(OS, MAI);
+  EmitEOL();
+}
+
+void MCAsmStreamer::emitELFAArch64Auth(MCSymbol *Symbol, uint32_t Auth) {
+  OS << "\t.auth\t";
+  Symbol->print(OS, MAI);
+  OS << ", " << Auth;
   EmitEOL();
 }
 

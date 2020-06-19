@@ -23,6 +23,8 @@ public:
 
   const MCExpr *getSize() const { return SymbolSize; }
 
+  uint32_t AArch64Auth = 0;
+
   void setVisibility(unsigned Visibility);
   unsigned getVisibility() const;
 

@@ -334,6 +334,10 @@ void MCELFStreamer::emitELFSize(MCSymbol *Symbol, const MCExpr *Value) {
   cast<MCSymbolELF>(Symbol)->setSize(Value);
 }
 
+void MCELFStreamer::emitELFAArch64Auth(MCSymbol *Symbol, uint32_t Auth) {
+  cast<MCSymbolELF>(Symbol)->AArch64Auth = Auth;
+}
+
 void MCELFStreamer::emitELFSymverDirective(StringRef AliasName,
                                            const MCSymbol *Aliasee) {
   getAssembler().Symvers.push_back(

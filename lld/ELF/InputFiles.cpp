@@ -599,6 +599,12 @@ void ObjFile<ELFT>::initializeSections(bool ignoreComdats) {
       continue;
     }
 
+    if (config->emachine == EM_AARCH64 &&
+        sec.sh_type == ELF::SHT_AARCH64_AUTH) {
+      this->sections[i] = &InputSection::discarded;
+      continue;
+    }
+
     switch (sec.sh_type) {
     case SHT_GROUP: {
       // De-duplicate section groups by their signatures.

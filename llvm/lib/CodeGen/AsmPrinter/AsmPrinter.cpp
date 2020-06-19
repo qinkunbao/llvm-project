@@ -1388,6 +1388,9 @@ void AsmPrinter::emitFunctionBody() {
         MCSymbolRefExpr::create(CurrentFnEnd, OutContext),
         MCSymbolRefExpr::create(CurrentFnSymForSize, OutContext), OutContext);
     OutStreamer->emitELFSize(CurrentFnSym, SizeExp);
+
+    if (F.hasFnAttribute("ptrauth-calls"))
+      OutStreamer->emitELFAArch64Auth(CurrentFnSym, 0x80000000);
   }
 
   for (const HandlerInfo &HI : Handlers) {

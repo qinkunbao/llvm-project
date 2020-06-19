@@ -52,6 +52,7 @@ public:
                         unsigned ByteAlignment) override;
 
   void emitELFSize(MCSymbol *Symbol, const MCExpr *Value) override;
+  void emitELFAArch64Auth(MCSymbol *Symbol, uint32_t Authg) override;
   void emitELFSymverDirective(StringRef AliasName,
                               const MCSymbol *Aliasee) override;
 

@@ -1127,6 +1127,7 @@ void MCStreamer::emitXCOFFRenameDirective(const MCSymbol *Name,
 }
 
 void MCStreamer::emitELFSize(MCSymbol *Symbol, const MCExpr *Value) {}
+void MCStreamer::emitELFAArch64Auth(MCSymbol *Symbol, uint32_t Auth) {}
 void MCStreamer::emitELFSymverDirective(StringRef AliasName,
                                         const MCSymbol *Aliasee) {}
 void MCStreamer::emitLocalCommonSymbol(MCSymbol *Symbol, uint64_t Size,

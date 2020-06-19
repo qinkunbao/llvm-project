@@ -608,6 +608,8 @@ public:
   ///  .size symbol, expression
   virtual void emitELFSize(MCSymbol *Symbol, const MCExpr *Value);
 
+  virtual void emitELFAArch64Auth(MCSymbol *Symbol, uint32_t Auth);
+
   /// Emit an ELF .symver directive.
   ///
   /// This corresponds to an assembler statement such as:
