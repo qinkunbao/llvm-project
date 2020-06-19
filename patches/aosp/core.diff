@@ -15,3 +15,16 @@ index 5b7431a57..2a49a55a3 100644
    regs_[ARM64_REG_PC] = pc;
  }
  
+diff --git a/rootdir/init.zygote64_32.rc b/rootdir/init.zygote64_32.rc
+index 3e8016867..756c251be 100644
+--- a/rootdir/init.zygote64_32.rc
++++ b/rootdir/init.zygote64_32.rc
+@@ -5,6 +5,8 @@ service zygote /system/bin/app_process64 -Xzygote /system/bin --zygote --start-s
+     group root readproc reserved_disk
+     socket zygote stream 660 root system
+     socket usap_pool_primary stream 660 root system
++    socket zygote_arm64_v8a stream 660 root system
++    socket usap_pool_arm64_v8a stream 660 root system
+     onrestart write /sys/power/state on
+     onrestart restart audioserver
+     onrestart restart cameraserver

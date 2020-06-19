@@ -199,6 +199,19 @@ index bb93a96ebe..f6d1e3433b 100644
    // Call should never return.
    ___ Brk();
  }
+diff --git a/libartbase/base/mem_map.cc b/libartbase/base/mem_map.cc
+index bd880dacb6..7c92c2a3fe 100644
+--- a/libartbase/base/mem_map.cc
++++ b/libartbase/base/mem_map.cc
+@@ -134,7 +134,7 @@ uintptr_t CreateStartPos(uint64_t input) {
+ #endif
+ 
+ static uintptr_t GenerateNextMemPos() {
+-#ifdef __BIONIC__
++#if 0
+   uint64_t random_data;
+   arc4random_buf(&random_data, sizeof(random_data));
+   return CreateStartPos(random_data);
 diff --git a/runtime/arch/arm64/fault_handler_arm64.cc b/runtime/arch/arm64/fault_handler_arm64.cc
 index c139e21d05..b0126243a4 100644
 --- a/runtime/arch/arm64/fault_handler_arm64.cc
@@ -336,3 +349,25 @@ index 634c762040..af70d6e12f 100644
  
      // result sign extension is handled in C code
      // prepare for artQuickGenericJniEndTrampoline call
+diff --git a/runtime/gc/space/image_space.cc b/runtime/gc/space/image_space.cc
+index 5484f49e96..fec098038b 100644
+--- a/runtime/gc/space/image_space.cc
++++ b/runtime/gc/space/image_space.cc
+@@ -174,7 +174,7 @@ static bool GenerateImage(const std::string& image_filename,
+   CHECK_EQ(image_isa, kRuntimeISA)
+       << "We should always be generating an image for the current isa.";
+ 
+-  int32_t base_offset = ChooseRelocationOffsetDelta();
++  int32_t base_offset = ART_BASE_ADDRESS_MIN_DELTA;
+   LOG(INFO) << "Using an offset of 0x" << std::hex << base_offset << " from default "
+             << "art base address of 0x" << std::hex << ART_BASE_ADDRESS;
+   arg_vector.push_back(StringPrintf("--base=0x%x", ART_BASE_ADDRESS + base_offset));
+@@ -2581,7 +2581,7 @@ class ImageSpace::BootImageLoader {
+ 
+     // Reserve address space. If relocating, choose a random address for ALSR.
+     uint8_t* addr = reinterpret_cast<uint8_t*>(
+-        relocate_ ? ART_BASE_ADDRESS + ChooseRelocationOffsetDelta() : base_address);
++        relocate_ ? ART_BASE_ADDRESS + ART_BASE_ADDRESS_MIN_DELTA : base_address);
+     MemMap image_reservation =
+         ReserveBootImageMemory(addr, image_reservation_size + extra_reservation_size, error_msg);
+     if (!image_reservation.IsValid()) {
