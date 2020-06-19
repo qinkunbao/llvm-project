@@ -1,5 +1,5 @@
 diff --git a/src/aarch64/assembler-aarch64.cc b/src/aarch64/assembler-aarch64.cc
-index 9e73ffaa..285c9d86 100644
+index 9e73ffaa..fa58eaae 100644
 --- a/src/aarch64/assembler-aarch64.cc
 +++ b/src/aarch64/assembler-aarch64.cc
 @@ -196,7 +196,7 @@ void Assembler::ret(const Register& xn) {
@@ -20,7 +20,33 @@ index 9e73ffaa..285c9d86 100644
    VIXL_ASSERT(xn.Is64Bits());
    Emit(BLRAAZ | Rn(xn) | Rd_mask);
  }
-@@ -1081,7 +1081,7 @@ void Assembler::pacga(const Register& xd,
+@@ -1046,25 +1046,21 @@ void Assembler::cls(const Register& rd, const Register& rn) {
+ 
+ #define DEFINE_ASM_FUNCS(PRE, OP)                                  \
+   void Assembler::PRE##a(const Register& xd, const Register& xn) { \
+-    VIXL_ASSERT(CPUHas(CPUFeatures::kPAuth));                      \
+     VIXL_ASSERT(xd.Is64Bits() && xn.Is64Bits());                   \
+     Emit(SF(xd) | OP##A | Rd(xd) | RnSP(xn));                      \
+   }                                                                \
+                                                                    \
+   void Assembler::PRE##za(const Register& xd) {                    \
+-    VIXL_ASSERT(CPUHas(CPUFeatures::kPAuth));                      \
+     VIXL_ASSERT(xd.Is64Bits());                                    \
+     Emit(SF(xd) | OP##ZA | Rd(xd));                                \
+   }                                                                \
+                                                                    \
+   void Assembler::PRE##b(const Register& xd, const Register& xn) { \
+-    VIXL_ASSERT(CPUHas(CPUFeatures::kPAuth));                      \
+     VIXL_ASSERT(xd.Is64Bits() && xn.Is64Bits());                   \
+     Emit(SF(xd) | OP##B | Rd(xd) | RnSP(xn));                      \
+   }                                                                \
+                                                                    \
+   void Assembler::PRE##zb(const Register& xd) {                    \
+-    VIXL_ASSERT(CPUHas(CPUFeatures::kPAuth));                      \
+     VIXL_ASSERT(xd.Is64Bits());                                    \
+     Emit(SF(xd) | OP##ZB | Rd(xd));                                \
+   }
+@@ -1081,7 +1077,7 @@ void Assembler::pacga(const Register& xd,
  }
  
  void Assembler::xpaci(const Register& xd) {
@@ -29,7 +55,7 @@ index 9e73ffaa..285c9d86 100644
    VIXL_ASSERT(xd.Is64Bits());
    Emit(SF(xd) | XPACI | Rd(xd));
  }
-@@ -2542,7 +2542,7 @@ void Assembler::mov(const Register& rd, const Register& rm) {
+@@ -2542,7 +2538,7 @@ void Assembler::mov(const Register& rd, const Register& rm) {
  }
  
  void Assembler::xpaclri() {
@@ -39,15 +65,31 @@ index 9e73ffaa..285c9d86 100644
  }
  
 diff --git a/src/aarch64/constants-aarch64.h b/src/aarch64/constants-aarch64.h
-index 36f5568d..94b34ceb 100644
+index 36f5568d..bd843d0e 100644
 --- a/src/aarch64/constants-aarch64.h
 +++ b/src/aarch64/constants-aarch64.h
-@@ -1306,8 +1306,8 @@ enum DataProcessing1SourceOp {
-   AUTIZB = DataProcessing1SourceFixed | 0x80013400,
-   AUTDZA = DataProcessing1SourceFixed | 0x80013800,
-   AUTDZB = DataProcessing1SourceFixed | 0x80013C00,
+@@ -1298,16 +1298,16 @@ enum DataProcessing1SourceOp {
+   AUTIB  = DataProcessing1SourceFixed | 0x80011400,
+   AUTDA  = DataProcessing1SourceFixed | 0x80011800,
+   AUTDB  = DataProcessing1SourceFixed | 0x80011C00,
+-  PACIZA = DataProcessing1SourceFixed | 0x80012000,
+-  PACIZB = DataProcessing1SourceFixed | 0x80012400,
+-  PACDZA = DataProcessing1SourceFixed | 0x80012800,
+-  PACDZB = DataProcessing1SourceFixed | 0x80012C00,
+-  AUTIZA = DataProcessing1SourceFixed | 0x80013000,
+-  AUTIZB = DataProcessing1SourceFixed | 0x80013400,
+-  AUTDZA = DataProcessing1SourceFixed | 0x80013800,
+-  AUTDZB = DataProcessing1SourceFixed | 0x80013C00,
 -  XPACI  = DataProcessing1SourceFixed | 0x80014000,
 -  XPACD  = DataProcessing1SourceFixed | 0x80014400
++  PACIZA = DataProcessing1SourceFixed | 0x800123E0,
++  PACIZB = DataProcessing1SourceFixed | 0x800127E0,
++  PACDZA = DataProcessing1SourceFixed | 0x80012BE0,
++  PACDZB = DataProcessing1SourceFixed | 0x80012FE0,
++  AUTIZA = DataProcessing1SourceFixed | 0x800133E0,
++  AUTIZB = DataProcessing1SourceFixed | 0x800137E0,
++  AUTDZA = DataProcessing1SourceFixed | 0x80013BE0,
++  AUTDZB = DataProcessing1SourceFixed | 0x80013FE0,
 +  XPACI  = DataProcessing1SourceFixed | 0x800143E0,
 +  XPACD  = DataProcessing1SourceFixed | 0x800147E0
  };
