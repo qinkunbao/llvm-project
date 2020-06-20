@@ -160,7 +160,7 @@ index e0ea35bba..b92de0620 100644
  __LIBC_HIDDEN__ ElfW(Addr) __bionic_call_ifunc_resolver(ElfW(Addr) resolver_addr);
 +__LIBC_HIDDEN__ ElfW(Addr) __bionic_pac_sign_ptr(ElfW(Addr) addr, ElfW(Addr)* place);
 diff --git a/linker/linker.cpp b/linker/linker.cpp
-index edf0329c9..0a679e61a 100644
+index edf0329c9..aaf96374d 100644
 --- a/linker/linker.cpp
 +++ b/linker/linker.cpp
 @@ -2287,6 +2287,11 @@ bool do_dlsym(void* handle,
@@ -168,13 +168,27 @@ index edf0329c9..0a679e61a 100644
          *symbol = reinterpret_cast<void*>(found->resolve_symbol_address(sym));
        }
 +#ifdef ANDROID_EXPERIMENTAL_PAC
-+      if (type == STT_FUNC || type == STT_GNU_IFUNC) {
++      if (found->aarch64_auth_ && (found->aarch64_auth_[sym - found->symtab_] & 0x80000000)) {
 +        *symbol = __builtin_ptrauth_sign_unauthenticated(*symbol, 0, 0);
 +      }
 +#endif
        failure_guard.Disable();
        LD_LOG(kLogDlsym,
               "... dlsym successful: sym_name=\"%s\", sym_ver=\"%s\", found in=\"%s\", address=%p",
+@@ -2859,6 +2864,13 @@ bool soinfo::prelink_image() {
+         symtab_ = reinterpret_cast<ElfW(Sym)*>(load_bias + d->d_un.d_ptr);
+         break;
+ 
++#if defined(__aarch64__)
++#define DT_AARCH64_AUTH 0x7fffffff
++      case DT_AARCH64_AUTH:
++        aarch64_auth_ = reinterpret_cast<uint32_t*>(load_bias + d->d_un.d_ptr);
++        break;
++#endif
++
+       case DT_SYMENT:
+         if (d->d_un.d_val != sizeof(ElfW(Sym))) {
+           DL_ERR("invalid DT_SYMENT: %zd in \"%s\"",
 diff --git a/linker/linker_cfi.cpp b/linker/linker_cfi.cpp
 index 5995013b4..45538fec6 100644
 --- a/linker/linker_cfi.cpp
@@ -298,3 +312,22 @@ index 4f67003b8..8ac5136f5 100644
    function();
    TRACE("[ Done calling d-tor %s @ %p for '%s' ]", function_name, function, realpath);
  }
+diff --git a/linker/linker_soinfo.h b/linker/linker_soinfo.h
+index e1a3c303d..53296932b 100644
+--- a/linker/linker_soinfo.h
++++ b/linker/linker_soinfo.h
+@@ -180,11 +180,13 @@ struct soinfo {
+ #endif
+ 
+   soinfo* next;
+- private:
+   uint32_t flags_;
+ 
+   const char* strtab_;
+   ElfW(Sym)* symtab_;
++#if defined(__aarch64__)
++  uint32_t* aarch64_auth_;
++#endif
+ 
+   size_t nbucket_;
+   size_t nchain_;
