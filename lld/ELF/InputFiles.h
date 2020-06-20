@@ -288,6 +288,8 @@ private:
   // If the section does not exist (which is common), the array is empty.
   ArrayRef<Elf_Word> shndxTable;
 
+  ArrayRef<Elf_Word> aarch64AuthTable;
+
   // .shstrtab contents.
   StringRef sectionStringTable;
 

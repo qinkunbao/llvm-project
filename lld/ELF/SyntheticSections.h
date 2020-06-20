@@ -872,6 +872,15 @@ public:
   bool isNeeded() const override;
 };
 
+class AArch64AuthSection final : public SyntheticSection {
+public:
+  AArch64AuthSection();
+  void finalizeContents() override;
+  size_t getSize() const override;
+  void writeTo(uint8_t *buf) override;
+  bool isNeeded() const override;
+};
+
 // MergeSyntheticSection is a class that allows us to put mergeable sections
 // with different attributes in a single output sections. To do that
 // we put them into MergeSyntheticSection synthetic input sections which are
@@ -1167,6 +1176,7 @@ struct Partition {
   SyntheticSection *programHeaders;
   std::vector<PhdrEntry *> phdrs;
 
+  AArch64AuthSection *aarch64Auth;
   ARMExidxSyntheticSection *armExidx;
   BuildIdSection *buildId;
   SyntheticSection *dynamic;

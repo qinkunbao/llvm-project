@@ -429,6 +429,9 @@ template <class ELFT> void elf::createSyntheticSections() {
       part.dynSymTab = make<SymbolTableSection<ELFT>>(*part.dynStrTab);
       add(part.dynSymTab);
 
+      part.aarch64Auth = make<AArch64AuthSection>();
+      add(part.aarch64Auth);
+
       part.verSym = make<VersionTableSection>();
       add(part.verSym);
 
@@ -2153,6 +2156,7 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
       finalizeSynthetic(part.ehFrameHdr);
       finalizeSynthetic(part.verSym);
       finalizeSynthetic(part.verNeed);
+      finalizeSynthetic(part.aarch64Auth);
       finalizeSynthetic(part.dynamic);
     }
   }

@@ -601,6 +601,11 @@ void ObjFile<ELFT>::initializeSections(bool ignoreComdats) {
 
     if (config->emachine == EM_AARCH64 &&
         sec.sh_type == ELF::SHT_AARCH64_AUTH) {
+      if (sec.sh_link == 0)
+        error(toString(this) +
+              ": need to fix tool to understand SHT_AARCH64_AUTH");
+      this->aarch64AuthTable =
+          CHECK(obj.template getSectionContentsAsArray<Elf_Word>(sec), this);
       this->sections[i] = &InputSection::discarded;
       continue;
     }
@@ -1199,6 +1204,8 @@ template <class ELFT> void ObjFile<ELFT>::initializeSymbols() {
         binding == STB_GNU_UNIQUE) {
       this->symbols[i]->resolve(
           Defined{this, name, binding, stOther, type, value, size, sec});
+      if (!aarch64AuthTable.empty())
+        this->symbols[i]->aarch64Auth = aarch64AuthTable[i - firstGlobal];
       continue;
     }
 

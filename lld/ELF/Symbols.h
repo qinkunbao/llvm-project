@@ -282,6 +282,8 @@ public:
   // The partition whose dynamic symbol table contains this symbol's definition.
   uint8_t partition = 1;
 
+  uint32_t aarch64Auth = 0;
+
   bool isSection() const { return type == llvm::ELF::STT_SECTION; }
   bool isTls() const { return type == llvm::ELF::STT_TLS; }
   bool isFunc() const { return type == llvm::ELF::STT_FUNC; }

@@ -1505,6 +1505,9 @@ template <class ELFT> void DynamicSection<ELFT>::finalizeContents() {
     addInt(DT_VERNEEDNUM, needNum);
   }
 
+  if (part.aarch64Auth && part.aarch64Auth->isNeeded())
+    addInSec(DT_AARCH64_AUTH, part.aarch64Auth);
+
   if (config->emachine == EM_MIPS) {
     addInt(DT_MIPS_RLD_VERSION, 1);
     addInt(DT_MIPS_FLAGS, RHF_NOTPOT);
@@ -3199,6 +3202,37 @@ template <class ELFT> size_t VersionNeedSection<ELFT>::getSize() const {
 
 template <class ELFT> bool VersionNeedSection<ELFT>::isNeeded() const {
   return isLive() && SharedFile::vernauxNum != 0;
+}
+
+AArch64AuthSection::AArch64AuthSection()
+    : SyntheticSection(SHF_ALLOC, SHT_AARCH64_AUTH, sizeof(uint32_t),
+                       ".dynauth") {
+  this->entsize = 4;
+}
+
+void AArch64AuthSection::finalizeContents() {
+  getParent()->link = getPartition().dynSymTab->getParent()->sectionIndex;
+}
+
+size_t AArch64AuthSection::getSize() const {
+  return (getPartition().dynSymTab->getSymbols().size() + 1) * 4;
+}
+
+void AArch64AuthSection::writeTo(uint8_t *buf) {
+  buf += 4;
+  for (const SymbolTableEntry &s : getPartition().dynSymTab->getSymbols()) {
+    write32(buf, s.sym->aarch64Auth);
+    buf += 4;
+  }
+}
+
+bool AArch64AuthSection::isNeeded() const {
+  if (!isLive())
+    return false;
+  for (const SymbolTableEntry &s : getPartition().dynSymTab->getSymbols())
+    if (s.sym->aarch64Auth)
+      return true;
+  return false;
 }
 
 void MergeSyntheticSection::addSection(MergeInputSection *ms) {
