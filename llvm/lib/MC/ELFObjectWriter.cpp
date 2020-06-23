@@ -774,8 +774,15 @@ void ELFWriter::computeSymbolTable(
     const MCSectionELF *AArch64AuthSection =
         SectionTable[AArch64AuthSectionIndex - 1];
     SecStart = W.OS.tell();
-    for (ELFSymbolData &MSD : ExternalSymbolData)
-      write(MSD.Symbol->AArch64Auth);
+    for (ELFSymbolData &MSD : ExternalSymbolData) {
+      uint32_t AArch64Auth = MSD.Symbol->AArch64Auth;
+      if (!AArch64Auth) {
+        auto *Base =
+            cast_or_null<MCSymbolELF>(Layout.getBaseSymbol(*MSD.Symbol));
+        AArch64Auth = Base->AArch64Auth;
+      }
+      write(AArch64Auth);
+    }
     SecEnd = W.OS.tell();
     SectionOffsets[AArch64AuthSection] = std::make_pair(SecStart, SecEnd);
   }
