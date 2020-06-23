@@ -3227,8 +3227,12 @@ void AArch64AuthSection::writeTo(uint8_t *buf) {
 }
 
 bool AArch64AuthSection::isNeeded() const {
-  if (!isLive())
+  if (!isLive() || config->emachine != EM_AARCH64)
     return false;
+  for (const SymbolTableEntry &s : getPartition().dynSymTab->getSymbols())
+    if (s.sym->type == STT_FUNC && s.sym->aarch64Auth == 0)
+      warn("auth not set for exported function symbol '" + s.sym->getName() +
+           "'");
   for (const SymbolTableEntry &s : getPartition().dynSymTab->getSymbols())
     if (s.sym->aarch64Auth)
       return true;
