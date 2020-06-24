@@ -1,0 +1,76 @@
+diff --git a/opengl/libs/EGL/getProcAddress.cpp b/opengl/libs/EGL/getProcAddress.cpp
+index fedc7893d..99f63d6da 100644
+--- a/opengl/libs/EGL/getProcAddress.cpp
++++ b/opengl/libs/EGL/getProcAddress.cpp
+@@ -62,6 +62,12 @@ namespace android {
+ 
+     #define API_ENTRY(_api) __attribute__((noinline)) _api
+ 
++    #ifdef ANDROID_EXPERIMENTAL_PAC
++        #define BR_MAYBE_WITH_AUTH "braaz"
++    #else
++        #define BR_MAYBE_WITH_AUTH "br"
++    #endif
++
+     #define CALL_GL_EXTENSION_API(_api)                             \
+         asm volatile(                                               \
+             "mrs x16, tpidr_el0\n"                                  \
+@@ -69,7 +75,7 @@ namespace android {
+             "cbz x16, 1f\n"                                         \
+             "ldr x16, [x16, %[api]]\n"                              \
+             "cbz x16, 1f\n"                                         \
+-            "br  x16\n"                                             \
++            BR_MAYBE_WITH_AUTH " x16\n"                             \
+             "1:\n"                                                  \
+             :                                                       \
+             : [tls] "i" (TLS_SLOT_OPENGL_API * sizeof(void*)),      \
+diff --git a/opengl/libs/GLES2/gl2.cpp b/opengl/libs/GLES2/gl2.cpp
+index 65f50f54f..8e1a83c1e 100644
+--- a/opengl/libs/GLES2/gl2.cpp
++++ b/opengl/libs/GLES2/gl2.cpp
+@@ -91,13 +91,19 @@ using namespace android;
+ 
+     #define API_ENTRY(_api) __attribute__((naked,noinline)) _api
+ 
++    #ifdef ANDROID_EXPERIMENTAL_PAC
++        #define BR_MAYBE_WITH_AUTH "braaz"
++    #else
++        #define BR_MAYBE_WITH_AUTH "br"
++    #endif
++
+     #define CALL_GL_API_INTERNAL_CALL(_api, ...)                    \
+         asm volatile(                                               \
+             "mrs x16, tpidr_el0\n"                                  \
+             "ldr x16, [x16, %[tls]]\n"                              \
+             "cbz x16, 1f\n"                                         \
+             "ldr x16, [x16, %[api]]\n"                              \
+-            "br  x16\n"                                             \
++            BR_MAYBE_WITH_AUTH " x16\n"                             \
+             "1:\n"                                                  \
+             :                                                       \
+             : [tls] "i" (TLS_SLOT_OPENGL_API * sizeof(void*)),      \
+diff --git a/opengl/libs/GLES_CM/gl.cpp b/opengl/libs/GLES_CM/gl.cpp
+index bacd4b4bc..b13b3fb7d 100644
+--- a/opengl/libs/GLES_CM/gl.cpp
++++ b/opengl/libs/GLES_CM/gl.cpp
+@@ -147,13 +147,19 @@ GL_API void GL_APIENTRY glWeightPointerOESBounds(GLint size, GLenum type,
+ 
+     #define API_ENTRY(_api) __attribute__((naked,noinline)) _api
+ 
++    #ifdef ANDROID_EXPERIMENTAL_PAC
++        #define BR_MAYBE_WITH_AUTH "braaz"
++    #else
++        #define BR_MAYBE_WITH_AUTH "br"
++    #endif
++
+     #define CALL_GL_API_INTERNAL_CALL(_api, ...)                    \
+         asm volatile(                                               \
+             "mrs x16, tpidr_el0\n"                                  \
+             "ldr x16, [x16, %[tls]]\n"                              \
+             "cbz x16, 1f\n"                                         \
+             "ldr x16, [x16, %[api]]\n"                              \
+-            "br  x16\n"                                             \
++            BR_MAYBE_WITH_AUTH " x16\n"                             \
+             "1:\n"                                                  \
+             :                                                       \
+             : [tls] "i" (TLS_SLOT_OPENGL_API * sizeof(void*)),      \
