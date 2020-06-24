@@ -1,3 +1,29 @@
+diff --git a/libc/Android.bp b/libc/Android.bp
+index 08b3db3d9..71a4cd787 100644
+--- a/libc/Android.bp
++++ b/libc/Android.bp
+@@ -1665,7 +1665,7 @@ cc_library {
+             },
+ 
+             shared: {
+-                whole_static_libs: [ "libgcc_stripped" ],
++                whole_static_libs: [ "libunwind_llvm" ],
+             },
+         },
+         x86: {
+diff --git a/libc/arch-common/bionic/crtbegin.c b/libc/arch-common/bionic/crtbegin.c
+index b7043dcae..a67613d14 100644
+--- a/libc/arch-common/bionic/crtbegin.c
++++ b/libc/arch-common/bionic/crtbegin.c
+@@ -45,7 +45,7 @@ __used static void _start_main(void* raw_args) {
+   __libc_init(raw_args, NULL, &main, &array);
+ }
+ 
+-#define PRE ".text; .global _start; .type _start,%function; _start:"
++#define PRE ".text; .global _start; .hidden _start; .type _start,%function; _start:"
+ #define POST "; .size _start, .-_start"
+ 
+ #if defined(__aarch64__)
 diff --git a/libc/bionic/__libc_init_main_thread.cpp b/libc/bionic/__libc_init_main_thread.cpp
 index 56a848888..188726554 100644
 --- a/libc/bionic/__libc_init_main_thread.cpp
@@ -150,6 +176,18 @@ index dbca9c013..619cd7a14 100644
      return vdso_time(t);
    }
  
+diff --git a/libc/private/bionic_asm_arm64.h b/libc/private/bionic_asm_arm64.h
+index 463ca312a..aa51b49f0 100644
+--- a/libc/private/bionic_asm_arm64.h
++++ b/libc/private/bionic_asm_arm64.h
+@@ -41,3 +41,7 @@
+ 
+ #undef __bionic_asm_function_type
+ #define __bionic_asm_function_type %function
++
++#ifdef ANDROID_EXPERIMENTAL_PAC
++#define __bionic_asm_custom_end(f) .auth f, 0x80000000
++#endif
 diff --git a/libc/private/bionic_call_ifunc_resolver.h b/libc/private/bionic_call_ifunc_resolver.h
 index e0ea35bba..b92de0620 100644
 --- a/libc/private/bionic_call_ifunc_resolver.h
@@ -159,6 +197,19 @@ index e0ea35bba..b92de0620 100644
  
  __LIBC_HIDDEN__ ElfW(Addr) __bionic_call_ifunc_resolver(ElfW(Addr) resolver_addr);
 +__LIBC_HIDDEN__ ElfW(Addr) __bionic_pac_sign_ptr(ElfW(Addr) addr, ElfW(Addr)* place);
+diff --git a/linker/Android.bp b/linker/Android.bp
+index 08b2c7b07..a718ff571 100644
+--- a/linker/Android.bp
++++ b/linker/Android.bp
+@@ -231,7 +231,7 @@ cc_defaults {
+         },
+         arm64: {
+             srcs: [":linker_sources_arm64"],
+-            static_libs: ["libgcc_stripped"],
++            static_libs: ["libunwind_llvm"],
+         },
+         x86: {
+             srcs: [":linker_sources_x86"],
 diff --git a/linker/linker.cpp b/linker/linker.cpp
 index edf0329c9..aaf96374d 100644
 --- a/linker/linker.cpp

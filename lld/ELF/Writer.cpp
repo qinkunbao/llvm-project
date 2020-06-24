@@ -366,6 +366,7 @@ template <class ELFT> void elf::createSyntheticSections() {
     in.strTab = make<StringTableSection>(".strtab", false);
     in.symTab = make<SymbolTableSection<ELFT>>(*in.strTab);
     in.symTabShndx = make<SymtabShndxSection>();
+    in.aarch64Auth = make<AArch64AuthSection>(in.symTab);
   }
 
   in.bss = make<BssSection>(".bss", 0, 1);
@@ -429,7 +430,7 @@ template <class ELFT> void elf::createSyntheticSections() {
       part.dynSymTab = make<SymbolTableSection<ELFT>>(*part.dynStrTab);
       add(part.dynSymTab);
 
-      part.aarch64Auth = make<AArch64AuthSection>();
+      part.aarch64Auth = make<AArch64AuthSection>(part.dynSymTab);
       add(part.aarch64Auth);
 
       part.verSym = make<VersionTableSection>();
@@ -576,6 +577,8 @@ template <class ELFT> void elf::createSyntheticSections() {
     add(in.symTab);
   if (in.symTabShndx)
     add(in.symTabShndx);
+  if (in.aarch64Auth)
+    add(in.aarch64Auth);
   add(in.shStrTab);
   if (in.strTab)
     add(in.strTab);
@@ -2131,6 +2134,7 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
     finalizeSynthetic(in.bss);
     finalizeSynthetic(in.bssRelRo);
     finalizeSynthetic(in.symTabShndx);
+    finalizeSynthetic(in.aarch64Auth);
     finalizeSynthetic(in.shStrTab);
     finalizeSynthetic(in.strTab);
     finalizeSynthetic(in.got);

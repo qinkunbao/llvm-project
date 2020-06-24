@@ -495,6 +495,15 @@ void CodeGenFunction::FinishFunction(SourceLocation EndLoc) {
   //    function.
   CurFn->addFnAttr("min-legal-vector-width", llvm::utostr(LargestVectorWidth));
 
+  if (CGM.getCodeGenOpts().PointerAuth.ReturnAddresses)
+    CurFn->addFnAttr("ptrauth-returns");
+  if (CGM.getCodeGenOpts().PointerAuth.FunctionPointers)
+    CurFn->addFnAttr("ptrauth-calls");
+  if (CGM.getCodeGenOpts().PointerAuth.IndirectGotos)
+    CurFn->addFnAttr("ptrauth-indirect-gotos");
+  if (CGM.getCodeGenOpts().PointerAuth.AuthTraps)
+    CurFn->addFnAttr("ptrauth-auth-traps");
+
   // If we generated an unreachable return block, delete it now.
   if (ReturnBlock.isValid() && ReturnBlock.getBlock()->use_empty()) {
     Builder.ClearInsertionPoint();

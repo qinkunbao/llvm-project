@@ -350,9 +350,18 @@ index 634c762040..af70d6e12f 100644
      // result sign extension is handled in C code
      // prepare for artQuickGenericJniEndTrampoline call
 diff --git a/runtime/gc/space/image_space.cc b/runtime/gc/space/image_space.cc
-index 5484f49e96..fec098038b 100644
+index 5484f49e96..5e82d95637 100644
 --- a/runtime/gc/space/image_space.cc
 +++ b/runtime/gc/space/image_space.cc
+@@ -112,7 +112,7 @@ static int32_t ChooseRelocationOffsetDelta(int32_t min_delta, int32_t max_delta)
+   return r;
+ }
+ 
+-static int32_t ChooseRelocationOffsetDelta() {
++__attribute__((unused)) static int32_t ChooseRelocationOffsetDelta() {
+   return ChooseRelocationOffsetDelta(ART_BASE_ADDRESS_MIN_DELTA, ART_BASE_ADDRESS_MAX_DELTA);
+ }
+ 
 @@ -174,7 +174,7 @@ static bool GenerateImage(const std::string& image_filename,
    CHECK_EQ(image_isa, kRuntimeISA)
        << "We should always be generating an image for the current isa.";

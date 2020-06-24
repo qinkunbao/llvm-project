@@ -3204,36 +3204,59 @@ template <class ELFT> bool VersionNeedSection<ELFT>::isNeeded() const {
   return isLive() && SharedFile::vernauxNum != 0;
 }
 
-AArch64AuthSection::AArch64AuthSection()
-    : SyntheticSection(SHF_ALLOC, SHT_AARCH64_AUTH, sizeof(uint32_t),
-                       ".dynauth") {
+AArch64AuthSection::AArch64AuthSection(SymbolTableBaseSection *symTab)
+    : SyntheticSection(symTab->type == SHT_DYNSYM ? SHF_ALLOC : 0,
+                       SHT_AARCH64_AUTH, sizeof(uint32_t),
+                       symTab->type == SHT_DYNSYM ? ".dynauth" : ".symauth"),
+      symTab(symTab) {
   this->entsize = 4;
 }
 
 void AArch64AuthSection::finalizeContents() {
-  getParent()->link = getPartition().dynSymTab->getParent()->sectionIndex;
+  getParent()->link = symTab->getParent()->sectionIndex;
 }
 
 size_t AArch64AuthSection::getSize() const {
-  return (getPartition().dynSymTab->getSymbols().size() + 1) * 4;
+  if (symTab->type == SHT_DYNSYM) {
+    return (symTab->getSymbols().size() + 1) * 4;
+  } else {
+    uint64_t numGlobals = 0;
+    for (const SymbolTableEntry &s : symTab->getSymbols())
+      if (!s.sym->isLocal() && s.sym->computeBinding() != STB_LOCAL)
+        ++numGlobals;
+    return numGlobals * 4;
+  }
 }
 
 void AArch64AuthSection::writeTo(uint8_t *buf) {
-  buf += 4;
-  for (const SymbolTableEntry &s : getPartition().dynSymTab->getSymbols()) {
-    write32(buf, s.sym->aarch64Auth);
+  if (symTab->type == SHT_DYNSYM) {
     buf += 4;
+    for (const SymbolTableEntry &s : symTab->getSymbols()) {
+      write32(buf, s.sym->aarch64Auth);
+      buf += 4;
+    }
+  } else {
+    for (const SymbolTableEntry &s :
+         symTab->getSymbols().slice(symTab->getParent()->info - 1)) {
+      write32(buf, s.sym->aarch64Auth);
+      buf += 4;
+    }
   }
 }
 
 bool AArch64AuthSection::isNeeded() const {
   if (!isLive() || config->emachine != EM_AARCH64)
     return false;
-  for (const SymbolTableEntry &s : getPartition().dynSymTab->getSymbols())
-    if (s.sym->type == STT_FUNC && s.sym->aarch64Auth == 0)
-      warn("auth not set for exported function symbol '" + s.sym->getName() +
-           "'");
-  for (const SymbolTableEntry &s : getPartition().dynSymTab->getSymbols())
+  static bool warned = false;
+  if (!warned && symTab->type == SHT_DYNSYM) {
+    warned = true;
+    for (const SymbolTableEntry &s : symTab->getSymbols())
+      if (isa<Defined>(s.sym) && s.sym->type == STT_FUNC &&
+          s.sym->aarch64Auth == 0)
+        warn("auth not set for exported function symbol '" + s.sym->getName() +
+             "'");
+  }
+  for (const SymbolTableEntry &s : symTab->getSymbols())
     if (s.sym->aarch64Auth)
       return true;
   return false;

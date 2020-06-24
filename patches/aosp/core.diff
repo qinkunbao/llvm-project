@@ -1,3 +1,26 @@
+diff --git a/libcutils/arch-arm64/android_memset.S b/libcutils/arch-arm64/android_memset.S
+index 9a83a6876..f1fe267ac 100644
+--- a/libcutils/arch-arm64/android_memset.S
++++ b/libcutils/arch-arm64/android_memset.S
+@@ -52,11 +52,18 @@
+ #define A_lw		w1
+ #define tmp3w		w9
+ 
++#ifdef ANDROID_EXPERIMENTAL_PAC
++#define AUTH(name, a) .auth name, a
++#else
++#define AUTH(name, a)
++#endif
++
+ #define ENTRY(f) \
+   .text; \
+   .globl f; \
+   .align 0; \
+   .type f, %function; \
++  AUTH(f, 0x80000000); \
+   f: \
+   .cfi_startproc \
+ 
 diff --git a/libunwindstack/RegsArm64.cpp b/libunwindstack/RegsArm64.cpp
 index 5b7431a57..2a49a55a3 100644
 --- a/libunwindstack/RegsArm64.cpp

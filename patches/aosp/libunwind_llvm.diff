@@ -1,0 +1,27 @@
+diff --git a/Android.bp b/Android.bp
+index 5783306..aa98f2e 100644
+--- a/Android.bp
++++ b/Android.bp
+@@ -73,6 +73,9 @@ cc_library_static {
+         arm: {
+             enabled: true,
+         },
++        arm64: {
++            enabled: true,
++        },
+     },
+     min_sdk_version: "apex_inherit",
+ }
+diff --git a/src/assembly.h b/src/assembly.h
+index a15b89f..4a7ad95 100644
+--- a/src/assembly.h
++++ b/src/assembly.h
+@@ -51,6 +51,8 @@
+ 
+ #if defined(__arm__)
+ #define SYMBOL_IS_FUNC(name) .type name,%function
++#elif defined(__aarch64__) && defined(ANDROID_EXPERIMENTAL_PAC)
++#define SYMBOL_IS_FUNC(name) .type name,@function; .auth name, 0x80000000
+ #else
+ #define SYMBOL_IS_FUNC(name) .type name,@function
+ #endif

@@ -1,0 +1,21 @@
+diff --git a/string/asmdefs.h b/string/asmdefs.h
+index 31c0f9d..b8a9a37 100644
+--- a/string/asmdefs.h
++++ b/string/asmdefs.h
+@@ -47,9 +47,16 @@
+ GNU_PROPERTY (FEATURE_1_AND, FEATURE_1_BTI|FEATURE_1_PAC)
+ #endif
+ 
++#ifdef ANDROID_EXPERIMENTAL_PAC
++#define AUTH(name, disc) .auth name, disc
++#else
++#define AUTH(name, disc)
++#endif
++
+ #define ENTRY_ALIGN(name, alignment)	\
+   .global name;		\
+   .type name,%function;	\
++  AUTH(name, 0x80000000);	\
+   .align alignment;		\
+   name:			\
+   .cfi_startproc;	\

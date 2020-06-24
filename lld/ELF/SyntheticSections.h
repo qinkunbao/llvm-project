@@ -873,8 +873,10 @@ public:
 };
 
 class AArch64AuthSection final : public SyntheticSection {
+  SymbolTableBaseSection *symTab;
+
 public:
-  AArch64AuthSection();
+  AArch64AuthSection(SymbolTableBaseSection *symTab);
   void finalizeContents() override;
   size_t getSize() const override;
   void writeTo(uint8_t *buf) override;
@@ -1205,6 +1207,7 @@ inline Partition &SectionBase::getPartition() const {
 // Linker generated sections which can be used as inputs and are not specific to
 // a partition.
 struct InStruct {
+  AArch64AuthSection *aarch64Auth;
   InputSection *attributes;
   BssSection *bss;
   BssSection *bssRelRo;
