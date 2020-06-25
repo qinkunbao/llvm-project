@@ -1633,6 +1633,8 @@ private:
 
   llvm::Metadata *CreateMetadataIdentifierImpl(QualType T, MetadataTypeMap &Map,
                                                StringRef Suffix);
+
+  QualType GeneralizeFunctionType(QualType Ty);
 };
 
 }  // end namespace CodeGen

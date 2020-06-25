@@ -497,8 +497,20 @@ void CodeGenFunction::FinishFunction(SourceLocation EndLoc) {
 
   if (CGM.getCodeGenOpts().PointerAuth.ReturnAddresses)
     CurFn->addFnAttr("ptrauth-returns");
-  if (CGM.getCodeGenOpts().PointerAuth.FunctionPointers)
-    CurFn->addFnAttr("ptrauth-calls");
+  if (CGM.getCodeGenOpts().PointerAuth.FunctionPointers) {
+    uint32_t Disc = 0x40000000;
+    if (auto *FD = dyn_cast_or_null<FunctionDecl>(CurFuncDecl)) {
+      if (!isa<CXXMethodDecl>(FD) || cast<CXXMethodDecl>(FD)->isStatic()) {
+        auto *DiscConst = CGM.getPointerAuthOtherDiscriminator(
+            CGM.getCodeGenOpts().PointerAuth.FunctionPointers, GlobalDecl(),
+            FD->getType());
+        if (DiscConst)
+          Disc = cast<llvm::ConstantInt>(DiscConst)->getZExtValue();
+        Disc |= 0x80000000;
+      }
+    }
+    CurFn->addFnAttr("ptrauth-calls", llvm::utostr(Disc));
+  }
   if (CGM.getCodeGenOpts().PointerAuth.IndirectGotos)
     CurFn->addFnAttr("ptrauth-indirect-gotos");
   if (CGM.getCodeGenOpts().PointerAuth.AuthTraps)

@@ -68,12 +68,14 @@ public:
 
     /// Discriminate using a constant value.
     Constant,
+
+    GeneralizedType,
   };
 
 private:
   Kind TheKind : 2;
   unsigned IsAddressDiscriminated : 1;
-  Discrimination DiscriminationKind : 2;
+  Discrimination DiscriminationKind : 3;
   unsigned Key : 3;
   unsigned ConstantDiscriminator : 16;
 

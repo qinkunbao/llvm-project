@@ -4283,6 +4283,15 @@ RValue CodeGenFunction::EmitBuiltinExpr(const GlobalDecl GD, unsigned BuiltinID,
     if (origValueType->isPointerTy())
       args[0] = Builder.CreatePtrToInt(args[0], IntPtrTy);
 
+    if (BuiltinID == Builtin::BI__builtin_ptrauth_sign_unauthenticated &&
+        E->getArg(0)->getType()->getPointeeType()->isFunctionProtoType()) {
+      auto *disc = CGM.getPointerAuthOtherDiscriminator(
+          CGM.getCodeGenOpts().PointerAuth.FunctionPointers, GlobalDecl(),
+          E->getArg(0)->getType()->getPointeeType());
+      if (disc)
+        args[2] = disc;
+    }
+
     switch (BuiltinID) {
       case Builtin::BI__builtin_ptrauth_auth_and_resign:
         if (args[4]->getType()->isPointerTy())

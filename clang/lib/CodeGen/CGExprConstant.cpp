@@ -1943,7 +1943,7 @@ ConstantLValueEmitter::tryEmitBase(const APValue::LValueBase &base) {
       }
 
       if (CGPointerAuthInfo AuthInfo =
-              CGM.getFunctionPointerAuthInfo(DestType)) {
+              CGM.getFunctionPointerAuthInfo(FD->getType())) {
         if (hasNonZeroOffset())
           return ConstantLValue(nullptr);
         C = CGM.getConstantSignedPointer(

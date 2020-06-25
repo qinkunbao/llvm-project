@@ -1389,8 +1389,10 @@ void AsmPrinter::emitFunctionBody() {
         MCSymbolRefExpr::create(CurrentFnSymForSize, OutContext), OutContext);
     OutStreamer->emitELFSize(CurrentFnSym, SizeExp);
 
-    if (F.hasFnAttribute("ptrauth-calls"))
-      OutStreamer->emitELFAArch64Auth(CurrentFnSym, 0x80000000);
+    Attribute A = F.getFnAttribute("ptrauth-calls");
+    uint64_t Disc;
+    if (A.isStringAttribute() && !A.getValueAsString().getAsInteger(10, Disc))
+      OutStreamer->emitELFAArch64Auth(CurrentFnSym, Disc);
   }
 
   for (const HandlerInfo &HI : Handlers) {

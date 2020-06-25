@@ -6115,26 +6115,26 @@ static QualType GeneralizeType(ASTContext &Ctx, QualType Ty) {
 }
 
 // Apply type generalization to a FunctionType's return and argument types
-static QualType GeneralizeFunctionType(ASTContext &Ctx, QualType Ty) {
+QualType CodeGenModule::GeneralizeFunctionType(QualType Ty) {
   if (auto *FnType = Ty->getAs<FunctionProtoType>()) {
     SmallVector<QualType, 8> GeneralizedParams;
     for (auto &Param : FnType->param_types())
-      GeneralizedParams.push_back(GeneralizeType(Ctx, Param));
+      GeneralizedParams.push_back(GeneralizeType(getContext(), Param));
 
-    return Ctx.getFunctionType(
-        GeneralizeType(Ctx, FnType->getReturnType()),
+    return getContext().getFunctionType(
+        GeneralizeType(getContext(), FnType->getReturnType()),
         GeneralizedParams, FnType->getExtProtoInfo());
   }
 
   if (auto *FnType = Ty->getAs<FunctionNoProtoType>())
-    return Ctx.getFunctionNoProtoType(
-        GeneralizeType(Ctx, FnType->getReturnType()));
+    return getContext().getFunctionNoProtoType(
+        GeneralizeType(getContext(), FnType->getReturnType()));
 
   llvm_unreachable("Encountered unknown FunctionType");
 }
 
 llvm::Metadata *CodeGenModule::CreateMetadataIdentifierGeneralized(QualType T) {
-  return CreateMetadataIdentifierImpl(GeneralizeFunctionType(getContext(), T),
+  return CreateMetadataIdentifierImpl(GeneralizeFunctionType(T),
                                       GeneralizedMetadataIdMap, ".generalized");
 }
 

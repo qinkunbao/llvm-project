@@ -901,8 +901,12 @@ static bool parsePointerAuthOptions(PointerAuthOptions &Opts,
       using Key = PointerAuthSchema::ARM8_3Key;
       using Discrimination = PointerAuthSchema::Discrimination;
       // If you change anything here, be sure to update <ptrauth.h>.
-      Opts.FunctionPointers =
-        PointerAuthSchema(Key::ASIA, false, Discrimination::None);
+      if (Triple.isAndroid())
+        Opts.FunctionPointers = PointerAuthSchema(
+            Key::ASIA, false, Discrimination::GeneralizedType);
+      else
+        Opts.FunctionPointers =
+            PointerAuthSchema(Key::ASIA, false, Discrimination::None);
       Opts.BlockInvocationFunctionPointers =
         PointerAuthSchema(Key::ASIA, true, Discrimination::None);
       Opts.BlockHelperFunctionPointers =
