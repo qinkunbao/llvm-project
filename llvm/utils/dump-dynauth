@@ -1,0 +1,3 @@
+#!/bin/bash
+
+pr -w200 -m -t <(readelf --dyn-syms -W "$1") <(echo;echo;echo;objdump -s -j .dynauth "$1" | grep -o '[0-9a-f]\{8\}')

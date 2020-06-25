@@ -1,0 +1,7 @@
+#!/bin/bash -e
+
+. $(dirname $0)/../../frankendroid.rc
+
+for i in $(comm -12 <(grep ENTRY $1 | sed -e 's/ENTRY(\(.*\))/\1/g' | sort) <(nm -D $androiddir/out.fvppac/b/libc.so | cut -c20- | sort)); do
+  $(dirname $0)/compute-discriminator $i
+done
