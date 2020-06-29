@@ -14,6 +14,8 @@
 
 #include "AArch64TargetStreamer.h"
 #include "AArch64WinCOFFStreamer.h"
+#include "AArch64InstrInfo.h"
+#include "MCTargetDesc/AArch64AddressingModes.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Triple.h"
@@ -26,6 +28,7 @@
 #include "llvm/MC/MCELFStreamer.h"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCInst.h"
+#include "llvm/MC/MCInstBuilder.h"
 #include "llvm/MC/MCObjectWriter.h"
 #include "llvm/MC/MCSection.h"
 #include "llvm/MC/MCStreamer.h"
@@ -33,10 +36,15 @@
 #include "llvm/MC/MCSymbolELF.h"
 #include "llvm/MC/MCWinCOFFStreamer.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormattedStream.h"
 #include "llvm/Support/raw_ostream.h"
 
 using namespace llvm;
+
+namespace llvm {
+cl::opt<bool> FakePAC("fake-pac");
+}
 
 namespace {
 
@@ -164,6 +172,325 @@ public:
   void emitInstruction(const MCInst &Inst,
                        const MCSubtargetInfo &STI) override {
     EmitA64MappingSymbol();
+
+    if (FakePAC) {
+      switch (Inst.getOpcode()) {
+      case AArch64::XPACI:
+      case AArch64::XPACD: {
+        MCInst MI1 = MCInstBuilder(AArch64::ANDXri)
+              .addOperand(Inst.getOperand(0))
+              .addOperand(Inst.getOperand(0))
+              .addImm(AArch64_AM::encodeLogicalImmediate(0x7fffffffff, 64));
+        MCELFStreamer::emitInstruction(MI1, STI);
+        return;
+      }
+      case AArch64::PACIA:
+      case AArch64::AUTIA:
+      case AArch64::PACIB:
+      case AArch64::AUTIB:
+      case AArch64::PACDA:
+      case AArch64::AUTDA:
+      case AArch64::PACDB:
+      case AArch64::AUTDB:
+      case AArch64::PACIAZ:
+      case AArch64::PACIZA:
+      case AArch64::PACIA1716:
+      case AArch64::PACIASP:
+      case AArch64::PACIBZ:
+      case AArch64::PACIZB:
+      case AArch64::PACIB1716:
+      case AArch64::PACIBSP:
+      case AArch64::PACDZA:
+      case AArch64::PACDZB:
+      case AArch64::AUTIAZ:
+      case AArch64::AUTIZA:
+      case AArch64::AUTIA1716:
+      case AArch64::AUTIASP:
+      case AArch64::AUTIBZ:
+      case AArch64::AUTIZB:
+      case AArch64::AUTIB1716:
+      case AArch64::AUTIBSP:
+      case AArch64::AUTDZA:
+      case AArch64::AUTDZB:
+      case AArch64::RETAA:
+      case AArch64::RETAB:
+      case AArch64::BRAA:
+      case AArch64::BRAB:
+      case AArch64::BRAAZ:
+      case AArch64::BRABZ:
+      case AArch64::BLRAA:
+      case AArch64::BLRAB:
+      case AArch64::BLRAAZ:
+      case AArch64::BLRABZ: {
+        unsigned DisableBit;
+        switch (Inst.getOpcode()) {
+        case AArch64::PACIA:
+        case AArch64::AUTIA:
+        case AArch64::PACIAZ:
+        case AArch64::PACIZA:
+        case AArch64::PACIA1716:
+        case AArch64::PACIASP:
+        case AArch64::AUTIAZ:
+        case AArch64::AUTIZA:
+        case AArch64::AUTIA1716:
+        case AArch64::AUTIASP:
+        case AArch64::RETAA:
+        case AArch64::BRAA:
+        case AArch64::BRAAZ:
+        case AArch64::BLRAA:
+        case AArch64::BLRAAZ:
+          DisableBit = 60;
+          break;
+        case AArch64::PACIB:
+        case AArch64::AUTIB:
+        case AArch64::PACIBZ:
+        case AArch64::PACIZB:
+        case AArch64::PACIB1716:
+        case AArch64::PACIBSP:
+        case AArch64::AUTIBZ:
+        case AArch64::AUTIZB:
+        case AArch64::AUTIB1716:
+        case AArch64::AUTIBSP:
+        case AArch64::RETAB:
+        case AArch64::BRAB:
+        case AArch64::BRABZ:
+        case AArch64::BLRAB:
+        case AArch64::BLRABZ:
+          DisableBit = 61;
+          break;
+        case AArch64::PACDA:
+        case AArch64::AUTDA:
+        case AArch64::PACDZA:
+        case AArch64::AUTDZA:
+          DisableBit = 62;
+          break;
+        case AArch64::PACDB:
+        case AArch64::AUTDB:
+        case AArch64::PACDZB:
+        case AArch64::AUTDZB:
+          DisableBit = 63;
+          break;
+        }
+
+        unsigned Reg, DiscReg;
+        switch (Inst.getOpcode()) {
+        case AArch64::PACIAZ:
+        case AArch64::AUTIAZ:
+        case AArch64::PACIASP:
+        case AArch64::AUTIASP:
+        case AArch64::PACIBSP:
+        case AArch64::AUTIBSP:
+        case AArch64::RETAA:
+        case AArch64::RETAB:
+        case AArch64::BRAAZ:
+        case AArch64::BLRAAZ:
+        case AArch64::BRABZ:
+        case AArch64::BLRABZ:
+          Reg = AArch64::LR;
+          DiscReg = AArch64::XZR; // not correct for *SP or RET* but we don't have a spare reg
+          break;
+        case AArch64::PACIA1716:
+        case AArch64::AUTIA1716:
+        case AArch64::PACIB1716:
+        case AArch64::AUTIB1716:
+          Reg = AArch64::X17;
+          DiscReg = AArch64::X16;
+          break;
+        case AArch64::PACIZA:
+        case AArch64::AUTIZA:
+        case AArch64::PACDZA:
+        case AArch64::AUTDZA:
+          Reg = Inst.getOperand(0).getReg();
+          DiscReg = AArch64::XZR;
+          break;
+        case AArch64::BRAA:
+        case AArch64::BRAB:
+        case AArch64::BLRAA:
+        case AArch64::BLRAB:
+          Reg = Inst.getOperand(0).getReg();
+          DiscReg = Inst.getOperand(1).getReg();
+          if (DiscReg == AArch64::SP)
+            DiscReg = AArch64::XZR;
+          break;
+        default:
+          Reg = Inst.getOperand(0).getReg();
+          DiscReg = Inst.getOperand(2).getReg();
+          if (DiscReg == AArch64::SP)
+            DiscReg = AArch64::XZR;
+          break;
+        }
+
+        if (Inst.getOpcode() == AArch64::BLRAA ||
+            Inst.getOpcode() == AArch64::BLRAAZ ||
+            Inst.getOpcode() == AArch64::BLRAB ||
+            Inst.getOpcode() == AArch64::BLRABZ ||
+            Inst.getFlags()) {
+          unsigned TempReg = AArch64::X16;
+          if (DiscReg == AArch64::X16)
+            TempReg = AArch64::X17;
+          if (Reg != TempReg) {
+            MCInst MI0 = MCInstBuilder(AArch64::ORRXrs)
+                             .addReg(TempReg)
+                             .addReg(AArch64::XZR)
+                             .addReg(Reg)
+                             .addImm(0);
+            MCELFStreamer::emitInstruction(MI0, STI);
+          }
+          Reg = TempReg;
+        }
+
+        if (Reg == DiscReg)
+          assert(0 && "can't encode this");
+
+        MCInst MI1 = MCInstBuilder(AArch64::TBNZX)
+              .addReg(AArch64::X18)
+              .addImm(DisableBit)
+              .addImm(DiscReg == AArch64::XZR ? 2 : 5);
+        MCELFStreamer::emitInstruction(MI1, STI);
+
+        if (DiscReg != AArch64::XZR) {
+          MCInst MI2 = MCInstBuilder(AArch64::EXTRXrri) // ror
+                           .addReg(DiscReg)
+                           .addReg(DiscReg)
+                           .addReg(DiscReg)
+                           .addImm(64 - 39);
+          MCELFStreamer::emitInstruction(MI2, STI);
+
+          MCInst MI3 = MCInstBuilder(AArch64::EORXrs)
+                           .addReg(Reg)
+                           .addReg(Reg)
+                           .addReg(DiscReg)
+                           .addImm(0);
+          MCELFStreamer::emitInstruction(MI3, STI);
+
+          MCInst MI4 = MCInstBuilder(AArch64::EXTRXrri) // ror
+                           .addReg(DiscReg)
+                           .addReg(DiscReg)
+                           .addReg(DiscReg)
+                           .addImm(39);
+          MCELFStreamer::emitInstruction(MI4, STI);
+        }
+
+        MCInst MI5 = MCInstBuilder(AArch64::EORXri)
+              .addReg(Reg)
+              .addReg(Reg)
+              .addImm(AArch64_AM::encodeLogicalImmediate(1ULL << (DisableBit - 8), 64));
+        MCELFStreamer::emitInstruction(MI5, STI);
+
+        if (Inst.getOpcode() == AArch64::RETAA ||
+            Inst.getOpcode() == AArch64::RETAB) {
+          MCInst MIRet = MCInstBuilder(AArch64::RET).addReg(AArch64::LR);
+          MCELFStreamer::emitInstruction(MIRet, STI);
+        } else if (Inst.getOpcode() == AArch64::BRAA ||
+                   Inst.getOpcode() == AArch64::BRAB ||
+                   Inst.getOpcode() == AArch64::BRAAZ ||
+                   Inst.getOpcode() == AArch64::BRABZ) {
+          MCInst MIRet = MCInstBuilder(AArch64::BR).addReg(Reg);
+          MCELFStreamer::emitInstruction(MIRet, STI);
+        } else if (Inst.getOpcode() == AArch64::BLRAA ||
+                   Inst.getOpcode() == AArch64::BLRAB ||
+                   Inst.getOpcode() == AArch64::BLRAAZ ||
+                   Inst.getOpcode() == AArch64::BLRABZ) {
+          MCInst MIRet = MCInstBuilder(AArch64::BLR).addReg(Reg);
+          MCELFStreamer::emitInstruction(MIRet, STI);
+        }
+        return;
+      }
+      case AArch64::LDRAAindexed:
+      case AArch64::LDRABindexed:
+      case AArch64::LDRAAwriteback:
+      case AArch64::LDRABwriteback: {
+        bool Writeback;
+        unsigned Reg0, Reg1;
+        int64_t Addend;
+        switch (Inst.getOpcode()) {
+          case AArch64::LDRAAindexed:
+          case AArch64::LDRABindexed:
+            Writeback = false;
+            Reg0 = Inst.getOperand(0).getReg();
+            Reg1 = Inst.getOperand(1).getReg();
+            Addend = Inst.getOperand(2).getImm();
+            break;
+          case AArch64::LDRAAwriteback:
+          case AArch64::LDRABwriteback:
+            Writeback = true;
+            Reg0 = Inst.getOperand(1).getReg();
+            Reg1 = Inst.getOperand(2).getReg();
+            Addend = Inst.getOperand(3).getImm();
+            break;
+        }
+        unsigned DisableBit = (Inst.getOpcode() == AArch64::LDRABindexed ||
+                               Inst.getOpcode() == AArch64::LDRABwriteback)
+                                  ? 63
+                                  : 62;
+
+        bool Sub;
+        unsigned Imm0, Imm1;
+        if (Addend == -512) {
+          Sub = true;
+          Imm0 = 1;
+          Imm1 = 12;
+        } else if (Addend < 0) {
+          Sub = true;
+          Imm0 = -Addend * 8;
+          Imm1 = 0;
+        } else {
+          Sub = false;
+          Imm0 = Addend * 8;
+          Imm1 = 0;
+        }
+
+        MCInst MI1 = MCInstBuilder(Sub ? AArch64::SUBXri : AArch64::ADDXri)
+                         .addReg(Reg1)
+                         .addReg(Reg1)
+                         .addImm(Imm0)
+                         .addImm(Imm1);
+        MCELFStreamer::emitInstruction(MI1, STI);
+
+        MCInst MI2 = MCInstBuilder(AArch64::TBNZX)
+                         .addReg(AArch64::X18)
+                         .addImm(DisableBit)
+                         .addImm(2);
+        MCELFStreamer::emitInstruction(MI2, STI);
+
+        MCInst MI3 = MCInstBuilder(AArch64::EORXri)
+              .addReg(Reg1)
+              .addReg(Reg1)
+              .addImm(AArch64_AM::encodeLogicalImmediate(1ULL << (DisableBit - 8), 64));
+        MCELFStreamer::emitInstruction(MI3, STI);
+
+        MCInst MI4 = MCInstBuilder(AArch64::LDRXui)
+              .addReg(Reg0)
+              .addReg(Reg1)
+              .addImm(0);
+        MCELFStreamer::emitInstruction(MI4, STI);
+
+        if (!Writeback && Reg0 != Reg1) {
+          MCInst MI5 = MCInstBuilder(AArch64::TBNZX)
+                           .addReg(AArch64::X18)
+                           .addImm(DisableBit)
+                           .addImm(2);
+          MCELFStreamer::emitInstruction(MI5, STI);
+
+          MCInst MI6 = MCInstBuilder(AArch64::EORXri)
+                           .addReg(Reg1)
+                           .addReg(Reg1)
+                           .addImm(AArch64_AM::encodeLogicalImmediate(
+                               1ULL << (DisableBit - 8), 64));
+          MCELFStreamer::emitInstruction(MI6, STI);
+
+          MCInst MI7 = MCInstBuilder(Sub ? AArch64::ADDXri : AArch64::SUBXri)
+                           .addReg(Reg1)
+                           .addReg(Reg1)
+                           .addImm(Imm0)
+                           .addImm(Imm1);
+          MCELFStreamer::emitInstruction(MI7, STI);
+        }
+        return;
+      }
+    }
+    }
+
     MCELFStreamer::emitInstruction(Inst, STI);
   }
 

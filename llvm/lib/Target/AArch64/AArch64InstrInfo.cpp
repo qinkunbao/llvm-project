@@ -51,6 +51,11 @@
 
 using namespace llvm;
 
+namespace llvm {
+extern cl::opt<bool> FakePAC;
+}
+
+
 #define GET_INSTRINFO_CTOR_DTOR
 #include "AArch64GenInstrInfo.inc"
 
@@ -127,15 +132,15 @@ unsigned AArch64InstrInfo::getInstSizeInBytes(const MachineInstr &MI) const {
     NumBytes = 4;
     break;
   case AArch64::AUT:
-    NumBytes = 24;
+    NumBytes = 24 + (FakePAC ? 16 : 0);
     break;
   case AArch64::AUTPAC:
-    NumBytes = 28;
+    NumBytes = 28 + (FakePAC ? 32 : 0);
     break;
   case AArch64::MOVaddrPAC:
     // 12 fixed + 16 variable, for pointer offset, and discriminator
     // We could potentially model the variable size overhead more accurately.
-    NumBytes = 28;
+    NumBytes = 28 + (FakePAC ? 16 : 0);
     break;
   case AArch64::BR_JumpTable:
     // 28 fixed + 16 variable, for table size materialization
@@ -150,6 +155,61 @@ unsigned AArch64InstrInfo::getInstSizeInBytes(const MachineInstr &MI) const {
   case AArch64::SPACE:
     NumBytes = MI.getOperand(1).getImm();
     break;
+
+  case AArch64::PACIA:
+  case AArch64::AUTIA:
+  case AArch64::PACIB:
+  case AArch64::AUTIB:
+  case AArch64::PACDA:
+  case AArch64::AUTDA:
+  case AArch64::PACDB:
+  case AArch64::AUTDB:
+  case AArch64::PACIAZ:
+  case AArch64::PACIZA:
+  case AArch64::PACIA1716:
+  case AArch64::PACIASP:
+  case AArch64::PACIBZ:
+  case AArch64::PACIZB:
+  case AArch64::PACIB1716:
+  case AArch64::PACIBSP:
+  case AArch64::PACDZA:
+  case AArch64::PACDZB:
+  case AArch64::AUTIAZ:
+  case AArch64::AUTIZA:
+  case AArch64::AUTIA1716:
+  case AArch64::AUTIASP:
+  case AArch64::AUTIBZ:
+  case AArch64::AUTIZB:
+  case AArch64::AUTIB1716:
+  case AArch64::AUTIBSP:
+  case AArch64::AUTDZA:
+  case AArch64::AUTDZB:
+    return FakePAC ? 20 : 4;
+
+  case AArch64::RETAA:
+  case AArch64::RETAB:
+    return FakePAC ? 24 : 4;
+
+  case AArch64::BRAA:
+  case AArch64::BRAAZ:
+  case AArch64::BRAB:
+  case AArch64::BRABZ:
+  case AArch64::BLRAA:
+  case AArch64::BLRAAZ:
+  case AArch64::BLRAB:
+  case AArch64::BLRABZ:
+  case AArch64::AUTH_TCRETURNrii:
+  case AArch64::AUTH_TCRETURNriri:
+    return FakePAC ? 28 : 4;
+
+  case AArch64::LDRAAindexed:
+  case AArch64::LDRABindexed:
+    return FakePAC ? 28 : 4;
+
+  case AArch64::LDRAAwriteback:
+  case AArch64::LDRABwriteback:
+    return FakePAC ? 16 : 4;
+
   case TargetOpcode::BUNDLE:
     NumBytes = getInstBundleLength(MI);
     break;

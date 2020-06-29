@@ -191,6 +191,19 @@ index cf5423e00..3b65ae876 100644
    apply_gnu_relro();
  
    // Several Linux ABIs don't pass the onexit pointer, and the ones that
+diff --git a/libc/bionic/pthread_create.cpp b/libc/bionic/pthread_create.cpp
+index d4a8bef26..d4e718121 100644
+--- a/libc/bionic/pthread_create.cpp
++++ b/libc/bionic/pthread_create.cpp
+@@ -128,7 +128,7 @@ static void __init_shadow_call_stack(pthread_internal_t* thread __unused) {
+   // deliberately the only place where the address is stored.
+   char *scs = scs_aligned_guard_region + scs_offset;
+   mprotect(scs, SCS_SIZE, PROT_READ | PROT_WRITE);
+-  __asm__ __volatile__("mov x18, %0" ::"r"(scs));
++  __asm__ __volatile__("and x18, x18, #(0xff << 56); orr x18, x18, %0" ::"r"(scs));
+ #endif
+ }
+ 
 diff --git a/libc/bionic/vdso.cpp b/libc/bionic/vdso.cpp
 index dbca9c013..619cd7a14 100644
 --- a/libc/bionic/vdso.cpp
@@ -373,7 +386,7 @@ index 5995013b4..45538fec6 100644
    CHECK(*shadow_start == p);
    mprotect(shadow_start, PAGE_SIZE, PROT_READ);
 diff --git a/linker/linker_main.cpp b/linker/linker_main.cpp
-index 41bb4baee..30e788588 100644
+index 41bb4baee..32ef75617 100644
 --- a/linker/linker_main.cpp
 +++ b/linker/linker_main.cpp
 @@ -578,6 +578,12 @@ static void call_ifunc_resolvers(ElfW(Addr) load_bias) {
@@ -389,15 +402,19 @@ index 41bb4baee..30e788588 100644
      *offset = __bionic_call_ifunc_resolver(resolver);
    }
  }
-@@ -656,6 +662,15 @@ extern "C" ElfW(Addr) __linker_init(void* raw_args) {
+@@ -656,6 +662,19 @@ extern "C" ElfW(Addr) __linker_init(void* raw_args) {
    const ElfW(Addr) load_bias = get_elf_exec_load_bias(elf_hdr);
    call_ifunc_resolvers(load_bias);
  
 +#ifdef ANDROID_EXPERIMENTAL_PAC
 +  if (strcmp(args.argv[0], "/system/bin/app_process64") == 0) {
 +    if (fork() == 0) {
++#ifdef ANDROID_FAKE_PAC
++      __asm__ __volatile__("orr x18, x18, %0" ::"r"(0xd0ULL << 56));
++#else
 +#define PR_PAC_SET_ENABLED_KEYS 59
 +      prctl(PR_PAC_SET_ENABLED_KEYS, PR_PAC_APIBKEY, 0, 0, 0);
++#endif
 +    }
 +  }
 +#endif
@@ -405,7 +422,7 @@ index 41bb4baee..30e788588 100644
    soinfo tmp_linker_so(nullptr, nullptr, nullptr, 0, 0);
  
    tmp_linker_so.base = linker_addr;
-@@ -702,7 +717,11 @@ __linker_init_post_relocation(KernelArgumentBlock& args, soinfo& tmp_linker_so)
+@@ -702,7 +721,11 @@ __linker_init_post_relocation(KernelArgumentBlock& args, soinfo& tmp_linker_so)
    // as PT_INTERP, AT_ENTRY will refer to the loaded executable rather than the
    // linker's _start.
    const char* exe_to_load = nullptr;

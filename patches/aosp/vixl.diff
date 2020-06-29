@@ -1,5 +1,5 @@
 diff --git a/src/aarch64/assembler-aarch64.cc b/src/aarch64/assembler-aarch64.cc
-index 9e73ffaa..fa58eaae 100644
+index 9e73ffaa..136f787f 100644
 --- a/src/aarch64/assembler-aarch64.cc
 +++ b/src/aarch64/assembler-aarch64.cc
 @@ -196,7 +196,7 @@ void Assembler::ret(const Register& xn) {
@@ -46,24 +46,47 @@ index 9e73ffaa..fa58eaae 100644
      VIXL_ASSERT(xd.Is64Bits());                                    \
      Emit(SF(xd) | OP##ZB | Rd(xd));                                \
    }
-@@ -1081,7 +1077,7 @@ void Assembler::pacga(const Register& xd,
+@@ -1080,10 +1076,23 @@ void Assembler::pacga(const Register& xd,
+   Emit(SF(xd) | PACGA | Rd(xd) | Rn(xn) | RmSP(xm));
  }
  
++#if !defined(__aarch64__)
++static bool fake_pac = getenv("TARGET_EXPERIMENTAL_PAC") &&
++                       strcmp(getenv("TARGET_EXPERIMENTAL_PAC"), "fake") == 0;
++#elif defined(ANDROID_FAKE_PAC)
++static bool fake_pac = true;
++#else
++static bool fake_pac = false;
++#endif
++
  void Assembler::xpaci(const Register& xd) {
 -  VIXL_ASSERT(CPUHas(CPUFeatures::kPAuth));
 +  // VIXL_ASSERT(CPUHas(CPUFeatures::kPAuth));
    VIXL_ASSERT(xd.Is64Bits());
-   Emit(SF(xd) | XPACI | Rd(xd));
+-  Emit(SF(xd) | XPACI | Rd(xd));
++  if (fake_pac) {
++    and_(xd, xd, 0x7fffffffff);
++  } else {
++    Emit(SF(xd) | XPACI | Rd(xd));
++  }
  }
-@@ -2542,7 +2538,7 @@ void Assembler::mov(const Register& rd, const Register& rm) {
+ 
+ void Assembler::xpacd(const Register& xd) {
+@@ -2542,8 +2551,12 @@ void Assembler::mov(const Register& rd, const Register& rm) {
  }
  
  void Assembler::xpaclri() {
 -  VIXL_ASSERT(CPUHas(CPUFeatures::kPAuth));
+-  Emit(XPACLRI);
 +  // VIXL_ASSERT(CPUHas(CPUFeatures::kPAuth));
-   Emit(XPACLRI);
++  if (fake_pac) {
++    and_(x30, x30, 0x7fffffffff);
++  } else {
++    Emit(XPACLRI);
++  }
  }
  
+ void Assembler::pacia1716() {
 diff --git a/src/aarch64/constants-aarch64.h b/src/aarch64/constants-aarch64.h
 index 36f5568d..bd843d0e 100644
 --- a/src/aarch64/constants-aarch64.h

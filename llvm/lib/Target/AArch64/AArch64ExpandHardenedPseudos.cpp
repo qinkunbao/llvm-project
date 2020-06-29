@@ -32,6 +32,10 @@
 
 using namespace llvm;
 
+namespace llvm {
+extern cl::opt<bool> FakePAC;
+}
+
 #define DEBUG_TYPE "aarch64-expand-hardened-pseudos"
 
 #define PASS_NAME "AArch64 Expand Hardened Pseudos"
@@ -242,9 +246,17 @@ bool AArch64ExpandHardenedPseudos::expandMI(MachineInstr &MI) {
     DiscReg = AddrDisc;
   }
 
-  if (GAOp.getGlobal()->hasExternalWeakLinkage())
+  if (GAOp.getGlobal()->hasExternalWeakLinkage()) {
+    unsigned PACNumInsts = 1;
+    if (FakePAC) {
+      if (DiscReg == AArch64::XZR || DiscReg == AArch64::SP)
+        PACNumInsts = 2;
+      else
+        PACNumInsts = 5;
+    }
     BuildMI(MBB, MBBI, DL, TII->get(AArch64::CBZX), AArch64::X16)
-      .addImm(2);
+      .addImm(PACNumInsts + 1);
+  }
 
   unsigned PACOpc = getPACOpcodeForKey(Key, DiscReg == AArch64::XZR);
   auto MIB = BuildMI(MBB, MBBI, DL, TII->get(PACOpc), AArch64::X16)

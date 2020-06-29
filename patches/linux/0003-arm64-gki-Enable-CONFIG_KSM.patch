@@ -1,0 +1,21 @@
+From 0db5ffc733cd16f7611ddc84048a83814a180ec4 Mon Sep 17 00:00:00 2001
+From: Peter Collingbourne <pcc@google.com>
+Date: Thu, 25 Jun 2020 12:45:18 -0700
+Subject: [PATCH 3/4] arm64: gki: Enable CONFIG_KSM
+
+---
+ arch/arm64/configs/gki_defconfig | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/arch/arm64/configs/gki_defconfig b/arch/arm64/configs/gki_defconfig
+index 3eea5612575f..7ec0f86e235f 100644
+--- a/arch/arm64/configs/gki_defconfig
++++ b/arch/arm64/configs/gki_defconfig
+@@ -501,3 +501,4 @@ CONFIG_BUG_ON_DATA_CORRUPTION=y
+ CONFIG_CORESIGHT=y
+ CONFIG_CORESIGHT_STM=y
+ # CONFIG_RUNTIME_TESTING_MENU is not set
++CONFIG_KSM=y
+-- 
+2.27.0.212.ge8ba1cc988-goog
+

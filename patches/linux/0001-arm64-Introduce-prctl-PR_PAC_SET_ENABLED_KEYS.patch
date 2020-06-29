@@ -1,7 +1,7 @@
-From 7ec45f89b76ef6de145c0b5a423c48b0046399cc Mon Sep 17 00:00:00 2001
+From 2813def2a19cff8dfebd26272abac5588ac0fc03 Mon Sep 17 00:00:00 2001
 From: Peter Collingbourne <pcc@google.com>
 Date: Thu, 4 Jun 2020 18:39:49 -0700
-Subject: [PATCH 1/2] arm64: Introduce prctl(PR_PAC_SET_ENABLED_KEYS)
+Subject: [PATCH 1/4] arm64: Introduce prctl(PR_PAC_SET_ENABLED_KEYS)
 
 ---
  arch/arm64/include/asm/asm_pointer_auth.h | 19 +++++++++++++++++
@@ -178,5 +178,5 @@ index 6bc2125bb0ea..34829d2c01fb 100644
  		if (arg3 || arg4 || arg5)
  			return -EINVAL;
 -- 
-2.27.0.278.ge193c7cf3a9-goog
+2.27.0.212.ge8ba1cc988-goog
 

@@ -27,6 +27,8 @@ if (current_os == "android") {
       "-fptrauth-calls",
       "-fptrauth-indirect-gotos",
       "-fptrauth-auth-traps",
+      "-mllvm",
+      "-fake-pac",
     ]
   }
 } else if (current_os == "ios") {

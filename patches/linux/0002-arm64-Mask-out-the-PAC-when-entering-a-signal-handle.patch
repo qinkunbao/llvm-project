@@ -1,7 +1,7 @@
-From dc8d450f8b1eb6cd22654bc26f9df78cdd7817a0 Mon Sep 17 00:00:00 2001
+From b8b1711c81d55e245e08f614351459a6c905fe1b Mon Sep 17 00:00:00 2001
 From: Peter Collingbourne <pcc@google.com>
 Date: Thu, 11 Jun 2020 11:24:18 -0700
-Subject: [PATCH 2/2] arm64: Mask out the PAC when entering a signal handler
+Subject: [PATCH 2/4] arm64: Mask out the PAC when entering a signal handler
 
 ---
  arch/arm64/kernel/signal.c | 7 ++++++-
@@ -30,5 +30,5 @@ index e377d77c065e..00d822049e98 100644
  	/* TCO (Tag Check Override) always cleared for signal handlers */
  	regs->pstate &= ~PSR_TCO_BIT;
 -- 
-2.27.0.278.ge193c7cf3a9-goog
+2.27.0.212.ge8ba1cc988-goog
 

@@ -1473,6 +1473,7 @@ void AArch64AsmPrinter::emitInstruction(const MachineInstr *MI) {
                                     {AArch64::BRAB, AArch64::BRABZ}};
 
     MCInst TmpInst;
+    TmpInst.setFlags(1);
     TmpInst.setOpcode(Opcodes[Key][isZero]);
     TmpInst.addOperand(MCOperand::createReg(MI->getOperand(0).getReg()));
     if (!isZero)
