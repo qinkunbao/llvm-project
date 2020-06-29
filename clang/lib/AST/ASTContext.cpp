@@ -7889,7 +7889,8 @@ static TypedefDecl *
 CreateAArch64ABIBuiltinVaListDecl(const ASTContext *Context) {
   // struct __va_list
   RecordDecl *VaListTagDecl = Context->buildImplicitRecord("__va_list");
-  if (Context->getLangOpts().CPlusPlus) {
+  if (Context->getLangOpts().CPlusPlus &&
+      !Context->getTargetInfo().getTriple().isAndroid()) {
     // namespace std { struct __va_list {
     NamespaceDecl *NS;
     NS = NamespaceDecl::Create(const_cast<ASTContext &>(*Context),

@@ -40,7 +40,7 @@ CodeGenModule::getPointerAuthOtherDiscriminator(const PointerAuthSchema &schema,
     return nullptr;
 
   case PointerAuthSchema::Discrimination::GeneralizedType:
-    type = GeneralizeFunctionType(type);
+    type = GeneralizeFunctionType(type, false);
 
   case PointerAuthSchema::Discrimination::Type:
     assert(!type.isNull() &&

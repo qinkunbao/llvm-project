@@ -504,9 +504,9 @@ void CodeGenFunction::FinishFunction(SourceLocation EndLoc) {
         auto *DiscConst = CGM.getPointerAuthOtherDiscriminator(
             CGM.getCodeGenOpts().PointerAuth.FunctionPointers, GlobalDecl(),
             FD->getType());
+        Disc = 0x80000000;
         if (DiscConst)
-          Disc = cast<llvm::ConstantInt>(DiscConst)->getZExtValue();
-        Disc |= 0x80000000;
+          Disc |= cast<llvm::ConstantInt>(DiscConst)->getZExtValue();
       }
     }
     CurFn->addFnAttr("ptrauth-calls", llvm::utostr(Disc));

@@ -1,11 +1,16 @@
 #!/bin/sh -xe
 
+shopt -s globstar
+
 # There should be a file frankendroid.rc in the monorepo root with contents:
 # androiddir=<Path to your android root directory>
 # builddir=<Name of build directory in monorepo root>
 # llvm_androiddir=<Path to result of "git clone https://android.googlesource.com/toolchain/llvm_android">
 cd $(dirname $0)/../..
 . ./frankendroid.rc
+
+# Work around crbug.com/gn/96
+rm -f $builddir/stage2_*/**/*.o
 
 ninja -C $builddir hwasan compiler-rt
 

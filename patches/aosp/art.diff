@@ -11,23 +11,20 @@ index 036cdbb0cc..af828dfda9 100644
        ArtMethod::EntryPointFromJniOffset(InstructionSetPointerSize(instruction_set));
    if (UNLIKELY(is_critical_native)) {
 diff --git a/compiler/optimizing/code_generator_arm64.cc b/compiler/optimizing/code_generator_arm64.cc
-index fd5f689c9d..433c93e343 100644
+index fd5f689c9d..5763651297 100644
 --- a/compiler/optimizing/code_generator_arm64.cc
 +++ b/compiler/optimizing/code_generator_arm64.cc
-@@ -1128,7 +1128,11 @@ void CodeGeneratorARM64::MaybeIncrementHotness(bool is_frame_entry) {
+@@ -1128,6 +1128,9 @@ void CodeGeneratorARM64::MaybeIncrementHotness(bool is_frame_entry) {
        __ Ldr(lr, MemOperand(tr, entrypoint_offset));
        // Note: we don't record the call here (and therefore don't generate a stack
        // map), as the entrypoint should never be suspended.
--      __ Blr(lr);
 +      if (HasPAC()) {
-+        __ Blraaz(lr);
-+      } else {
-+        __ Blr(lr);
++        __ Xpaci(lr);
 +      }
+       __ Blr(lr);
        if (HasEmptyFrame()) {
          CHECK(is_frame_entry);
-         __ Ldr(lr, MemOperand(sp, 8));
-@@ -1784,6 +1788,9 @@ void CodeGeneratorARM64::InvokeRuntime(QuickEntrypointEnum entrypoint,
+@@ -1784,6 +1787,9 @@ void CodeGeneratorARM64::InvokeRuntime(QuickEntrypointEnum entrypoint,
    // For JIT, thunk sharing is per-method, so the gains would be smaller or even negative.
    if (slow_path == nullptr || GetCompilerOptions().IsJitCompiler()) {
      __ Ldr(lr, MemOperand(tr, entrypoint_offset.Int32Value()));
@@ -37,20 +34,17 @@ index fd5f689c9d..433c93e343 100644
      // Ensure the pc position is recorded immediately after the `blr` instruction.
      ExactAssemblyScope eas(GetVIXLAssembler(), kInstructionSize, CodeBufferCheckScope::kExactSize);
      __ blr(lr);
-@@ -1805,7 +1812,11 @@ void CodeGeneratorARM64::InvokeRuntimeWithoutRecordingPcInfo(int32_t entry_point
+@@ -1805,6 +1811,9 @@ void CodeGeneratorARM64::InvokeRuntimeWithoutRecordingPcInfo(int32_t entry_point
                                                               SlowPathCode* slow_path) {
    ValidateInvokeRuntimeWithoutRecordingPcInfo(instruction, slow_path);
    __ Ldr(lr, MemOperand(tr, entry_point_offset));
--  __ Blr(lr);
 +  if (HasPAC()) {
-+    __ Blraaz(lr);
-+  } else {
-+    __ Blr(lr);
++    __ Xpaclri();
 +  }
+   __ Blr(lr);
  }
  
- void InstructionCodeGeneratorARM64::GenerateClassInitializationCheck(SlowPathCodeARM64* slow_path,
-@@ -4263,6 +4274,7 @@ void InstructionCodeGeneratorARM64::VisitInvokeInterface(HInvokeInterface* invok
+@@ -4263,6 +4272,7 @@ void InstructionCodeGeneratorARM64::VisitInvokeInterface(HInvokeInterface* invok
    __ Ldr(temp, MemOperand(temp, method_offset));
    // lr = temp->GetEntryPoint();
    __ Ldr(lr, MemOperand(temp, entry_point.Int32Value()));
@@ -58,7 +52,7 @@ index fd5f689c9d..433c93e343 100644
  
    {
      // Ensure the pc position is recorded immediately after the `blr` instruction.
-@@ -4390,6 +4402,7 @@ void CodeGeneratorARM64::GenerateStaticOrDirectCall(
+@@ -4390,6 +4400,7 @@ void CodeGeneratorARM64::GenerateStaticOrDirectCall(
        __ Ldr(lr, MemOperand(
            XRegisterFrom(callee_method),
            ArtMethod::EntryPointFromQuickCompiledCodeOffset(kArm64PointerSize).Int32Value()));
@@ -66,7 +60,7 @@ index fd5f689c9d..433c93e343 100644
        {
          // Use a scope to help guarantee that `RecordPcInfo()` records the correct pc.
          ExactAssemblyScope eas(GetVIXLAssembler(),
-@@ -4443,6 +4456,7 @@ void CodeGeneratorARM64::GenerateVirtualCall(
+@@ -4443,6 +4454,7 @@ void CodeGeneratorARM64::GenerateVirtualCall(
    __ Ldr(temp, MemOperand(temp, method_offset));
    // lr = temp->GetEntryPoint();
    __ Ldr(lr, MemOperand(temp, entry_point.SizeValue()));
@@ -74,17 +68,17 @@ index fd5f689c9d..433c93e343 100644
    {
      // Use a scope to help guarantee that `RecordPcInfo()` records the correct pc.
      ExactAssemblyScope eas(GetVIXLAssembler(), kInstructionSize, CodeBufferCheckScope::kExactSize);
-@@ -6555,6 +6569,9 @@ static void LoadReadBarrierMarkIntrospectionEntrypoint(arm64::Arm64Assembler& as
+@@ -6555,6 +6567,9 @@ static void LoadReadBarrierMarkIntrospectionEntrypoint(arm64::Arm64Assembler& as
    const int32_t entry_point_offset =
        Thread::ReadBarrierMarkEntryPointsOffset<kArm64PointerSize>(ip0.GetCode());
    __ Ldr(entrypoint, MemOperand(tr, entry_point_offset));
 +  if (HasPAC()) {
-+    __ Autiza(entrypoint);
++    __ Xpaci(entrypoint);
 +  }
  }
  
  void CodeGeneratorARM64::CompileBakerReadBarrierThunk(Arm64Assembler& assembler,
-@@ -6610,7 +6627,7 @@ void CodeGeneratorARM64::CompileBakerReadBarrierThunk(Arm64Assembler& assembler,
+@@ -6610,7 +6625,7 @@ void CodeGeneratorARM64::CompileBakerReadBarrierThunk(Arm64Assembler& assembler,
          __ Ldar(ip0.W(), MemOperand(base_reg));
        }
        // Do not unpoison. With heap poisoning enabled, the entrypoint expects a poisoned reference.
@@ -93,7 +87,7 @@ index fd5f689c9d..433c93e343 100644
        break;
      }
      case BakerReadBarrierKind::kArray: {
-@@ -6635,7 +6652,7 @@ void CodeGeneratorARM64::CompileBakerReadBarrierThunk(Arm64Assembler& assembler,
+@@ -6635,7 +6650,7 @@ void CodeGeneratorARM64::CompileBakerReadBarrierThunk(Arm64Assembler& assembler,
        __ Bfi(ip1, ip0, 3, 6);               // Insert ip0 to the entrypoint address to create
                                              // a switch case target based on the index register.
        __ Mov(ip0, base_reg);                // Move the base register to ip0.
@@ -149,34 +143,30 @@ index fe2f1766c2..5fe4890f80 100644
    if (reg.IsFPRegister()) {
      return dwarf::Reg::Arm64Fp(reg.GetCode());
 diff --git a/compiler/utils/arm64/jni_macro_assembler_arm64.cc b/compiler/utils/arm64/jni_macro_assembler_arm64.cc
-index bb93a96ebe..f6d1e3433b 100644
+index bb93a96ebe..b42ce5cc18 100644
 --- a/compiler/utils/arm64/jni_macro_assembler_arm64.cc
 +++ b/compiler/utils/arm64/jni_macro_assembler_arm64.cc
-@@ -629,20 +629,31 @@ void Arm64JNIMacroAssembler::Jump(ManagedRegister m_base, Offset offs) {
+@@ -629,6 +629,9 @@ void Arm64JNIMacroAssembler::Jump(ManagedRegister m_base, Offset offs) {
    UseScratchRegisterScope temps(asm_.GetVIXLAssembler());
    Register scratch = temps.AcquireX();
    ___ Ldr(scratch, MEM_OP(reg_x(base.AsXRegister()), offs.Int32Value()));
--  ___ Br(scratch);
 +  if (HasPAC()) {
-+    ___ Braaz(scratch);
-+  } else {
-+    ___ Br(scratch);
++    ___ Xpaci(scratch);
 +  }
+   ___ Br(scratch);
  }
  
- void Arm64JNIMacroAssembler::Call(ManagedRegister m_base, Offset offs) {
+@@ -636,6 +639,9 @@ void Arm64JNIMacroAssembler::Call(ManagedRegister m_base, Offset offs) {
    Arm64ManagedRegister base = m_base.AsArm64();
    CHECK(base.IsXRegister()) << base;
    ___ Ldr(lr, MEM_OP(reg_x(base.AsXRegister()), offs.Int32Value()));
--  ___ Blr(lr);
 +  if (HasPAC()) {
-+    ___ Blraaz(lr);
-+  } else {
-+    ___ Blr(lr);
++    ___ Xpaclri();
 +  }
+   ___ Blr(lr);
  }
  
- void Arm64JNIMacroAssembler::Call(FrameOffset base, Offset offs) {
+@@ -643,6 +649,9 @@ void Arm64JNIMacroAssembler::Call(FrameOffset base, Offset offs) {
    // Call *(*(SP + base) + offset)
    ___ Ldr(lr, MEM_OP(reg_x(SP), base.Int32Value()));
    ___ Ldr(lr, MEM_OP(lr, offs.Int32Value()));
@@ -186,19 +176,16 @@ index bb93a96ebe..f6d1e3433b 100644
    ___ Blr(lr);
  }
  
-@@ -773,7 +784,11 @@ void Arm64JNIMacroAssembler::EmitExceptionPoll(Arm64Exception* exception) {
+@@ -773,6 +782,9 @@ void Arm64JNIMacroAssembler::EmitExceptionPoll(Arm64Exception* exception) {
            MEM_OP(reg_x(TR),
                   QUICK_ENTRYPOINT_OFFSET(kArm64PointerSize, pDeliverException).Int32Value()));
  
--  ___ Blr(lr);
 +  if (HasPAC()) {
-+    ___ Blraaz(lr);
-+  } else {
-+    ___ Blr(lr);
++    ___ Xpaclri();
 +  }
+   ___ Blr(lr);
    // Call should never return.
    ___ Brk();
- }
 diff --git a/libartbase/base/mem_map.cc b/libartbase/base/mem_map.cc
 index bd880dacb6..7c92c2a3fe 100644
 --- a/libartbase/base/mem_map.cc
@@ -261,24 +248,22 @@ index c139e21d05..b0126243a4 100644
    // The kernel will now return to the address in sc->pc.
    return true;
 diff --git a/runtime/arch/arm64/jni_entrypoints_arm64.S b/runtime/arch/arm64/jni_entrypoints_arm64.S
-index 8a34662645..553271f412 100644
+index 8a34662645..dd105a396b 100644
 --- a/runtime/arch/arm64/jni_entrypoints_arm64.S
 +++ b/runtime/arch/arm64/jni_entrypoints_arm64.S
-@@ -86,7 +86,12 @@ ENTRY art_jni_dlsym_lookup_stub
+@@ -86,6 +86,10 @@ ENTRY art_jni_dlsym_lookup_stub
      .cfi_restore x30
  
      cbz   x17, 1f   // is method code null ?
 +    // XXX jni call here
 +#ifdef ANDROID_EXPERIMENTAL_PAC
-+    braaz x17       // if non-null, tail call to method's code.
-+#else
-     br    x17       // if non-null, tail call to method's code.
++    xpaci x17
 +#endif
+     br    x17       // if non-null, tail call to method's code.
  
  1:
-     ret             // restore regs and return to caller to handle exception.
 diff --git a/runtime/arch/arm64/quick_entrypoints_arm64.S b/runtime/arch/arm64/quick_entrypoints_arm64.S
-index 634c762040..af70d6e12f 100644
+index 634c762040..943e8cb3f8 100644
 --- a/runtime/arch/arm64/quick_entrypoints_arm64.S
 +++ b/runtime/arch/arm64/quick_entrypoints_arm64.S
 @@ -342,7 +342,13 @@ NO_ARG_RUNTIME_EXCEPTION art_quick_throw_stack_overflow, artThrowStackOverflowFr
@@ -336,19 +321,17 @@ index 634c762040..af70d6e12f 100644
      br xIP0
  1:
      RESTORE_SAVE_REFS_AND_ARGS_FRAME
-@@ -1916,7 +1935,12 @@ ENTRY art_quick_generic_jni_trampoline
+@@ -1916,6 +1935,10 @@ ENTRY art_quick_generic_jni_trampoline
      // Apply the new SP for out args, releasing unneeded reserved area.
      mov sp, xIP1
  
 +    // XXX jni call here
 +#ifdef ANDROID_EXPERIMENTAL_PAC
-+    blraaz xIP0     // native call.
-+#else
-     blr xIP0        // native call.
++    xpaci xIP0
 +#endif
+     blr xIP0        // native call.
  
      // result sign extension is handled in C code
-     // prepare for artQuickGenericJniEndTrampoline call
 diff --git a/runtime/gc/space/image_space.cc b/runtime/gc/space/image_space.cc
 index 5484f49e96..5e82d95637 100644
 --- a/runtime/gc/space/image_space.cc

@@ -1,54 +1,27 @@
 diff --git a/string/aarch64/memcmp.S b/string/aarch64/memcmp.S
-index dac9147..1da55d9 100644
+index dac9147..78d9a4f 100644
 --- a/string/aarch64/memcmp.S
 +++ b/string/aarch64/memcmp.S
-@@ -132,3 +132,6 @@ L(byte_loop):
+@@ -132,3 +132,4 @@ L(byte_loop):
  
  END (__memcmp_aarch64)
  
-+#ifdef ANDROID_EXPERIMENTAL_PAC
-+.auth __memcmp_aarch64, 2147505827
-+#endif
++#include "symauth.h"
 diff --git a/string/aarch64/memrchr.S b/string/aarch64/memrchr.S
-index ad42b49..90b0e9b 100644
+index ad42b49..3159626 100644
 --- a/string/aarch64/memrchr.S
 +++ b/string/aarch64/memrchr.S
-@@ -114,3 +114,6 @@ L(nomatch):
+@@ -114,3 +114,4 @@ L(nomatch):
  
  END (__memrchr_aarch64)
  
-+#ifdef ANDROID_EXPERIMENTAL_PAC
-+.auth __memrchr_aarch64, 2147486702
-+#endif
++#include "symauth.h"
 diff --git a/string/aarch64/strnlen.S b/string/aarch64/strnlen.S
-index 4852edc..3a94e6e 100644
+index 4852edc..d8c6e17 100644
 --- a/string/aarch64/strnlen.S
 +++ b/string/aarch64/strnlen.S
-@@ -108,3 +108,6 @@ L(nomatch):
+@@ -108,3 +108,4 @@ L(nomatch):
  
  END (__strnlen_aarch64)
  
-+#ifdef ANDROID_EXPERIMENTAL_PAC
-+.auth __strnlen_aarch64, 2147503104
-+#endif
-diff --git a/string/asmdefs.h b/string/asmdefs.h
-index 31c0f9d..26c93d8 100644
---- a/string/asmdefs.h
-+++ b/string/asmdefs.h
-@@ -47,9 +47,16 @@
- GNU_PROPERTY (FEATURE_1_AND, FEATURE_1_BTI|FEATURE_1_PAC)
- #endif
- 
-+#if 0
-+#define AUTH(name, disc) .auth name, disc
-+#else
-+#define AUTH(name, disc)
-+#endif
-+
- #define ENTRY_ALIGN(name, alignment)	\
-   .global name;		\
-   .type name,%function;	\
-+  AUTH(name, 0x80000000);	\
-   .align alignment;		\
-   name:			\
-   .cfi_startproc;	\
++#include "symauth.h"

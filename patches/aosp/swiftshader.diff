@@ -1,31 +1,144 @@
-diff --git a/src/Reactor/LLVMJIT.cpp b/src/Reactor/LLVMJIT.cpp
-index 02ec371db..7a2abf904 100644
---- a/src/Reactor/LLVMJIT.cpp
-+++ b/src/Reactor/LLVMJIT.cpp
-@@ -666,7 +666,11 @@ public:
- 			auto symbol = compileLayer.findSymbolIn(moduleKey, mangledNames[i], false);
- 			if(auto address = symbol.getAddress())
- 			{
--				addresses[i] = reinterpret_cast<void *>(static_cast<intptr_t>(address.get()));
-+				auto ptr = reinterpret_cast<void *>(static_cast<intptr_t>(address.get()));
+diff --git a/src/D3D9/Direct3DDevice9.cpp b/src/D3D9/Direct3DDevice9.cpp
+index 2f6942004..b3b932dfa 100644
+--- a/src/D3D9/Direct3DDevice9.cpp
++++ b/src/D3D9/Direct3DDevice9.cpp
+@@ -1848,6 +1848,9 @@ namespace D3D9
+ 				blitState = update;
+ 				blitRoutine = sw::FrameBuffer::copyRoutine(blitState);
+ 				blitFunction = (void(__cdecl*)(void*, void*))blitRoutine->getEntry();
 +#ifdef ANDROID_EXPERIMENTAL_PAC
-+				ptr = __builtin_ptrauth_sign_unauthenticated(ptr, 0, 0);
++                                blitFunction = __builtin_ptrauth_sign_unauthenticated(blitFunction, 0, 0);
 +#endif
-+				addresses[i] = ptr;
  			}
- 		}
- 	}
-diff --git a/src/Reactor/SubzeroReactor.cpp b/src/Reactor/SubzeroReactor.cpp
-index bc01e01d0..fdd669af8 100644
---- a/src/Reactor/SubzeroReactor.cpp
-+++ b/src/Reactor/SubzeroReactor.cpp
-@@ -786,6 +786,9 @@ public:
- 	void setEntry(int index, const void *func)
- 	{
- 		ASSERT(func);
+ 
+ 			blitFunction(destBuffer, sourceBuffer);
+diff --git a/src/Main/FrameBuffer.cpp b/src/Main/FrameBuffer.cpp
+index 2dc5cd660..67b500a87 100644
+--- a/src/Main/FrameBuffer.cpp
++++ b/src/Main/FrameBuffer.cpp
+@@ -154,6 +154,9 @@ namespace sw
+ 			blitState = updateState;
+ 			blitRoutine = copyRoutine(blitState);
+ 			blitFunction = (void(*)(void*, void*, Cursor*))blitRoutine->getEntry();
 +#ifdef ANDROID_EXPERIMENTAL_PAC
-+		func = __builtin_ptrauth_sign_unauthenticated(func, 0, 0);
++                        blitFunction = __builtin_ptrauth_sign_unauthenticated(blitFunction, 0, 0);
 +#endif
- 		funcs[index] = func;
+ 		}
+ 
+ 		blitFunction(framebuffer, renderbuffer, &cursor);
+diff --git a/src/Pipeline/SpirvShaderSampling.cpp b/src/Pipeline/SpirvShaderSampling.cpp
+index 0de505925..b74519e26 100644
+--- a/src/Pipeline/SpirvShaderSampling.cpp
++++ b/src/Pipeline/SpirvShaderSampling.cpp
+@@ -42,7 +42,10 @@ SpirvShader::ImageSampler *SpirvShader::getImageSampler(uint32_t inst, vk::Sampl
+ 
+ 	if(auto routine = imageDescriptor->device->findInConstCache(key))
+ 	{
+-		return (ImageSampler *)(routine->getEntry());
++		auto *sampler = (ImageSampler *)(routine->getEntry());
++#ifdef ANDROID_EXPERIMENTAL_PAC
++                sampler = __builtin_ptrauth_sign_unauthenticated(sampler, 0, 0);
++#endif
  	}
+ 
+ 	std::unique_lock<std::mutex> lock(imageDescriptor->device->getSamplingRoutineCacheMutex());
+@@ -51,7 +54,10 @@ SpirvShader::ImageSampler *SpirvShader::getImageSampler(uint32_t inst, vk::Sampl
+ 	auto routine = cache->query(key);
+ 	if(routine)
+ 	{
+-		return (ImageSampler *)(routine->getEntry());
++		auto *sampler = (ImageSampler *)(routine->getEntry());
++#ifdef ANDROID_EXPERIMENTAL_PAC
++                sampler = __builtin_ptrauth_sign_unauthenticated(sampler, 0, 0);
++#endif
+ 	}
+ 
+ 	auto type = imageDescriptor->type;
+@@ -95,7 +101,10 @@ SpirvShader::ImageSampler *SpirvShader::getImageSampler(uint32_t inst, vk::Sampl
+ 	routine = emitSamplerRoutine(instruction, samplerState);
+ 
+ 	cache->add(key, routine);
+-	return (ImageSampler *)(routine->getEntry());
++	auto *sampler = (ImageSampler *)(routine->getEntry());
++#ifdef ANDROID_EXPERIMENTAL_PAC
++        sampler = __builtin_ptrauth_sign_unauthenticated(sampler, 0, 0);
++#endif
+ }
+ 
+ std::shared_ptr<rr::Routine> SpirvShader::emitSamplerRoutine(ImageInstruction instruction, const Sampler &samplerState)
+diff --git a/src/Reactor/Coroutine.hpp b/src/Reactor/Coroutine.hpp
+index d70ecf007..92049b242 100644
+--- a/src/Reactor/Coroutine.hpp
++++ b/src/Reactor/Coroutine.hpp
+@@ -33,12 +33,18 @@ protected:
+ 	~StreamBase()
+ 	{
+ 		auto pfn = (Nucleus::CoroutineDestroy *)routine->getEntry(Nucleus::CoroutineEntryDestroy);
++#ifdef ANDROID_EXPERIMENTAL_PAC
++                pfn = __builtin_ptrauth_sign_unauthenticated(pfn, 0, 0);
++#endif
+ 		pfn(handle);
+ 	}
+ 
+ 	bool await(void *out)
+ 	{
+ 		auto pfn = (Nucleus::CoroutineAwait *)routine->getEntry(Nucleus::CoroutineEntryAwait);
++#ifdef ANDROID_EXPERIMENTAL_PAC
++                pfn = __builtin_ptrauth_sign_unauthenticated(pfn, 0, 0);
++#endif
+ 		return pfn(handle, out);
+ 	}
+ 
+@@ -191,6 +197,9 @@ Coroutine<Return(Arguments...)>::operator()(Arguments... args)
+ 	std::function<Nucleus::CoroutineHandle()> coroutineBegin = [=] {
+ 		using Sig = Nucleus::CoroutineBegin<Arguments...>;
+ 		auto pfn = (Sig *)routine->getEntry(Nucleus::CoroutineEntryBegin);
++#ifdef ANDROID_EXPERIMENTAL_PAC
++                pfn = __builtin_ptrauth_sign_unauthenticated(pfn, 0, 0);
++#endif
+ 		auto handle = pfn(args...);
+ 		return handle;
+ 	};
+@@ -214,4 +223,4 @@ inline void Yield(const T &val)
+ 
+ }  // namespace rr
+ 
+-#endif  // rr_ReactorCoroutine_hpp
+\ No newline at end of file
++#endif  // rr_ReactorCoroutine_hpp
+diff --git a/src/Renderer/Blitter.cpp b/src/Renderer/Blitter.cpp
+index d4edbfab5..7ccef28a9 100644
+--- a/src/Renderer/Blitter.cpp
++++ b/src/Renderer/Blitter.cpp
+@@ -1438,6 +1438,9 @@ namespace sw
+ 		criticalSection.unlock();
+ 
+ 		void (*blitFunction)(const BlitData *data) = (void(*)(const BlitData*))blitRoutine->getEntry();
++#ifdef ANDROID_EXPERIMENTAL_PAC
++                blitFunction = __builtin_ptrauth_sign_unauthenticated(blitFunction, 0, 0);
++#endif
+ 
+ 		BlitData data;
+ 
+diff --git a/src/Renderer/Renderer.cpp b/src/Renderer/Renderer.cpp
+index de1ab7b90..b39e2e376 100644
+--- a/src/Renderer/Renderer.cpp
++++ b/src/Renderer/Renderer.cpp
+@@ -364,8 +364,17 @@ namespace sw
+ 			draw->setupRoutine = setupRoutine;
+ 			draw->pixelRoutine = pixelRoutine;
+ 			draw->vertexPointer = (VertexProcessor::RoutinePointer)vertexRoutine->getEntry();
++#ifdef ANDROID_EXPERIMENTAL_PAC
++                        draw->vertexPointer = __builtin_ptrauth_sign_unauthenticated(draw->vertexPointer, 0, 0);
++#endif
+ 			draw->setupPointer = (SetupProcessor::RoutinePointer)setupRoutine->getEntry();
++#ifdef ANDROID_EXPERIMENTAL_PAC
++                        draw->setupPointer = __builtin_ptrauth_sign_unauthenticated(draw->setupPointer, 0, 0);
++#endif
+ 			draw->pixelPointer = (PixelProcessor::RoutinePointer)pixelRoutine->getEntry();
++#ifdef ANDROID_EXPERIMENTAL_PAC
++                        draw->pixelPointer = __builtin_ptrauth_sign_unauthenticated(draw->pixelPointer, 0, 0);
++#endif
+ 			draw->setupPrimitives = setupPrimitives;
+ 			draw->setupState = setupState;
  

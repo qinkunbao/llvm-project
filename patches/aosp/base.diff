@@ -78,6 +78,50 @@ index 8d281b7ce9a..670ef7c7744 100644
  
          mUsapPoolSupported = true;
          fetchUsapPoolPolicyProps();
+diff --git a/core/jni/android/graphics/Matrix.cpp b/core/jni/android/graphics/Matrix.cpp
+index 755fcfb2714..bd47625bcdb 100644
+--- a/core/jni/android/graphics/Matrix.cpp
++++ b/core/jni/android/graphics/Matrix.cpp
+@@ -34,8 +34,7 @@ public:
+ 
+     // ---------------- Regular JNI -----------------------------
+ 
+-    static void finalizer(jlong objHandle) {
+-        SkMatrix* obj = reinterpret_cast<SkMatrix*>(objHandle);
++    static void finalizer(SkMatrix* obj) {
+         delete obj;
+     }
+ 
+diff --git a/core/jni/android/graphics/text/LineBreaker.cpp b/core/jni/android/graphics/text/LineBreaker.cpp
+index a23f99af5f9..b48daab3577 100644
+--- a/core/jni/android/graphics/text/LineBreaker.cpp
++++ b/core/jni/android/graphics/text/LineBreaker.cpp
+@@ -63,8 +63,8 @@ static jlong nInit(JNIEnv* env, jclass /* unused */,
+             jintArrayToFloatVector(env, indents)));
+ }
+ 
+-static void nFinish(jlong nativePtr) {
+-    delete toNative(nativePtr);
++static void nFinish(minikin::android::StaticLayoutNative* nativePtr) {
++    delete nativePtr;
+ }
+ 
+ // CriticalNative
+diff --git a/core/jni/android/graphics/text/MeasuredText.cpp b/core/jni/android/graphics/text/MeasuredText.cpp
+index 68ba38b9391..a56c785b086 100644
+--- a/core/jni/android/graphics/text/MeasuredText.cpp
++++ b/core/jni/android/graphics/text/MeasuredText.cpp
+@@ -55,8 +55,8 @@ template<typename Ptr> static inline jlong toJLong(Ptr ptr) {
+     return reinterpret_cast<jlong>(ptr);
+ }
+ 
+-static void releaseMeasuredParagraph(jlong measuredTextPtr) {
+-    delete toMeasuredParagraph(measuredTextPtr);
++static void releaseMeasuredParagraph(minikin::MeasuredText* measuredTextPtr) {
++    delete measuredTextPtr;
+ }
+ 
+ // Regular JNI
 diff --git a/core/jni/com_android_internal_os_Zygote.cpp b/core/jni/com_android_internal_os_Zygote.cpp
 index 18be3741e80..28403b17c21 100644
 --- a/core/jni/com_android_internal_os_Zygote.cpp

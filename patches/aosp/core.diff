@@ -1,33 +1,68 @@
 diff --git a/libcutils/arch-arm64/android_memset.S b/libcutils/arch-arm64/android_memset.S
-index 9a83a6876..4ae09617b 100644
+index 9a83a6876..edc7feed7 100644
 --- a/libcutils/arch-arm64/android_memset.S
 +++ b/libcutils/arch-arm64/android_memset.S
-@@ -52,6 +52,12 @@
- #define A_lw		w1
- #define tmp3w		w9
- 
-+#ifdef ANDROID_EXPERIMENTAL_PAC
-+#define AUTH(name, a) .auth name, a
-+#else
-+#define AUTH(name, a)
-+#endif
-+
- #define ENTRY(f) \
-   .text; \
-   .globl f; \
-@@ -70,6 +76,7 @@ ENTRY(android_memset16)
- 	orr	A_lw, A_lw, A_lw, lsl #16
- 	b .Lexpand_to_64
- END(android_memset16)
-+AUTH(android_memset16, 2147540657)
- 
- ENTRY(android_memset32)
- 	cmp	    A_lw, #0
-@@ -209,3 +216,4 @@ ENTRY(android_memset32)
+@@ -209,3 +209,5 @@ ENTRY(android_memset32)
  	b.ne	.Ltail_maybe_long
  	ret
  END(android_memset32)
-+AUTH(android_memset32, 2147485269)
++
++#include "symauth.h"
+diff --git a/libstats/socket/statsd_writer.c b/libstats/socket/statsd_writer.c
+index 04d3b4644..1553d8178 100644
+--- a/libstats/socket/statsd_writer.c
++++ b/libstats/socket/statsd_writer.c
+@@ -57,11 +57,11 @@ void statsd_writer_init_unlock() {
+     pthread_mutex_unlock(&log_init_lock);
+ }
+ 
+-static int statsdAvailable();
+-static int statsdOpen();
+-static void statsdClose();
++static int statsdAvailable(void);
++static int statsdOpen(void);
++static void statsdClose(void);
+ static int statsdWrite(struct timespec* ts, struct iovec* vec, size_t nr);
+-static void statsdNoteDrop();
++static void statsdNoteDrop(int, int);
+ 
+ struct android_log_transport_write statsdLoggerWrite = {
+         .name = "statsd",
+@@ -74,7 +74,7 @@ struct android_log_transport_write statsdLoggerWrite = {
+ };
+ 
+ /* log_init_lock assumed */
+-static int statsdOpen() {
++static int statsdOpen(void) {
+     int i, ret = 0;
+ 
+     i = atomic_load(&statsdLoggerWrite.sock);
+@@ -133,7 +133,7 @@ static void __statsdClose(int negative_errno) {
+     }
+ }
+ 
+-static void statsdClose() {
++static void statsdClose(void) {
+     __statsdClose(-EBADF);
+ }
+ 
+diff --git a/libstats/socket/statsd_writer.h b/libstats/socket/statsd_writer.h
+index fe2d37cbc..6682f3833 100644
+--- a/libstats/socket/statsd_writer.h
++++ b/libstats/socket/statsd_writer.h
+@@ -33,9 +33,9 @@ void statsd_writer_init_unlock();
+ struct android_log_transport_write {
+     const char* name; /* human name to describe the transport */
+     atomic_int sock;
+-    int (*available)(); /* Does not cause resources to be taken */
+-    int (*open)();      /* can be called multiple times, reusing current resources */
+-    void (*close)();    /* free up resources */
++    int (*available)(void); /* Does not cause resources to be taken */
++    int (*open)(void);      /* can be called multiple times, reusing current resources */
++    void (*close)(void);    /* free up resources */
+     /* write log to transport, returns number of bytes propagated, or -errno */
+     int (*write)(struct timespec* ts, struct iovec* vec, size_t nr);
+     /* note one log drop */
 diff --git a/libunwindstack/RegsArm64.cpp b/libunwindstack/RegsArm64.cpp
 index 5b7431a57..2a49a55a3 100644
 --- a/libunwindstack/RegsArm64.cpp
@@ -45,6 +80,98 @@ index 5b7431a57..2a49a55a3 100644
    regs_[ARM64_REG_PC] = pc;
  }
  
+diff --git a/libutils/Threads.cpp b/libutils/Threads.cpp
+index 147db542d..dd476392a 100644
+--- a/libutils/Threads.cpp
++++ b/libutils/Threads.cpp
+@@ -65,23 +65,24 @@ using namespace android;
+  * We create it "detached", so it cleans up after itself.
+  */
+ 
+-typedef void* (*android_pthread_entry)(void*);
+-
+-#if defined(__ANDROID__)
+ struct thread_data_t {
+     thread_func_t   entryFunction;
+     void*           userData;
++#if defined(__ANDROID__)
+     int             priority;
+     char *          threadName;
++#endif
+ 
+-    // we use this trampoline when we need to set the priority with
+-    // nice/setpriority, and name with prctl.
+-    static int trampoline(const thread_data_t* t) {
++    // We use this trampoline to align the calling convention between Android threads (int (void*))
++    // and pthreads (void*(void*)). We also use it to set the priority with nice/setpriority, and
++    // name with prctl.
++    static void* trampoline(void* arg) {
++        auto* t = reinterpret_cast<const thread_data_t*>(arg);
+         thread_func_t f = t->entryFunction;
+         void* u = t->userData;
++#if defined(__ANDROID__)
+         int prio = t->priority;
+         char * name = t->threadName;
+-        delete t;
+         setpriority(PRIO_PROCESS, 0, prio);
+ 
+         // A new thread will be in its parent's sched group by default,
+@@ -94,10 +95,11 @@ struct thread_data_t {
+             androidSetThreadName(name);
+             free(name);
+         }
+-        return f(u);
++#endif
++        delete t;
++        return reinterpret_cast<void*>(f(u));
+     }
+ };
+-#endif
+ 
+ void androidSetThreadName(const char* name) {
+ #if defined(__linux__)
+@@ -131,24 +133,13 @@ int androidCreateRawThreadEtc(android_thread_func_t entryFunction,
+     pthread_attr_init(&attr);
+     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+ 
+-#if defined(__ANDROID__)  /* valgrind is rejecting RT-priority create reqs */
+-    if (threadPriority != PRIORITY_DEFAULT || threadName != NULL) {
+-        // Now that the pthread_t has a method to find the associated
+-        // android_thread_id_t (pid) from pthread_t, it would be possible to avoid
+-        // this trampoline in some cases as the parent could set the properties
+-        // for the child.  However, there would be a race condition because the
+-        // child becomes ready immediately, and it doesn't work for the name.
+-        // prctl(PR_SET_NAME) only works for self; prctl(PR_SET_THREAD_NAME) was
+-        // proposed but not yet accepted.
+-        thread_data_t* t = new thread_data_t;
+-        t->priority = threadPriority;
+-        t->threadName = threadName ? strdup(threadName) : NULL;
+-        t->entryFunction = entryFunction;
+-        t->userData = userData;
+-        entryFunction = (android_thread_func_t)&thread_data_t::trampoline;
+-        userData = t;
+-    }
++    thread_data_t* t = new thread_data_t;
++#if defined(__ANDROID__)
++    t->priority = threadPriority;
++    t->threadName = threadName ? strdup(threadName) : NULL;
+ #endif
++    t->entryFunction = entryFunction;
++    t->userData = userData;
+ 
+     if (threadStackSize) {
+         pthread_attr_setstacksize(&attr, threadStackSize);
+@@ -156,8 +147,8 @@ int androidCreateRawThreadEtc(android_thread_func_t entryFunction,
+ 
+     errno = 0;
+     pthread_t thread;
+-    int result = pthread_create(&thread, &attr,
+-                    (android_pthread_entry)entryFunction, userData);
++    int result =
++            pthread_create(&thread, &attr, thread_data_t::trampoline, reinterpret_cast<void*>(t));
+     pthread_attr_destroy(&attr);
+     if (result != 0) {
+         ALOGE("androidCreateRawThreadEtc failed (entry=%p, res=%d, %s)\n"
 diff --git a/rootdir/init.zygote64_32.rc b/rootdir/init.zygote64_32.rc
 index 3e8016867..756c251be 100644
 --- a/rootdir/init.zygote64_32.rc

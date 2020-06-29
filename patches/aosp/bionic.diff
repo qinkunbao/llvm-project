@@ -12,91 +12,65 @@ index 08b3db3d9..71a4cd787 100644
          },
          x86: {
 diff --git a/libc/arch-arm64/bionic/setjmp.S b/libc/arch-arm64/bionic/setjmp.S
-index a2b23702a..b5c5d1dad 100644
+index a2b23702a..e4025a4be 100644
 --- a/libc/arch-arm64/bionic/setjmp.S
 +++ b/libc/arch-arm64/bionic/setjmp.S
-@@ -297,3 +297,12 @@ ALIAS_SYMBOL(longjmp, siglongjmp)
+@@ -297,3 +297,5 @@ ALIAS_SYMBOL(longjmp, siglongjmp)
  __BIONIC_WEAK_ASM_FOR_NATIVE_BRIDGE(longjmp)
  ALIAS_SYMBOL(_longjmp, siglongjmp)
  __BIONIC_WEAK_ASM_FOR_NATIVE_BRIDGE(_longjmp)
 +
-+#ifdef ANDROID_EXPERIMENTAL_PAC
-+.auth _longjmp, 2147515953
-+.auth _setjmp, 2147528010
-+.auth longjmp, 2147515953
-+.auth setjmp, 2147528010
-+.auth siglongjmp, 2147515953
-+.auth sigsetjmp, 2147493246
-+#endif
++#include "symauth.h"
 diff --git a/libc/arch-arm64/bionic/syscall.S b/libc/arch-arm64/bionic/syscall.S
-index 8389f9830..b5cff158f 100644
+index 8389f9830..4fcb746d4 100644
 --- a/libc/arch-arm64/bionic/syscall.S
 +++ b/libc/arch-arm64/bionic/syscall.S
-@@ -47,3 +47,7 @@ ENTRY(syscall)
+@@ -47,3 +47,5 @@ ENTRY(syscall)
  
      ret
  END(syscall)
 +
-+#ifdef ANDROID_EXPERIMENTAL_PAC
-+.auth syscall, 2147542654
-+#endif
++#include "symauth.h"
 diff --git a/libc/arch-arm64/bionic/vfork.S b/libc/arch-arm64/bionic/vfork.S
-index 5cfb8b0cc..34d74987b 100644
+index 5cfb8b0cc..d5f1ca060 100644
 --- a/libc/arch-arm64/bionic/vfork.S
 +++ b/libc/arch-arm64/bionic/vfork.S
-@@ -85,3 +85,7 @@ __BIONIC_WEAK_ASM_FOR_NATIVE_BRIDGE(vfork)
+@@ -85,3 +85,5 @@ __BIONIC_WEAK_ASM_FOR_NATIVE_BRIDGE(vfork)
  .L_exit:
      ret
  END(vfork)
 +
-+#ifdef ANDROID_EXPERIMENTAL_PAC
-+.auth vfork, 2147500417
-+#endif
++#include "symauth.h"
 diff --git a/libc/arch-arm64/generic/bionic/__memcpy_chk.S b/libc/arch-arm64/generic/bionic/__memcpy_chk.S
-index a6eeca477..f2396e891 100644
+index a6eeca477..53bf31526 100644
 --- a/libc/arch-arm64/generic/bionic/__memcpy_chk.S
 +++ b/libc/arch-arm64/generic/bionic/__memcpy_chk.S
-@@ -43,3 +43,7 @@ ENTRY(__memcpy_chk)
+@@ -43,3 +43,5 @@ ENTRY(__memcpy_chk)
  
    bl __memcpy_chk_fail
  END(__memcpy_chk)
 +
-+#ifdef ANDROID_EXPERIMENTAL_PAC
-+.auth __memcpy_chk, 2147486607
-+#endif
++#include "symauth.h"
 diff --git a/libc/arch-arm64/generic/bionic/memmove.S b/libc/arch-arm64/generic/bionic/memmove.S
-index 335b7d6ce..9d38edde5 100644
+index 335b7d6ce..75d40c774 100644
 --- a/libc/arch-arm64/generic/bionic/memmove.S
 +++ b/libc/arch-arm64/generic/bionic/memmove.S
-@@ -148,8 +148,15 @@ ENTRY(memmove)
- 
- #if defined(WMEMMOVE)
- END(wmemmove)
-+#ifdef ANDROID_EXPERIMENTAL_PAC
-+.auth wmemmove, 2147493141
-+#endif
- #else
- END(memmove)
+@@ -153,3 +153,5 @@ END(memmove)
  
  ALIAS_SYMBOL(memcpy, memmove)
-+#ifdef ANDROID_EXPERIMENTAL_PAC
-+.auth memcpy, 2147493141
-+.auth memmove, 2147493141
-+#endif
  #endif
++
++#include "symauth.h"
 diff --git a/libc/arch-arm64/generic/bionic/memset.S b/libc/arch-arm64/generic/bionic/memset.S
-index 12fc09db8..0f5cfa8cc 100644
+index 12fc09db8..970a4f1a8 100644
 --- a/libc/arch-arm64/generic/bionic/memset.S
 +++ b/libc/arch-arm64/generic/bionic/memset.S
-@@ -249,3 +249,8 @@ L(zva_other):
+@@ -249,3 +249,5 @@ L(zva_other):
  	b	L(tail64)
  
  END(memset)
 +
-+#ifdef ANDROID_EXPERIMENTAL_PAC
-+.auth memset, 2147486702
-+.auth __memset_chk, 2147536756
-+#endif
++#include "symauth.h"
 diff --git a/libc/arch-common/bionic/crtbegin.c b/libc/arch-common/bionic/crtbegin.c
 index b7043dcae..a67613d14 100644
 --- a/libc/arch-common/bionic/crtbegin.c
@@ -125,20 +99,19 @@ index 56a848888..188726554 100644
  
  // This code is used both by each new pthread and the code that initializes the main thread.
 diff --git a/libc/bionic/bionic_call_ifunc_resolver.cpp b/libc/bionic/bionic_call_ifunc_resolver.cpp
-index 437de78ce..0c66b6377 100644
+index 437de78ce..379ed20e2 100644
 --- a/libc/bionic/bionic_call_ifunc_resolver.cpp
 +++ b/libc/bionic/bionic_call_ifunc_resolver.cpp
-@@ -47,7 +47,16 @@ ElfW(Addr) __bionic_call_ifunc_resolver(ElfW(Addr) resolver_addr) {
+@@ -47,7 +47,15 @@ ElfW(Addr) __bionic_call_ifunc_resolver(ElfW(Addr) resolver_addr) {
      arg._hwcap = getauxval(AT_HWCAP);
      arg._hwcap2 = getauxval(AT_HWCAP2);
    }
 -  return reinterpret_cast<ifunc_resolver_t>(resolver_addr)(arg._hwcap | _IFUNC_ARG_HWCAP, &arg);
++  auto* resolver_fn = reinterpret_cast<ifunc_resolver_t>(resolver_addr);
 +#ifdef ANDROID_EXPERIMENTAL_PAC
-+  resolver_addr = reinterpret_cast<ElfW(Addr)>(
-+      __builtin_ptrauth_sign_unauthenticated(reinterpret_cast<void*>(resolver_addr), 0, 0));
++  resolver_fn = __builtin_ptrauth_sign_unauthenticated(resolver_fn, 0, 0);
 +#endif
-+  ElfW(Addr) addr =
-+      reinterpret_cast<ifunc_resolver_t>(resolver_addr)(arg._hwcap | _IFUNC_ARG_HWCAP, &arg);
++  ElfW(Addr) addr = resolver_fn(arg._hwcap | _IFUNC_ARG_HWCAP, &arg);
 +#ifdef ANDROID_EXPERIMENTAL_PAC
 +  addr = reinterpret_cast<ElfW(Addr)>(__builtin_ptrauth_strip(reinterpret_cast<void*>(addr), 0));
 +#endif
@@ -146,7 +119,7 @@ index 437de78ce..0c66b6377 100644
  #elif defined(__arm__)
    typedef ElfW(Addr) (*ifunc_resolver_t)(unsigned long);
    static unsigned long hwcap;
-@@ -62,3 +71,28 @@ ElfW(Addr) __bionic_call_ifunc_resolver(ElfW(Addr) resolver_addr) {
+@@ -62,3 +70,28 @@ ElfW(Addr) __bionic_call_ifunc_resolver(ElfW(Addr) resolver_addr) {
    return reinterpret_cast<ifunc_resolver_t>(resolver_addr)();
  #endif
  }
@@ -262,6 +235,19 @@ index dbca9c013..619cd7a14 100644
      return vdso_time(t);
    }
  
+diff --git a/libc/private/NetdClientDispatch.h b/libc/private/NetdClientDispatch.h
+index 7ebbe0c02..0bb229ad0 100644
+--- a/libc/private/NetdClientDispatch.h
++++ b/libc/private/NetdClientDispatch.h
+@@ -29,7 +29,7 @@ struct NetdClientDispatch {
+     int (*sendto)(int, const void*, size_t, int, const struct sockaddr*, socklen_t);
+     int (*socket)(int, int, int);
+     unsigned (*netIdForResolv)(unsigned);
+-    int (*dnsOpenProxy)();
++    int (*dnsOpenProxy)(void);
+ };
+ 
+ extern __LIBC_HIDDEN__ struct NetdClientDispatch __netdClientDispatch;
 diff --git a/libc/private/bionic_asm_arm64.h b/libc/private/bionic_asm_arm64.h
 index 463ca312a..0cbbdfdcf 100644
 --- a/libc/private/bionic_asm_arm64.h
@@ -286,168 +272,40 @@ index e0ea35bba..b92de0620 100644
  __LIBC_HIDDEN__ ElfW(Addr) __bionic_call_ifunc_resolver(ElfW(Addr) resolver_addr);
 +__LIBC_HIDDEN__ ElfW(Addr) __bionic_pac_sign_ptr(ElfW(Addr) addr, ElfW(Addr)* place);
 diff --git a/libc/tools/gensyscalls.py b/libc/tools/gensyscalls.py
-index 0271a04c5..8ac12c976 100755
+index 0271a04c5..c60383df7 100755
 --- a/libc/tools/gensyscalls.py
 +++ b/libc/tools/gensyscalls.py
-@@ -458,6 +458,158 @@ def main(arch, syscall_file):
+@@ -458,6 +458,10 @@ def main(arch, syscall_file):
      for syscall in parser.syscalls:
          if syscall.has_key("asm-%s" % arch):
              print(syscall["asm-%s" % arch])
 +    if arch == "arm64":
 +      print("""
-+#ifdef ANDROID_EXPERIMENTAL_PAC
-+.auth acct, 2147512386
-+.auth adjtimex, 2147528010
-+.auth bind, 2147522186
-+.auth capget, 2147534097
-+.auth capset, 2147534097
-+.auth chdir, 2147512386
-+.auth chroot, 2147512386
-+.auth clock_adjtime, 2147536515
-+.auth clock_settime, 2147513552
-+.auth delete_module, 2147502595
-+.auth epoll_ctl, 2147515932
-+.auth execve, 2147534228
-+.auth _exit, 2147524744
-+.auth fallocate, 2147532807
-+.auth fchdir, 2147542715
-+.auth fchown, 2147487846
-+.auth fchownat, 2147490738
-+.auth fdatasync, 2147542715
-+.auth flock, 2147541382
-+.auth fremovexattr, 2147513552
-+.auth fstat64, 2147536515
-+.auth fstatat64, 2147532579
-+.auth fsync, 2147542715
-+.auth ftruncate, 2147502965
-+.auth getegid, 2147535114
-+.auth geteuid, 2147535114
-+.auth getgid, 2147535114
-+.auth getgroups, 2147536515
-+.auth getitimer, 2147536515
-+.auth getpeername, 2147504989
-+.auth getpgid, 2147542715
-+.auth getppid, 2147500417
-+.auth getrandom, 2147508916
-+.auth getresgid, 2147544463
-+.auth getresuid, 2147544463
-+.auth getrlimit, 2147536515
-+.auth getrusage, 2147536515
-+.auth getsid, 2147542715
-+.auth getsockname, 2147504989
-+.auth getsockopt, 2147536233
-+.auth getuid, 2147535114
-+.auth getxattr, 2147493735
-+.auth init_module, 2147496059
-+.auth inotify_add_watch, 2147522186
-+.auth inotify_init1, 2147542715
-+.auth inotify_rm_watch, 2147515715
-+.auth kill, 2147541382
-+.auth klogctl, 2147536772
-+.auth lgetxattr, 2147493735
-+.auth linkat, 2147509636
-+.auth listen, 2147541382
-+.auth listxattr, 2147503128
-+.auth llistxattr, 2147503128
-+.auth lremovexattr, 2147536836
-+.auth lseek, 2147492597
-+.auth lsetxattr, 2147483922
-+.auth madvise, 2147504464
-+.auth memfd_create, 2147502595
-+.auth mincore, 2147539686
-+.auth mkdirat, 2147522186
-+.auth mknodat, 2147507121
-+.auth mlock, 2147512006
-+.auth mlock2, 2147493843
-+.auth mlockall, 2147542715
-+.auth mmap, 2147514102
-+.auth mount, 2147545566
-+.auth mprotect, 2147504464
-+.auth msync, 2147504464
-+.auth munlock, 2147512006
-+.auth munlockall, 2147500417
-+.auth munmap, 2147520419
-+.auth nanosleep, 2147504311
-+.auth personality, 2147521877
-+.auth prctl, 2147520407
-+.auth pread64, 2147532409
-+.auth preadv, 2147520828
-+.auth prlimit64, 2147544186
-+.auth process_vm_readv, 2147486937
-+.auth process_vm_writev, 2147486937
-+.auth pwrite64, 2147486943
-+.auth pwritev, 2147520828
-+.auth quotactl, 2147503401
-+.auth read, 2147493166
-+.auth readahead, 2147548862
-+.auth readlinkat, 2147527602
-+.auth readv, 2147504248
-+.auth recvfrom, 2147492883
-+.auth removexattr, 2147536836
-+.auth renameat, 2147514978
-+.auth renameat2, 2147501293
-+.auth sched_getparam, 2147536515
-+.auth sched_get_priority_max, 2147542715
-+.auth sched_get_priority_min, 2147542715
-+.auth sched_getscheduler, 2147542715
-+.auth sched_rr_get_interval, 2147536515
-+.auth sched_setaffinity, 2147529941
-+.auth sched_setparam, 2147513552
-+.auth sched_setscheduler, 2147496157
-+.auth sched_yield, 2147500417
-+.auth sendfile, 2147531147
-+.auth setdomainname, 2147512006
-+.auth setfsgid, 2147521877
-+.auth setfsuid, 2147521877
-+.auth setgid, 2147521877
-+.auth setgroups, 2147499304
-+.auth sethostname, 2147512006
-+.auth setitimer, 2147512239
-+.auth setns, 2147541382
-+.auth setpgid, 2147541382
-+.auth setpriority, 2147539773
-+.auth setregid, 2147508230
-+.auth setresgid, 2147521851
-+.auth setresuid, 2147521851
-+.auth setreuid, 2147508230
-+.auth setrlimit, 2147513552
-+.auth setsid, 2147500417
-+.auth setsockopt, 2147522157
-+.auth settimeofday, 2147536836
-+.auth setuid, 2147521877
-+.auth setxattr, 2147483922
-+.auth shutdown, 2147541382
-+.auth sigaltstack, 2147504311
-+.auth splice, 2147489506
-+.auth statx, 2147489219
-+.auth swapoff, 2147512386
-+.auth swapon, 2147498685
-+.auth symlinkat, 2147533481
-+.auth sync, 2147499925
-+.auth syncfs, 2147542715
-+.auth sysinfo, 2147528010
-+.auth tee, 2147543630
-+.auth tgkill, 2147507002
-+.auth timerfd_create, 2147541382
-+.auth timerfd_gettime, 2147536515
-+.auth timerfd_settime, 2147544186
-+.auth times, 2147488158
-+.auth truncate, 2147516762
-+.auth umask, 2147486124
-+.auth umount2, 2147498685
-+.auth uname, 2147528010
-+.auth unlinkat, 2147507043
-+.auth unshare, 2147542715
-+.auth utimensat, 2147526469
-+.auth vmsplice, 2147543294
-+.auth wait4, 2147484285
-+.auth write, 2147499315
-+.auth writev, 2147504248
-+#endif
++#include "symauth.h"
 +""")
  
  
  if __name__ == "__main__":
+diff --git a/libm/arm64/lrint.S b/libm/arm64/lrint.S
+index 5f95ae817..4c37cae01 100644
+--- a/libm/arm64/lrint.S
++++ b/libm/arm64/lrint.S
+@@ -32,3 +32,5 @@ END(lrintf)
+ ALIAS_SYMBOL(llrint, lrint);
+ 
+ ALIAS_SYMBOL(llrintf, lrintf);
++
++#include "symauth.h"
+diff --git a/libm/arm64/sqrt.S b/libm/arm64/sqrt.S
+index 3a58ef364..46a9fb78d 100644
+--- a/libm/arm64/sqrt.S
++++ b/libm/arm64/sqrt.S
+@@ -25,3 +25,5 @@ ENTRY(sqrtf)
+   fsqrt s0, s0
+   ret
+ END(sqrtf)
++
++#include "symauth.h"
 diff --git a/linker/Android.bp b/linker/Android.bp
 index 08b2c7b07..a718ff571 100644
 --- a/linker/Android.bp

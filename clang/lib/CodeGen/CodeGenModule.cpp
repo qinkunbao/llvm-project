@@ -6105,9 +6105,13 @@ CodeGenModule::CreateMetadataIdentifierForVirtualMemPtrType(QualType T) {
 // originally pointed-to type, e.g. 'const char *' and 'char * const *'
 // generalize to 'const void *' while 'char *' and 'const char **' generalize to
 // 'void *'.
-static QualType GeneralizeType(ASTContext &Ctx, QualType Ty) {
+static QualType GeneralizeType(ASTContext &Ctx, QualType Ty,
+                               bool KeepQualifiers) {
   if (!Ty->isPointerType())
     return Ty;
+
+  if (!KeepQualifiers)
+    return Ctx.VoidPtrTy;
 
   return Ctx.getPointerType(
       QualType(Ctx.VoidTy).withCVRQualifiers(
@@ -6115,26 +6119,28 @@ static QualType GeneralizeType(ASTContext &Ctx, QualType Ty) {
 }
 
 // Apply type generalization to a FunctionType's return and argument types
-QualType CodeGenModule::GeneralizeFunctionType(QualType Ty) {
+QualType CodeGenModule::GeneralizeFunctionType(QualType Ty,
+                                               bool KeepQualifiers) {
   if (auto *FnType = Ty->getAs<FunctionProtoType>()) {
     SmallVector<QualType, 8> GeneralizedParams;
     for (auto &Param : FnType->param_types())
-      GeneralizedParams.push_back(GeneralizeType(getContext(), Param));
+      GeneralizedParams.push_back(
+          GeneralizeType(getContext(), Param, KeepQualifiers));
 
     return getContext().getFunctionType(
-        GeneralizeType(getContext(), FnType->getReturnType()),
+        GeneralizeType(getContext(), FnType->getReturnType(), KeepQualifiers),
         GeneralizedParams, FnType->getExtProtoInfo());
   }
 
   if (auto *FnType = Ty->getAs<FunctionNoProtoType>())
     return getContext().getFunctionNoProtoType(
-        GeneralizeType(getContext(), FnType->getReturnType()));
+        GeneralizeType(getContext(), FnType->getReturnType(), KeepQualifiers));
 
   llvm_unreachable("Encountered unknown FunctionType");
 }
 
 llvm::Metadata *CodeGenModule::CreateMetadataIdentifierGeneralized(QualType T) {
-  return CreateMetadataIdentifierImpl(GeneralizeFunctionType(T),
+  return CreateMetadataIdentifierImpl(GeneralizeFunctionType(T, true),
                                       GeneralizedMetadataIdMap, ".generalized");
 }
 
