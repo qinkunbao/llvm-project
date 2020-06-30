@@ -142,3 +142,27 @@ index de1ab7b90..b39e2e376 100644
  			draw->setupPrimitives = setupPrimitives;
  			draw->setupState = setupState;
  
+diff --git a/third_party/llvm-7.0/llvm/lib/Support/TargetParser.cpp b/third_party/llvm-7.0/llvm/lib/Support/TargetParser.cpp
+index 2c167a4d0..2e757ba4d 100644
+--- a/third_party/llvm-7.0/llvm/lib/Support/TargetParser.cpp
++++ b/third_party/llvm-7.0/llvm/lib/Support/TargetParser.cpp
+@@ -935,5 +935,6 @@ unsigned llvm::AArch64::parseArchVersion(StringRef Arch) {
+ }
+ 
+ bool llvm::AArch64::isX18ReservedByDefault(const Triple &TT) {
+-  return TT.isOSDarwin() || TT.isOSFuchsia() || TT.isOSWindows();
++  return TT.isAndroid() || TT.isOSDarwin() || TT.isOSFuchsia() ||
++         TT.isOSWindows();
+ }
+diff --git a/third_party/llvm-7.0/llvm/test/CodeGen/AArch64/arm64-platform-reg.ll b/third_party/llvm-7.0/llvm/test/CodeGen/AArch64/arm64-platform-reg.ll
+index 145066e69..899759624 100644
+--- a/third_party/llvm-7.0/llvm/test/CodeGen/AArch64/arm64-platform-reg.ll
++++ b/third_party/llvm-7.0/llvm/test/CodeGen/AArch64/arm64-platform-reg.ll
+@@ -3,6 +3,7 @@
+ ; RUN: llc -mtriple=aarch64-fuchsia -mattr=+reserve-x20 -o - %s | FileCheck %s --check-prefix=CHECK-RESERVE --check-prefix=CHECK-RESERVE-X20
+ ; RUN: llc -mtriple=aarch64-fuchsia -mattr=+reserve-x18,+reserve-x20 -o - %s | FileCheck %s --check-prefix=CHECK-RESERVE --check-prefix=CHECK-RESERVE-X18 --check-prefix=CHECK-RESERVE-X20
+ ; RUN: llc -mtriple=arm64-linux-gnu -o - %s | FileCheck %s
++; RUN: llc -mtriple=aarch64-linux-android -o - %s | FileCheck %s --check-prefix=CHECK-RESERVE --check-prefix=CHECK-RESERVE-X18
+ ; RUN: llc -mtriple=aarch64-fuchsia -o - %s | FileCheck %s --check-prefix=CHECK-RESERVE --check-prefix=CHECK-RESERVE-X18
+ ; RUN: llc -mtriple=aarch64-windows -o - %s | FileCheck %s --check-prefix=CHECK-RESERVE --check-prefix=CHECK-RESERVE-X18
+ 
