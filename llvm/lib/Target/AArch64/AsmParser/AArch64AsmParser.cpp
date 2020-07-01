@@ -2925,6 +2925,9 @@ static const struct Extension {
     {"profile", {}},
 };
 
+static_assert(AArch64::FeaturePA == 66,
+              ""); // see llvm/lib/MC/MCSubtargetInfo.cpp
+
 static void setRequiredFeatureString(FeatureBitset FBS, std::string &Str) {
   if (FBS[AArch64::HasV8_1aOps])
     Str += "ARMv8.1a";

@@ -21,7 +21,6 @@ if (current_os == "android") {
   }
   if (current_cpu == "arm64") {
     target_flags += [
-      "-march=armv8.3a",
       "-fptrauth-returns",
       "-fptrauth-intrinsics",
       "-fptrauth-calls",
