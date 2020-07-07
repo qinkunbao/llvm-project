@@ -1,5 +1,5 @@
 diff --git a/android/env.go b/android/env.go
-index c7c96d5c..341fe5a6 100644
+index c7c96d5cf..341fe5a66 100644
 --- a/android/env.go
 +++ b/android/env.go
 @@ -36,6 +36,8 @@ var soongDelveListen string
@@ -21,7 +21,7 @@ index c7c96d5c..341fe5a6 100644
  	// variable values.  The environment is available through ctx.Config().Getenv, ctx.Config().IsEnvTrue, etc.
  	os.Clearenv()
 diff --git a/cc/builder.go b/cc/builder.go
-index e571e5a0..66af85c2 100644
+index b4f9947d7..0ba18e07a 100644
 --- a/cc/builder.go
 +++ b/cc/builder.go
 @@ -140,7 +140,7 @@ var (
@@ -42,7 +42,7 @@ index e571e5a0..66af85c2 100644
  			CommandDeps: []string{"$sAbiDumper"},
  		}, &remoteexec.REParams{
  			Labels:       map[string]string{"type": "abi-dump", "tool": "header-abi-dumper"},
-@@ -907,7 +907,7 @@ func TransformObjsToObj(ctx android.ModuleContext, objFiles android.Paths,
+@@ -910,7 +910,7 @@ func TransformObjsToObj(ctx android.ModuleContext, objFiles android.Paths,
  func TransformBinaryPrefixSymbols(ctx android.ModuleContext, prefix string, inputFile android.Path,
  	flags builderFlags, outputFile android.WritablePath) {
  
@@ -52,7 +52,7 @@ index e571e5a0..66af85c2 100644
  	ctx.Build(pctx, android.BuildParams{
  		Rule:        prefixSymbols,
 diff --git a/cc/compiler.go b/cc/compiler.go
-index 681b1ab9..a2d5e080 100644
+index 08ce13392..2620ebf09 100644
 --- a/cc/compiler.go
 +++ b/cc/compiler.go
 @@ -357,6 +357,24 @@ func (compiler *baseCompiler) compilerFlags(ctx ModuleContext, flags Flags, deps
@@ -81,17 +81,19 @@ index 681b1ab9..a2d5e080 100644
  	if ctx.Os().Class == android.Device {
  		version := ctx.sdkVersion()
 diff --git a/cc/config/arm64_device.go b/cc/config/arm64_device.go
-index 93834630..91757b8c 100644
+index 62d8cc8fb..ed16c0fe9 100644
 --- a/cc/config/arm64_device.go
 +++ b/cc/config/arm64_device.go
-@@ -207,6 +207,13 @@ func arm64ToolchainFactory(arch android.Arch) Toolchain {
+@@ -207,6 +207,15 @@ func arm64ToolchainFactory(arch android.Arch) Toolchain {
  	toolchainClangCflags = append(toolchainClangCflags,
  		variantOrDefault(arm64ClangCpuVariantCflagsVar, arch.CpuVariant))
  
 +	if android.TargetExperimentalPac != "" {
-+		toolchainClangCflags = append(toolchainClangCflags, "-DANDROID_EXPERIMENTAL_PAC", "-march=armv8.3a", "-fptrauth-returns", "-fptrauth-intrinsics", "-fptrauth-calls", "-fptrauth-indirect-gotos", "-fptrauth-auth-traps")
++		toolchainClangCflags = append(toolchainClangCflags, "-DANDROID_EXPERIMENTAL_PAC", "-fptrauth-returns", "-fptrauth-intrinsics", "-fptrauth-calls", "-fptrauth-indirect-gotos", "-fptrauth-auth-traps")
 +		if android.TargetExperimentalPac == "fake" {
 +			toolchainClangCflags = append(toolchainClangCflags, "-mllvm", "-fake-pac", "-DANDROID_FAKE_PAC")
++		} else {
++			toolchainClangCflags = append(toolchainClangCflags, "-march=armv8.3a")
 +		}
 +	}
 +
@@ -99,7 +101,7 @@ index 93834630..91757b8c 100644
  	switch arch.CpuVariant {
  	case "cortex-a53", "cortex-a72", "cortex-a73", "kryo", "exynos-m1", "exynos-m2":
 diff --git a/cc/config/global.go b/cc/config/global.go
-index 1dd8a2d0..50df9244 100644
+index 7b651bc84..e8c575c64 100644
 --- a/cc/config/global.go
 +++ b/cc/config/global.go
 @@ -86,7 +86,6 @@ var (
@@ -111,10 +113,10 @@ index 1dd8a2d0..50df9244 100644
  		"-Wl,--exclude-libs,libgcc_stripped.a",
  		"-Wl,--exclude-libs,libunwind_llvm.a",
 diff --git a/cc/linker.go b/cc/linker.go
-index 57a0c016..47e050fa 100644
+index 58f8a294e..592ecb983 100644
 --- a/cc/linker.go
 +++ b/cc/linker.go
-@@ -550,8 +550,8 @@ var (
+@@ -544,8 +544,8 @@ var (
  	_                      = pctx.SourcePathVariable("genSortedBssSymbolsPath", "build/soong/scripts/gen_sorted_bss_symbols.sh")
  	gen_sorted_bss_symbols = pctx.AndroidStaticRule("gen_sorted_bss_symbols",
  		blueprint.RuleParams{
@@ -126,7 +128,7 @@ index 57a0c016..47e050fa 100644
  		"crossCompile")
  )
 diff --git a/cc/lto.go b/cc/lto.go
-index 4489fc7d..2a19202d 100644
+index 4489fc7dd..2a19202d2 100644
 --- a/cc/lto.go
 +++ b/cc/lto.go
 @@ -87,15 +87,17 @@ func (lto *lto) flags(ctx BaseModuleContext, flags Flags) Flags {
@@ -156,10 +158,10 @@ index 4489fc7d..2a19202d 100644
  		if ctx.Config().IsEnvTrue("USE_THINLTO_CACHE") && Bool(lto.Properties.Lto.Thin) && lto.useClangLld(ctx) {
  			// Set appropriate ThinLTO cache policy
 diff --git a/cc/ndk_prebuilt.go b/cc/ndk_prebuilt.go
-index c4d77083..8341454a 100644
+index acdc581a2..6dfb8256b 100644
 --- a/cc/ndk_prebuilt.go
 +++ b/cc/ndk_prebuilt.go
-@@ -155,7 +155,11 @@ func NdkPrebuiltStaticStlFactory() android.Module {
+@@ -156,7 +156,11 @@ func NdkPrebuiltStaticStlFactory() android.Module {
  
  func getNdkStlLibDir(ctx android.ModuleContext) android.SourcePath {
  	libDir := "prebuilts/ndk/current/sources/cxx-stl/llvm-libc++/libs"
@@ -173,10 +175,10 @@ index c4d77083..8341454a 100644
  
  func (ndk *ndkPrebuiltStlLinker) link(ctx ModuleContext, flags Flags,
 diff --git a/cc/sanitize.go b/cc/sanitize.go
-index aaaf694d..e3f94ecd 100644
+index 72ad6d7a0..66665d830 100644
 --- a/cc/sanitize.go
 +++ b/cc/sanitize.go
-@@ -519,7 +519,7 @@ func (sanitize *sanitize) flags(ctx ModuleContext, flags Flags) Flags {
+@@ -509,7 +509,7 @@ func (sanitize *sanitize) flags(ctx ModuleContext, flags Flags) Flags {
  		flags.Local.LdFlags = append(flags.Local.LdFlags, `-Wl,-rpath,\$$ORIGIN`)
  	}
  
@@ -185,7 +187,7 @@ index aaaf694d..e3f94ecd 100644
  		if ctx.Arch().ArchType == android.Arm {
  			// __cfi_check needs to be built as Thumb (see the code in linker_cfi.cpp). LLVM is not set up
  			// to do this on a function basis, so force Thumb on the entire module.
-@@ -545,8 +545,18 @@ func (sanitize *sanitize) flags(ctx ModuleContext, flags Flags) Flags {
+@@ -535,8 +535,18 @@ func (sanitize *sanitize) flags(ctx ModuleContext, flags Flags) Flags {
  		flags.Local.CFlags = append(flags.Local.CFlags, intOverflowCflags...)
  	}
  
@@ -207,7 +209,7 @@ index aaaf694d..e3f94ecd 100644
  		flags.Local.CFlags = append(flags.Local.CFlags, sanitizeArg)
  		flags.Local.AsFlags = append(flags.Local.AsFlags, sanitizeArg)
 diff --git a/cc/stl.go b/cc/stl.go
-index 4e74c7fb..08141168 100644
+index 4e74c7fb0..08141168c 100644
 --- a/cc/stl.go
 +++ b/cc/stl.go
 @@ -156,7 +156,7 @@ func needsLibAndroidSupport(ctx BaseModuleContext) bool {
@@ -220,10 +222,10 @@ index 4e74c7fb..08141168 100644
  	} else {
  		return "libgcc_stripped"
 diff --git a/dexpreopt/dexpreopt.go b/dexpreopt/dexpreopt.go
-index 5275e8fd..aa0295f8 100644
+index 9cbe6e591..5b6c6ff43 100644
 --- a/dexpreopt/dexpreopt.go
 +++ b/dexpreopt/dexpreopt.go
-@@ -377,9 +377,13 @@ func dexpreoptCommand(ctx android.PathContext, globalSoong *GlobalSoongConfig, g
+@@ -380,9 +380,13 @@ func dexpreoptCommand(ctx android.PathContext, globalSoong *GlobalSoongConfig, g
  		dexLocationArg = strings.TrimPrefix(dexLocationArg, "/system")
  	}
  
@@ -241,10 +243,10 @@ index 5275e8fd..aa0295f8 100644
  		FlagWithOutput("--write-invocation-to=", invocationPath).ImplicitOutput(invocationPath).
  		Flag("--runtime-arg").FlagWithArg("-Xms", global.Dex2oatXms).
 diff --git a/java/dexpreopt_bootjars.go b/java/dexpreopt_bootjars.go
-index ed61d4bd..d39848cd 100644
+index 41205598e..81eee0e50 100644
 --- a/java/dexpreopt_bootjars.go
 +++ b/java/dexpreopt_bootjars.go
-@@ -399,6 +399,10 @@ func buildBootImageVariant(ctx android.SingletonContext, image *bootImageVariant
+@@ -393,6 +393,10 @@ func buildBootImageVariant(ctx android.SingletonContext, image *bootImageVariant
  		cmd.Text(`ANDROID_LOG_TAGS="*:v"`)
  	}
  
@@ -256,7 +258,7 @@ index ed61d4bd..d39848cd 100644
  
  	cmd.Tool(globalSoong.Dex2oat).
 diff --git a/scripts/gen_sorted_bss_symbols.sh b/scripts/gen_sorted_bss_symbols.sh
-index 244ed0de..ce291c9e 100755
+index 244ed0dea..ce291c9e6 100755
 --- a/scripts/gen_sorted_bss_symbols.sh
 +++ b/scripts/gen_sorted_bss_symbols.sh
 @@ -25,4 +25,5 @@
@@ -267,7 +269,7 @@ index 244ed0de..ce291c9e 100755
 +${CLANG_BIN}/llvm-nm --size-sort $1 | \
 +  awk '{if (($2 == "b" || $2 == "B") && substr($3, 1, 1) != "$") print $3}' > $2
 diff --git a/scripts/strip.sh b/scripts/strip.sh
-index 40f01842..c27dc340 100755
+index 40f018425..c27dc340f 100755
 --- a/scripts/strip.sh
 +++ b/scripts/strip.sh
 @@ -18,7 +18,6 @@
@@ -318,7 +320,7 @@ index 40f01842..c27dc340 100755
    ${CLANG_BIN}/llvm-objcopy \
    ${CLANG_BIN}/llvm-readelf \
 diff --git a/ui/build/soong.go b/ui/build/soong.go
-index 6a12add7..7cdead71 100644
+index 749acb3d5..677ede690 100644
 --- a/ui/build/soong.go
 +++ b/ui/build/soong.go
 @@ -38,7 +38,7 @@ func runSoong(ctx Context, config Config) {
