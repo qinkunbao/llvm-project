@@ -149,10 +149,10 @@ index 437de78ce..379ed20e2 100644
 +}
 +#endif
 diff --git a/libc/bionic/libc_init_static.cpp b/libc/bionic/libc_init_static.cpp
-index cf5423e00..3b65ae876 100644
+index cf5423e00..b633a1b99 100644
 --- a/libc/bionic/libc_init_static.cpp
 +++ b/libc/bionic/libc_init_static.cpp
-@@ -63,7 +63,11 @@ extern "C" int __cxa_atexit(void (*)(void *), void *, void *);
+@@ -63,14 +63,30 @@ extern "C" int __cxa_atexit(void (*)(void *), void *, void *);
  static void call_array(void(**list)()) {
    // First element is -1, list is null-terminated
    while (*++list) {
@@ -165,21 +165,26 @@ index cf5423e00..3b65ae876 100644
    }
  }
  
-@@ -85,6 +89,13 @@ static void call_ifunc_resolvers() {
-   for (ElfW(Rela) *r = __rela_iplt_start; r != __rela_iplt_end; ++r) {
-     ElfW(Addr)* offset = reinterpret_cast<ElfW(Addr)*>(r->r_offset);
-     ElfW(Addr) resolver = r->r_addend;
-+#if defined(ANDROID_EXPERIMENTAL_PAC)
-+#define R_AARCH64_AUTH_RELATIVE 0x4ff
-+    if (ELF64_R_TYPE(r->r_info) == R_AARCH64_AUTH_RELATIVE) {
-+      *offset = __bionic_pac_sign_ptr(resolver, offset);
-+      continue;
-+    }
+ #if defined(__aarch64__) || defined(__x86_64__)
+ extern __LIBC_HIDDEN__ __attribute__((weak)) ElfW(Rela) __rela_iplt_start[], __rela_iplt_end[];
+ 
++#ifdef ANDROID_EXPERIMENTAL_PAC
++extern __LIBC_HIDDEN__ ElfW(Rela) __rela_auth_start[], __rela_auth_end[];
 +#endif
-     *offset = __bionic_call_ifunc_resolver(resolver);
-   }
- }
-@@ -173,10 +184,10 @@ __noreturn static void __real_libc_init(void *raw_args,
++
+ static void call_ifunc_resolvers() {
++#if defined(ANDROID_EXPERIMENTAL_PAC)
++  for (ElfW(Rela) *r = __rela_auth_start; r != __rela_auth_end; ++r) {
++    ElfW(Addr)* offset = reinterpret_cast<ElfW(Addr)*>(r->r_offset);
++    ElfW(Addr) resolver = r->r_addend;
++    *offset = __bionic_pac_sign_ptr(resolver, offset);
++  }
++#endif
++
+   if (__rela_iplt_start == nullptr || __rela_iplt_end == nullptr) {
+     // These symbols are not emitted by gold. Gold has code to do so, but for
+     // whatever reason it is not being run. In these cases ifuncs cannot be
+@@ -173,10 +189,10 @@ __noreturn static void __real_libc_init(void *raw_args,
    __libc_init_AT_SECURE(args.envp);
    layout_static_tls(args);
    __libc_init_main_thread_final();
@@ -386,23 +391,10 @@ index 5995013b4..45538fec6 100644
    CHECK(*shadow_start == p);
    mprotect(shadow_start, PAGE_SIZE, PROT_READ);
 diff --git a/linker/linker_main.cpp b/linker/linker_main.cpp
-index 41bb4baee..32ef75617 100644
+index 41bb4baee..c68eae2db 100644
 --- a/linker/linker_main.cpp
 +++ b/linker/linker_main.cpp
-@@ -578,6 +578,12 @@ static void call_ifunc_resolvers(ElfW(Addr) load_bias) {
-   for (ElfW(Rela) *r = __rela_iplt_start; r != __rela_iplt_end; ++r) {
-     ElfW(Addr)* offset = reinterpret_cast<ElfW(Addr)*>(r->r_offset + load_bias);
-     ElfW(Addr) resolver = r->r_addend + load_bias;
-+#if defined(__aarch64__) && defined(ANDROID_EXPERIMENTAL_PAC)
-+#define R_AARCH64_AUTH_RELATIVE 0x4ff
-+    if (ELF64_R_TYPE(r->r_info) == R_AARCH64_AUTH_RELATIVE) {
-+      continue;
-+    }
-+#endif
-     *offset = __bionic_call_ifunc_resolver(resolver);
-   }
- }
-@@ -656,6 +662,19 @@ extern "C" ElfW(Addr) __linker_init(void* raw_args) {
+@@ -656,6 +656,19 @@ extern "C" ElfW(Addr) __linker_init(void* raw_args) {
    const ElfW(Addr) load_bias = get_elf_exec_load_bias(elf_hdr);
    call_ifunc_resolvers(load_bias);
  
@@ -422,7 +414,7 @@ index 41bb4baee..32ef75617 100644
    soinfo tmp_linker_so(nullptr, nullptr, nullptr, 0, 0);
  
    tmp_linker_so.base = linker_addr;
-@@ -702,7 +721,11 @@ __linker_init_post_relocation(KernelArgumentBlock& args, soinfo& tmp_linker_so)
+@@ -702,7 +715,11 @@ __linker_init_post_relocation(KernelArgumentBlock& args, soinfo& tmp_linker_so)
    // as PT_INTERP, AT_ENTRY will refer to the loaded executable rather than the
    // linker's _start.
    const char* exe_to_load = nullptr;

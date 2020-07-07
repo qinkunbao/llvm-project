@@ -1419,8 +1419,11 @@ static void scanReloc(InputSectionBase &sec, OffsetGetter &getOffset, RelTy *&i,
     if (sym.isPreemptible) {
       sec.getPartition().relaDyn->addReloc(type, &sec, offset, &sym, addend,
                                            R_ADDEND, type);
+    } else if (in.relaAuth) {
+      in.relaAuth->addReloc(
+          {R_AARCH64_AUTH_RELATIVE, &sec, offset, true, &sym, addend});
     } else {
-      in.relaIplt->addReloc(
+      sec.getPartition().relaDyn->addReloc(
           {R_AARCH64_AUTH_RELATIVE, &sec, offset, true, &sym, addend});
     }
     return;

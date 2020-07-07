@@ -113,9 +113,18 @@ index 7b651bc84..e8c575c64 100644
  		"-Wl,--exclude-libs,libgcc_stripped.a",
  		"-Wl,--exclude-libs,libunwind_llvm.a",
 diff --git a/cc/linker.go b/cc/linker.go
-index 58f8a294e..592ecb983 100644
+index 58f8a294e..a050f8211 100644
 --- a/cc/linker.go
 +++ b/cc/linker.go
+@@ -368,7 +368,7 @@ func (linker *baseLinker) linkerFlags(ctx ModuleContext, flags Flags) Flags {
+ 
+ 	if linker.useClangLld(ctx) {
+ 		flags.Global.LdFlags = append(flags.Global.LdFlags, fmt.Sprintf("${config.%sGlobalLldflags}", hod))
+-		if !BoolDefault(linker.Properties.Pack_relocations, true) {
++		if !BoolDefault(linker.Properties.Pack_relocations, !ctx.static()) {
+ 			flags.Global.LdFlags = append(flags.Global.LdFlags, "-Wl,--pack-dyn-relocs=none")
+ 		} else if ctx.Device() {
+ 			// The SHT_RELR relocations is only supported by API level >= 28.
 @@ -544,8 +544,8 @@ var (
  	_                      = pctx.SourcePathVariable("genSortedBssSymbolsPath", "build/soong/scripts/gen_sorted_bss_symbols.sh")
  	gen_sorted_bss_symbols = pctx.AndroidStaticRule("gen_sorted_bss_symbols",

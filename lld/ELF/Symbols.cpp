@@ -60,6 +60,8 @@ Defined *ElfSym::mipsGpDisp;
 Defined *ElfSym::mipsLocalGp;
 Defined *ElfSym::relaIpltStart;
 Defined *ElfSym::relaIpltEnd;
+Defined *ElfSym::relaAuthStart;
+Defined *ElfSym::relaAuthEnd;
 Defined *ElfSym::riscvGlobalPointer;
 Defined *ElfSym::tlsModuleBase;
 DenseMap<const Symbol *, std::pair<const InputFile *, const InputFile *>>
