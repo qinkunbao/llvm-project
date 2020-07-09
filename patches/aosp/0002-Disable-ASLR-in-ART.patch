@@ -1,0 +1,57 @@
+From 1390fd52383dad3e07e15bdac34254b89d42cad1 Mon Sep 17 00:00:00 2001
+From: Peter Collingbourne <pcc@google.com>
+Date: Thu, 9 Jul 2020 16:30:24 -0700
+Subject: [PATCH 2/3] Disable ASLR in ART
+
+---
+ art/libartbase/base/mem_map.cc      | 2 +-
+ art/runtime/gc/space/image_space.cc | 6 +++---
+ 2 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/art/libartbase/base/mem_map.cc b/art/libartbase/base/mem_map.cc
+index bd880dacb6..7c92c2a3fe 100644
+--- a/art/libartbase/base/mem_map.cc
++++ b/art/libartbase/base/mem_map.cc
+@@ -134,7 +134,7 @@ uintptr_t CreateStartPos(uint64_t input) {
+ #endif
+ 
+ static uintptr_t GenerateNextMemPos() {
+-#ifdef __BIONIC__
++#if 0
+   uint64_t random_data;
+   arc4random_buf(&random_data, sizeof(random_data));
+   return CreateStartPos(random_data);
+diff --git a/art/runtime/gc/space/image_space.cc b/art/runtime/gc/space/image_space.cc
+index d26c32a290..39106848a8 100644
+--- a/art/runtime/gc/space/image_space.cc
++++ b/art/runtime/gc/space/image_space.cc
+@@ -112,7 +112,7 @@ static int32_t ChooseRelocationOffsetDelta(int32_t min_delta, int32_t max_delta)
+   return r;
+ }
+ 
+-static int32_t ChooseRelocationOffsetDelta() {
++__attribute__((unused)) static int32_t ChooseRelocationOffsetDelta() {
+   return ChooseRelocationOffsetDelta(ART_BASE_ADDRESS_MIN_DELTA, ART_BASE_ADDRESS_MAX_DELTA);
+ }
+ 
+@@ -174,7 +174,7 @@ static bool GenerateImage(const std::string& image_filename,
+   CHECK_EQ(image_isa, kRuntimeISA)
+       << "We should always be generating an image for the current isa.";
+ 
+-  int32_t base_offset = ChooseRelocationOffsetDelta();
++  int32_t base_offset = ART_BASE_ADDRESS_MIN_DELTA;
+   LOG(INFO) << "Using an offset of 0x" << std::hex << base_offset << " from default "
+             << "art base address of 0x" << std::hex << ART_BASE_ADDRESS;
+   arg_vector.push_back(StringPrintf("--base=0x%x", ART_BASE_ADDRESS + base_offset));
+@@ -2581,7 +2581,7 @@ class ImageSpace::BootImageLoader {
+ 
+     // Reserve address space. If relocating, choose a random address for ALSR.
+     uint8_t* addr = reinterpret_cast<uint8_t*>(
+-        relocate_ ? ART_BASE_ADDRESS + ChooseRelocationOffsetDelta() : base_address);
++        relocate_ ? ART_BASE_ADDRESS + ART_BASE_ADDRESS_MIN_DELTA : base_address);
+     MemMap image_reservation =
+         ReserveBootImageMemory(addr, image_reservation_size + extra_reservation_size, error_msg);
+     if (!image_reservation.IsValid()) {
+-- 
+2.27.0.383.g050319c2ae-goog
+

@@ -1,0 +1,93 @@
+From b403efb7b4f44f9da75919e044b9fe6d4aea81ab Mon Sep 17 00:00:00 2001
+From: Peter Collingbourne <pcc@google.com>
+Date: Thu, 9 Jul 2020 16:28:16 -0700
+Subject: [PATCH 1/3] libunwind_llvm on arm64
+
+---
+ bionic/libc/Android.bp             | 2 +-
+ bionic/linker/Android.bp           | 2 +-
+ build/make/core/cxx_stl_setup.mk   | 6 ++++++
+ build/soong/cc/stl.go              | 2 +-
+ external/libunwind_llvm/Android.bp | 3 +++
+ 5 files changed, 12 insertions(+), 3 deletions(-)
+
+diff --git a/bionic/libc/Android.bp b/bionic/libc/Android.bp
+index 48c9dd0448..ff1c987b9c 100644
+--- a/bionic/libc/Android.bp
++++ b/bionic/libc/Android.bp
+@@ -1665,7 +1665,7 @@ cc_library {
+             },
+ 
+             shared: {
+-                whole_static_libs: [ "libgcc_stripped" ],
++                whole_static_libs: [ "libunwind_llvm" ],
+             },
+         },
+         x86: {
+diff --git a/bionic/linker/Android.bp b/bionic/linker/Android.bp
+index 08b2c7b07b..a718ff5712 100644
+--- a/bionic/linker/Android.bp
++++ b/bionic/linker/Android.bp
+@@ -231,7 +231,7 @@ cc_defaults {
+         },
+         arm64: {
+             srcs: [":linker_sources_arm64"],
+-            static_libs: ["libgcc_stripped"],
++            static_libs: ["libunwind_llvm"],
+         },
+         x86: {
+             srcs: [":linker_sources_x86"],
+diff --git a/build/make/core/cxx_stl_setup.mk b/build/make/core/cxx_stl_setup.mk
+index a2abb1a322..3c2ee40204 100644
+--- a/build/make/core/cxx_stl_setup.mk
++++ b/build/make/core/cxx_stl_setup.mk
+@@ -82,6 +82,9 @@ ifneq ($(filter $(my_cxx_stl),libc++ libc++_static),)
+             ifeq (arm,$($(my_prefix)$(LOCAL_2ND_ARCH_VAR_PREFIX)ARCH))
+                 my_static_libraries += libunwind_llvm
+                 my_ldflags += -Wl,--exclude-libs,libunwind_llvm.a
++	    else ifeq (arm64,$($(my_prefix)$(LOCAL_2ND_ARCH_VAR_PREFIX)ARCH))
++                my_static_libraries += libunwind_llvm
++                my_ldflags += -Wl,--exclude-libs,libunwind_llvm.a
+             else
+                 my_static_libraries += libgcc_stripped
+                 my_ldflags += -Wl,--exclude-libs,libgcc_stripped.a
+@@ -93,6 +96,9 @@ else ifeq ($(my_cxx_stl),ndk)
+     ifeq (arm,$($(my_prefix)$(LOCAL_2ND_ARCH_VAR_PREFIX)ARCH))
+         my_static_libraries += libunwind_llvm
+         my_ldflags += -Wl,--exclude-libs,libunwind_llvm.a
++    else ifeq (arm64,$($(my_prefix)$(LOCAL_2ND_ARCH_VAR_PREFIX)ARCH))
++        my_static_libraries += libunwind_llvm
++        my_ldflags += -Wl,--exclude-libs,libunwind_llvm.a
+     else
+         my_static_libraries += libgcc_stripped
+         my_ldflags += -Wl,--exclude-libs,libgcc_stripped.a
+diff --git a/build/soong/cc/stl.go b/build/soong/cc/stl.go
+index 4e74c7fb0a..08141168c3 100644
+--- a/build/soong/cc/stl.go
++++ b/build/soong/cc/stl.go
+@@ -156,7 +156,7 @@ func needsLibAndroidSupport(ctx BaseModuleContext) bool {
+ }
+ 
+ func staticUnwinder(ctx android.BaseModuleContext) string {
+-	if ctx.Arch().ArchType == android.Arm {
++	if ctx.Arch().ArchType == android.Arm || ctx.Arch().ArchType == android.Arm64 {
+ 		return "libunwind_llvm"
+ 	} else {
+ 		return "libgcc_stripped"
+diff --git a/external/libunwind_llvm/Android.bp b/external/libunwind_llvm/Android.bp
+index 578330637c..aa98f2e072 100644
+--- a/external/libunwind_llvm/Android.bp
++++ b/external/libunwind_llvm/Android.bp
+@@ -73,6 +73,9 @@ cc_library_static {
+         arm: {
+             enabled: true,
+         },
++        arm64: {
++            enabled: true,
++        },
+     },
+     min_sdk_version: "apex_inherit",
+ }
+-- 
+2.27.0.383.g050319c2ae-goog
+
