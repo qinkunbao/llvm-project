@@ -6149,7 +6149,8 @@ QualType CodeGenModule::GeneralizeFunctionType(QualType Ty,
 
     return getContext().getFunctionType(
         GeneralizeType(getContext(), FnType->getReturnType(), KeepQualifiers),
-        GeneralizedParams, FnType->getExtProtoInfo());
+        GeneralizedParams,
+        FnType->getExtProtoInfo().withExceptionSpec(EST_None));
   }
 
   if (auto *FnType = Ty->getAs<FunctionNoProtoType>())
