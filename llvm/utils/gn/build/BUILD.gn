@@ -104,6 +104,14 @@ config("compiler_defaults") {
     if (use_lld) {
       ldflags += [ "-Wl,--color-diagnostics" ]
     }
+    if (is_static_build) {
+      ldflags += [
+        "-static",
+        "-Wl,--whole-archive",
+        "-lpthread",
+        "-Wl,--no-whole-archive",
+      ]
+    }
     cflags_cc = [
       "-std=c++14",
       "-fvisibility-inlines-hidden",

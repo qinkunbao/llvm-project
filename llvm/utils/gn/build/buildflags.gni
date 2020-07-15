@@ -35,4 +35,7 @@ declare_args() {
   } else {
     symbol_level = 0
   }
+
+  # Whether to build statically linked executables.
+  is_static_build = false
 }

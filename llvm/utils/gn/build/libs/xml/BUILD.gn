@@ -1,9 +1,17 @@
+import("//llvm/utils/gn/build/buildflags.gni")
 import("//llvm/utils/gn/build/libs/xml/enable.gni")
 import("//llvm/utils/gn/build/mac_sdk.gni")
 
 config("xml_config") {
   visibility = [ ":xml" ]
   libs = [ "xml2" ]
+  if (is_static_build) {
+    libs += [
+      "icuuc",
+      "icudata",
+      "lzma",
+    ]
+  }
   if (host_os == "mac") {
     include_dirs = [ "$mac_sdk_path/usr/include/libxml2" ]
   } else {

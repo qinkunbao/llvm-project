@@ -200,6 +200,7 @@ stage2_unix_toolchain("stage2_unix") {
   toolchain_args = {
     current_os = host_os
     current_cpu = host_cpu
+    is_static_build = false
   }
 }
 
@@ -208,6 +209,7 @@ if (android_ndk_path != "") {
     toolchain_args = {
       current_os = "android"
       current_cpu = "arm64"
+      is_static_build = false
     }
   }
 
@@ -215,6 +217,7 @@ if (android_ndk_path != "") {
     toolchain_args = {
       current_os = "android"
       current_cpu = "arm"
+      is_static_build = false
     }
   }
 }
