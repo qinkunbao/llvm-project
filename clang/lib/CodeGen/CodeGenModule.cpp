@@ -6101,12 +6101,32 @@ CodeGenModule::CreateMetadataIdentifierForVirtualMemPtrType(QualType T) {
   return CreateMetadataIdentifierImpl(T, VirtualMetadataIdMap, ".virtual");
 }
 
+static bool isMonomorphic(RecordDecl *RD) {
+  // Doesn't handle declarations!
+  // return RD->hasAttr<CFIMonomorphicAttr>();
+  StringRef Name = RD->getName();
+  if (Name != "Local" && Name != "PropertyCallbackInfo" &&
+      Name != "WeakCallbackInfo")
+    return false;
+  auto *ND = dyn_cast<NamespaceDecl>(RD->getDeclContext());
+  return ND && ND->getName() == "v8";
+}
+
 // Generalize pointer types to a void pointer with the qualifiers of the
 // originally pointed-to type, e.g. 'const char *' and 'char * const *'
 // generalize to 'const void *' while 'char *' and 'const char **' generalize to
 // 'void *'.
 static QualType GeneralizeType(ASTContext &Ctx, QualType Ty,
                                bool KeepQualifiers) {
+  if (auto *RD = Ty->getAsRecordDecl())
+    if (isMonomorphic(RD))
+      return Ctx.VoidPtrTy;
+
+  if (Ty->isReferenceType())
+    if (auto *RD = Ty->getPointeeType()->getAsRecordDecl())
+      if (isMonomorphic(RD))
+        return Ctx.getLValueReferenceType(Ctx.VoidPtrTy);
+
   if (!Ty->isPointerType())
     return Ty;
 

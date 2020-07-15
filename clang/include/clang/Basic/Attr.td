@@ -3268,6 +3268,13 @@ def CFGuard : InheritableAttr {
   let Documentation = [CFGuardDocs];
 }
 
+def CFIMonomorphic : InheritableAttr {
+  let Spellings = [GCC<"cfi_monomorphic">];
+  let Subjects = SubjectList<[Record]>;
+  let Documentation = [Undocumented];
+  let SimpleHandler = 1;
+}
+
 def MSStruct : InheritableAttr {
   let Spellings = [GCC<"ms_struct">];
   let Subjects = SubjectList<[Record]>;
