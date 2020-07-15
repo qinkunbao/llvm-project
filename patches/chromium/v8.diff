@@ -1,0 +1,45 @@
+diff --git a/src/codegen/arm64/macro-assembler-arm64.cc b/src/codegen/arm64/macro-assembler-arm64.cc
+index 012774e10b..7855a8e32e 100644
+--- a/src/codegen/arm64/macro-assembler-arm64.cc
++++ b/src/codegen/arm64/macro-assembler-arm64.cc
+@@ -1723,6 +1723,7 @@ void TurboAssembler::Jump(Register target, Condition cond) {
+   if (cond == nv) return;
+   Label done;
+   if (cond != al) B(NegateCondition(cond), &done);
++  And(target, target, 0x7fffffffff);
+   Br(target);
+   Bind(&done);
+ }
+@@ -1811,6 +1812,7 @@ void TurboAssembler::Jump(const ExternalReference& reference) {
+ 
+ void TurboAssembler::Call(Register target) {
+   BlockPoolsScope scope(this);
++  And(target, target, 0x7fffffffff);
+   Blr(target);
+ }
+ 
+@@ -1984,6 +1986,7 @@ void TurboAssembler::StoreReturnAddressAndCall(Register target) {
+     Check(eq, AbortReason::kReturnAddressNotFoundInFrame);
+   }
+ 
++  And(target, target, 0x7fffffffff);
+   Blr(target);
+   Bind(&return_location);
+ }
+diff --git a/src/execution/simulator.h b/src/execution/simulator.h
+index a4e07b235b..7ad04653bd 100644
+--- a/src/execution/simulator.h
++++ b/src/execution/simulator.h
+@@ -139,7 +139,11 @@ class GeneratedCode {
+     Signature* fn = reinterpret_cast<Signature*>(function_desc);
+     return fn(args...);
+ #else
+-    return fn_ptr_(args...);
++    Signature* signed_fn = fn_ptr_;
++#ifdef __aarch64__
++    signed_fn = __builtin_ptrauth_sign_unauthenticated(signed_fn, 0, 0);
++#endif
++    return signed_fn(args...);
+ #endif  // V8_OS_AIX
+   }
+ #endif  // USE_SIMULATOR

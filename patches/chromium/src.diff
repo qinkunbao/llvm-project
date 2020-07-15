@@ -1,0 +1,62 @@
+diff --git a/build/config/android/abi.gni b/build/config/android/abi.gni
+index ed7c2ffc8be1..cf488ad9e49b 100644
+--- a/build/config/android/abi.gni
++++ b/build/config/android/abi.gni
+@@ -50,7 +50,7 @@ if (current_cpu == "x86") {
+ } else if (current_cpu == "x64") {
+   android_app_abi = "x86_64"
+ } else if (current_cpu == "arm64") {
+-  android_app_abi = "arm64-v8a"
++  android_app_abi = "arm64-v9a"
+ } else if (current_cpu == "mips64el") {
+   android_app_abi = "mips64"
+ } else {
+diff --git a/build/config/compiler/BUILD.gn b/build/config/compiler/BUILD.gn
+index a84942455d74..8fb48310a2bf 100644
+--- a/build/config/compiler/BUILD.gn
++++ b/build/config/compiler/BUILD.gn
+@@ -152,6 +152,8 @@ declare_args() {
+        (is_win && target_cpu == "x86") || (is_win && target_cpu == "x64") ||
+        (is_android && target_cpu == "arm") ||
+        (is_android && target_cpu == "arm64"))
++
++  use_fake_pac = false
+ }
+ 
+ declare_args() {
+@@ -1045,6 +1047,10 @@ config("compiler_codegen") {
+     # has been resolved, and -mno-outline is obeyed by the linker during
+     # ThinLTO.
+     ldflags += [ "-Wl,-mllvm,-enable-machine-outliner=never" ]
++
++    if (use_fake_pac) {
++      cflags += [ "-fptrauth-returns", "-fptrauth-intrinsics", "-fptrauth-calls", "-fptrauth-indirect-gotos", "-fptrauth-auth-traps", "-mllvm", "-fake-pac"]
++    }
+   }
+ 
+   asmflags = cflags
+diff --git a/third_party/ashmem/ashmem-dev.c b/third_party/ashmem/ashmem-dev.c
+index 399ea36ce382..d0b207b82764 100644
+--- a/third_party/ashmem/ashmem-dev.c
++++ b/third_party/ashmem/ashmem-dev.c
+@@ -194,7 +194,7 @@ typedef struct {
+ static ASharedMemoryFuncs s_ashmem_funcs = {};
+ static pthread_once_t s_ashmem_funcs_once = PTHREAD_ONCE_INIT;
+ 
+-static void ashmem_init_funcs() {
++static void ashmem_init_funcs(void) {
+   ASharedMemoryFuncs* funcs = &s_ashmem_funcs;
+   if (device_api_level() >= __ANDROID_API_O__) {
+     /* Leaked intentionally! */
+diff --git a/third_party/blink/renderer/platform/heap/asm/SaveRegisters_arm64.S b/third_party/blink/renderer/platform/heap/asm/SaveRegisters_arm64.S
+index ab6c6ffecb8c..43bf390bd454 100644
+--- a/third_party/blink/renderer/platform/heap/asm/SaveRegisters_arm64.S
++++ b/third_party/blink/renderer/platform/heap/asm/SaveRegisters_arm64.S
+@@ -65,6 +65,7 @@ asm_function PushAllRegisters
+          */
+         mov x2, x1
+         mov x1, sp
++        and x2, x2, 0x7fffffffff
+         blr x2
+ 
+         /* We don't restore all registers since they are callee saved (so

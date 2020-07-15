@@ -1,0 +1,47 @@
+diff --git a/build/core/default-build-commands.mk b/build/core/default-build-commands.mk
+index 98af9cf2..9470ac37 100644
+--- a/build/core/default-build-commands.mk
++++ b/build/core/default-build-commands.mk
+@@ -136,6 +136,7 @@ GLOBAL_CFLAGS += -D_FORTIFY_SOURCE=2
+ GLOBAL_LDFLAGS = \
+     -target $(LLVM_TRIPLE)$(TARGET_PLATFORM_LEVEL) \
+     -no-canonical-prefixes \
++    -fuse-ld=lld \
+ 
+ GLOBAL_CXXFLAGS = $(GLOBAL_CFLAGS) -fno-exceptions -fno-rtti
+ 
+diff --git a/build/core/toolchains/aarch64-linux-android-clang/setup.mk b/build/core/toolchains/aarch64-linux-android-clang/setup.mk
+index b3ce42c4..4b0f7924 100644
+--- a/build/core/toolchains/aarch64-linux-android-clang/setup.mk
++++ b/build/core/toolchains/aarch64-linux-android-clang/setup.mk
+@@ -25,6 +25,12 @@ TARGET_CFLAGS := -fpic
+ TARGET_arm64_release_CFLAGS := \
+     -O2 \
+     -DNDEBUG \
++    -march=armv8.3a \
++    -fptrauth-returns \
++    -fptrauth-intrinsics \
++    -fptrauth-calls \
++    -fptrauth-indirect-gotos \
++    -fptrauth-auth-traps \
+ 
+ TARGET_arm64_debug_CFLAGS := \
+     -O0 \
+diff --git a/ndk/checkbuild.py b/ndk/checkbuild.py
+index a699b7f2..97468f19 100755
+--- a/ndk/checkbuild.py
++++ b/ndk/checkbuild.py
+@@ -432,13 +432,6 @@ class Clang(ndk.builds.Module):
+             os.rename(os.path.join(install_path, 'bin/clang++.real'),
+                       os.path.join(install_path, 'bin/clang++'))
+ 
+-            # The prebuilts have symlinks pointing at a clang-MAJ.MIN binary,
+-            # but we replace symlinks with standalone copies, so remove this
+-            # copy to save space.
+-            bin_dir = os.path.join(install_path, 'bin')
+-            (clang_maj_min,) = glob.glob(os.path.join(bin_dir, 'clang-?'))
+-            os.remove(clang_maj_min)
+-
+         # Remove LLD duplicates. We only need ld.lld.
+         # http://b/74250510
+         #
