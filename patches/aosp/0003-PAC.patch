@@ -1,7 +1,7 @@
-From 9ed8a6a9fbb76e5c875d460ec2b689b2452b7b56 Mon Sep 17 00:00:00 2001
+From b5c17962f49c93f72aee8084bdcbeceb434d3d26 Mon Sep 17 00:00:00 2001
 From: Peter Collingbourne <pcc@google.com>
 Date: Thu, 9 Jul 2020 16:33:03 -0700
-Subject: [PATCH 3/3] PAC
+Subject: [PATCH 3/5] PAC
 
 ---
  art/compiler/jni/quick/jni_compiler.cc        |  1 +
@@ -73,7 +73,7 @@ Subject: [PATCH 3/3] PAC
  .../com/android/internal/os/ZygoteInit.java   | 11 ++++-
  .../com/android/internal/os/ZygoteServer.java | 23 +++++----
  .../base/core/jni/android/graphics/Matrix.cpp |  3 +-
- .../jni/android/graphics/text/LineBreaker.cpp |  4 +-
+ .../jni/android/graphics/text/LineBreaker.cpp |  8 ++--
  .../android/graphics/text/MeasuredText.cpp    |  4 +-
  .../jni/com_android_internal_os_Zygote.cpp    | 10 +++-
  .../com_android_internal_os_ZygoteInit.cpp    | 27 +++++++++++
@@ -93,11 +93,11 @@ Subject: [PATCH 3/3] PAC
  .../libcutils/arch-arm64/android_memset.S     |  2 +
  system/core/libstats/socket/statsd_writer.c   | 12 ++---
  system/core/libstats/socket/statsd_writer.h   |  6 +--
- system/core/libunwindstack/RegsArm64.cpp      |  6 +++
+ system/core/libunwindstack/RegsArm64.cpp      |  3 ++
  system/core/libutils/Threads.cpp              | 47 ++++++++-----------
  system/core/rootdir/init.zygote64_32.rc       |  2 +
  system/sepolicy/private/file_contexts         |  2 +
- 93 files changed, 598 insertions(+), 145 deletions(-)
+ 93 files changed, 597 insertions(+), 147 deletions(-)
 
 diff --git a/art/compiler/jni/quick/jni_compiler.cc b/art/compiler/jni/quick/jni_compiler.cc
 index 913a3baa27..3518f451cc 100644
@@ -1835,7 +1835,7 @@ index 755fcfb271..bd47625bcd 100644
      }
  
 diff --git a/frameworks/base/core/jni/android/graphics/text/LineBreaker.cpp b/frameworks/base/core/jni/android/graphics/text/LineBreaker.cpp
-index a23f99af5f..b48daab357 100644
+index a23f99af5f..55f2dc6825 100644
 --- a/frameworks/base/core/jni/android/graphics/text/LineBreaker.cpp
 +++ b/frameworks/base/core/jni/android/graphics/text/LineBreaker.cpp
 @@ -63,8 +63,8 @@ static jlong nInit(JNIEnv* env, jclass /* unused */,
@@ -1849,6 +1849,17 @@ index a23f99af5f..b48daab357 100644
  }
  
  // CriticalNative
+@@ -122,8 +122,8 @@ static jint nGetLineFlag(jlong ptr, jint i) {
+     return reinterpret_cast<minikin::LineBreakResult*>(ptr)->flags[i];
+ }
+ 
+-static void nReleaseResult(jlong ptr) {
+-    delete reinterpret_cast<minikin::LineBreakResult*>(ptr);
++static void nReleaseResult(minikin::LineBreakResult* ptr) {
++    delete ptr;
+ }
+ 
+ static jlong nGetReleaseResultFunc() {
 diff --git a/frameworks/base/core/jni/android/graphics/text/MeasuredText.cpp b/frameworks/base/core/jni/android/graphics/text/MeasuredText.cpp
 index 68ba38b939..a56c785b08 100644
 --- a/frameworks/base/core/jni/android/graphics/text/MeasuredText.cpp
@@ -2214,18 +2225,15 @@ index fe2d37cbc7..6682f3833f 100644
      int (*write)(struct timespec* ts, struct iovec* vec, size_t nr);
      /* note one log drop */
 diff --git a/system/core/libunwindstack/RegsArm64.cpp b/system/core/libunwindstack/RegsArm64.cpp
-index 5b7431a57c..2a49a55a3d 100644
+index 5b7431a57c..5bfd51341f 100644
 --- a/system/core/libunwindstack/RegsArm64.cpp
 +++ b/system/core/libunwindstack/RegsArm64.cpp
-@@ -45,6 +45,12 @@ uint64_t RegsArm64::sp() {
+@@ -45,6 +45,9 @@ uint64_t RegsArm64::sp() {
  }
  
  void RegsArm64::set_pc(uint64_t pc) {
 +#if defined(__aarch64__)
-+  register uint64_t x30 __asm("x30") = pc;
-+  // This is XPACLRI.
-+  asm("hint 0x7" : "+r"(x30));
-+  pc = x30;
++  pc &= 0x7fffffffff;
 +#endif
    regs_[ARM64_REG_PC] = pc;
  }
@@ -2351,5 +2359,5 @@ index eaefec3f99..a45a340510 100644
  /dev/tty		u:object_r:owntty_device:s0
  /dev/tty[0-9]*		u:object_r:tty_device:s0
 -- 
-2.27.0.383.g050319c2ae-goog
+2.27.0.389.gc38d7665816-goog
 

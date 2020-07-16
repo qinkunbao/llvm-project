@@ -1,0 +1,28 @@
+From 3da924697fda5c71c16326297a505557b8fe1bf6 Mon Sep 17 00:00:00 2001
+From: Peter Collingbourne <pcc@google.com>
+Date: Wed, 15 Jul 2020 19:07:26 -0700
+Subject: [PATCH 4/5] Correctly handle hidden weak symbols in AUTH64
+ relocations
+
+---
+ bionic/linker/linker_relocate.cpp | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/bionic/linker/linker_relocate.cpp b/bionic/linker/linker_relocate.cpp
+index f16622aacf..3a687075f8 100644
+--- a/bionic/linker/linker_relocate.cpp
++++ b/bionic/linker/linker_relocate.cpp
+@@ -469,8 +469,8 @@ static bool process_relocation_impl(Relocator& relocator, const rel_t& reloc) {
+ #define R_AARCH64_AUTH_RELATIVE 0x4ff
+ #if defined(ANDROID_EXPERIMENTAL_PAC)
+     case R_AARCH64_AUTH64: {
+-      const ElfW(Addr) result =
+-          __bionic_pac_sign_ptr(sym_addr + get_addend_rel(), static_cast<ElfW(Addr)*>(rel_target));
++      ElfW(Addr) result = sym_addr + get_addend_rel();
++      if (result) result = __bionic_pac_sign_ptr(result, static_cast<ElfW(Addr)*>(rel_target));
+       *static_cast<ElfW(Addr)*>(rel_target) = result;
+       break;
+     }
+-- 
+2.27.0.389.gc38d7665816-goog
+

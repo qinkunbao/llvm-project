@@ -1,0 +1,40 @@
+From 6ccfcbe8db12b375aa0e6e0a0c4c5ba8a4b7daee Mon Sep 17 00:00:00 2001
+From: Peter Collingbourne <pcc@google.com>
+Date: Fri, 10 Jul 2020 20:51:53 -0700
+Subject: [PATCH 5/5] Turn on TARGET_EXPERIMENTAL_PAC in dexpreopt_gen
+
+---
+ build/make/core/dex_preopt_odex_install.mk | 1 +
+ build/soong/dexpreopt/dexpreopt.go         | 4 ++--
+ 2 files changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/build/make/core/dex_preopt_odex_install.mk b/build/make/core/dex_preopt_odex_install.mk
+index f738c3e8ba..a7b42e1004 100644
+--- a/build/make/core/dex_preopt_odex_install.mk
++++ b/build/make/core/dex_preopt_odex_install.mk
+@@ -270,6 +270,7 @@ ifdef LOCAL_DEX_PREOPT
+   $(my_dexpreopt_script): $(DEXPREOPT_GEN)
+   $(my_dexpreopt_script): $(my_dexpreopt_config) $(DEX_PREOPT_SOONG_CONFIG_FOR_MAKE) $(DEX_PREOPT_CONFIG_FOR_MAKE)
+ 	@echo "$(PRIVATE_MODULE) dexpreopt gen"
++	TARGET_EXPERIMENTAL_PAC=$(TARGET_EXPERIMENTAL_PAC) \
+ 	$(DEXPREOPT_GEN) \
+ 	-global_soong $(PRIVATE_GLOBAL_SOONG_CONFIG) \
+ 	-global $(PRIVATE_GLOBAL_CONFIG) \
+diff --git a/build/soong/dexpreopt/dexpreopt.go b/build/soong/dexpreopt/dexpreopt.go
+index 974daf935d..da43bf8f2a 100644
+--- a/build/soong/dexpreopt/dexpreopt.go
++++ b/build/soong/dexpreopt/dexpreopt.go
+@@ -375,8 +375,8 @@ func dexpreoptCommand(ctx android.PathContext, globalSoong *GlobalSoongConfig, g
+ 
+ 	cmd := rule.Command().Text(`ANDROID_LOG_TAGS="*:e"`)
+ 
+-	if ctx.Config().Getenv("TARGET_EXPERIMENTAL_PAC") != "" {
+-		cmd = cmd.Text("TARGET_EXPERIMENTAL_PAC=" + ctx.Config().Getenv("TARGET_EXPERIMENTAL_PAC"))
++	if android.TargetExperimentalPac != "" {
++		cmd = cmd.Text("TARGET_EXPERIMENTAL_PAC=" + android.TargetExperimentalPac)
+ 	}
+ 
+ 	cmd = cmd.Tool(globalSoong.Dex2oat).
+-- 
+2.27.0.389.gc38d7665816-goog
+
