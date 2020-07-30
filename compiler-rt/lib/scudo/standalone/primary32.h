@@ -255,8 +255,8 @@ private:
 
   uptr allocateRegionSlow() {
     uptr MapSize = 2 * RegionSize;
-    const uptr MapBase = reinterpret_cast<uptr>(
-        map(nullptr, MapSize, "scudo:primary", MAP_ALLOWNOMEM));
+    const uptr MapBase = reinterpret_cast<uptr>(map(
+        nullptr, MapSize, "scudo:primary", MAP_ALLOWNOMEM | MAP_PATTERNFILL));
     if (UNLIKELY(!MapBase))
       return 0;
     const uptr MapEnd = MapBase + MapSize;

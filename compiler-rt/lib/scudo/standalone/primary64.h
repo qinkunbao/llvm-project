@@ -369,7 +369,7 @@ private:
         Region->Data = Data;
       if (UNLIKELY(!map(reinterpret_cast<void *>(RegionBeg + MappedUser),
                         UserMapSize, "scudo:primary",
-                        MAP_ALLOWNOMEM | MAP_RESIZABLE |
+                        MAP_ALLOWNOMEM | MAP_RESIZABLE | MAP_PATTERNFILL |
                             (useMemoryTagging() ? MAP_MEMTAG : 0),
                         &Region->Data)))
         return nullptr;

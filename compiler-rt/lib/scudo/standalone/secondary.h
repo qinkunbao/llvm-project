@@ -365,9 +365,9 @@ void *MapAllocator<CacheT>::allocate(uptr Size, uptr AlignmentHint,
   }
 
   const uptr CommitSize = MapEnd - PageSize - CommitBase;
-  const uptr Ptr =
-      reinterpret_cast<uptr>(map(reinterpret_cast<void *>(CommitBase),
-                                 CommitSize, "scudo:secondary", 0, &Data));
+  const uptr Ptr = reinterpret_cast<uptr>(
+      map(reinterpret_cast<void *>(CommitBase), CommitSize, "scudo:secondary",
+          FillContents == ZeroFill ? 0 : MAP_PATTERNFILL, &Data));
   LargeBlock::Header *H = reinterpret_cast<LargeBlock::Header *>(Ptr);
   H->MapBase = MapBase;
   H->MapSize = MapEnd - MapBase;
