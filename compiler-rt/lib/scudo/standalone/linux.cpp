@@ -214,12 +214,21 @@ _Alignas(4096) static const unsigned char Pattern[4096] = {
     B, B, B, B, B, B, B, B, B, B, B, B, B, B, B, B, B, B, B, B, B,
 };
 
-#define MAP_REFPAGE 0x200000
+static int PatternFD = -2;
 
 void *map(void *Addr, uptr Size, UNUSED const char *Name, uptr Flags,
           UNUSED MapPlatformData *Data) {
-  int MmapFlags = MAP_PRIVATE | MAP_REFPAGE;
+  int MmapFD = -1;
+  int MmapFlags = MAP_PRIVATE | MAP_ANONYMOUS;
   int MmapProt;
+  if (Flags & MAP_PATTERNFILL) {
+    if (PatternFD == -2)
+      PatternFD = syscall(440, Pattern, 0);
+    if (PatternFD != -1) {
+      MmapFlags &= ~MAP_ANONYMOUS;
+      MmapFD = PatternFD;
+    }
+  }
   if (Flags & MAP_NOACCESS) {
     MmapFlags |= MAP_NORESERVE;
     MmapProt = PROT_NONE;
@@ -235,35 +244,12 @@ void *map(void *Addr, uptr Size, UNUSED const char *Name, uptr Flags,
     DCHECK_EQ(Flags & MAP_NOACCESS, 0);
     MmapFlags |= MAP_FIXED;
   }
-
-#if 1
-  void *P = (Flags & MAP_PATTERNFILL)
-                ? mmap(Addr, Size, MmapProt, MmapFlags, -1, (off_t)Pattern)
-                : MAP_FAILED;
-  if (P == MAP_FAILED) {
-    MmapFlags &= ~MAP_REFPAGE;
-    MmapFlags |= MAP_ANONYMOUS;
-    P = mmap(Addr, Size, MmapProt, MmapFlags, -1, 0);
-    if (P == MAP_FAILED) {
-      if (!(Flags & MAP_ALLOWNOMEM) || errno != ENOMEM)
-        dieOnMapUnmapError(errno == ENOMEM);
-      return nullptr;
-    }
-  }
-#else
-  (void)Pattern;
-  MmapFlags &= ~MAP_REFPAGE;
-  MmapFlags |= MAP_ANONYMOUS;
-  void *P = mmap(Addr, Size, MmapProt, MmapFlags, -1, 0);
+  void *P = mmap(Addr, Size, MmapProt, MmapFlags, MmapFD, 0);
   if (P == MAP_FAILED) {
     if (!(Flags & MAP_ALLOWNOMEM) || errno != ENOMEM)
       dieOnMapUnmapError(errno == ENOMEM);
     return nullptr;
   }
-  if (Flags & MAP_PATTERNFILL)
-    memset(P, 0xaa, Size);
-#endif
-
 #if SCUDO_ANDROID
   if (!(Flags & MAP_NOACCESS))
     prctl(ANDROID_PR_SET_VMA, ANDROID_PR_SET_VMA_ANON_NAME, P, Size, Name);
