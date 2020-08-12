@@ -216,6 +216,7 @@ struct Configuration {
   bool warnCommon;
   bool warnIfuncTextrel;
   bool warnMissingEntry;
+  bool warnPtrauth;
   bool warnSymbolOrdering;
   bool writeAddends;
   bool zCombreloc;

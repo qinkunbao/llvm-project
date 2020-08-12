@@ -20,6 +20,7 @@
 #include "llvm/MC/MCFixup.h"
 #include "llvm/MC/MCObjectWriter.h"
 #include "llvm/MC/MCValue.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ErrorHandling.h"
 #include <cassert>
 #include <cstdint>
@@ -101,6 +102,8 @@ static bool isNonILP32reloc(const MCFixup &Fixup,
   }
   return false;
 }
+
+static cl::opt<bool> PACSizeMeasurementsOnly("pac-size-measurements-only");
 
 unsigned AArch64ELFObjectWriter::getRelocType(MCContext &Ctx,
                                               const MCValue &Target,
@@ -205,8 +208,9 @@ unsigned AArch64ELFObjectWriter::getRelocType(MCContext &Ctx,
                         "ILP32 8 byte absolute data "
                         "relocation not supported (LP64 eqv: ABS64)");
         return ELF::R_AARCH64_NONE;
-      } else if (SymLoc == AArch64MCExpr::VK_AUTH ||
-                 SymLoc == AArch64MCExpr::VK_AUTHADDR) {
+      } else if ((SymLoc == AArch64MCExpr::VK_AUTH ||
+                  SymLoc == AArch64MCExpr::VK_AUTHADDR) &&
+                 !PACSizeMeasurementsOnly) {
         return ELF::R_AARCH64_AUTH64;
       } else {
         return ELF::R_AARCH64_ABS64;

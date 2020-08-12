@@ -3252,7 +3252,7 @@ bool AArch64AuthSection::isNeeded() const {
   if (!isLive() || config->emachine != EM_AARCH64)
     return false;
   static bool warned = false;
-  if (!warned && symTab->type == SHT_DYNSYM) {
+  if (!warned && config->warnPtrauth && symTab->type == SHT_DYNSYM) {
     warned = true;
     for (const SymbolTableEntry &s : symTab->getSymbols())
       if (isa<Defined>(s.sym) && s.sym->type == STT_FUNC &&
