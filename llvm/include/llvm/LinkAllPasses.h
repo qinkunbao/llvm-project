@@ -215,6 +215,7 @@ namespace {
       (void) llvm::createPartiallyInlineLibCallsPass();
       (void) llvm::createScalarizerPass();
       (void) llvm::createSeparateConstOffsetFromGEPPass();
+      (void) llvm::createSoftPointerAuthPass();
       (void) llvm::createSpeculativeExecutionPass();
       (void) llvm::createSpeculativeExecutionIfHasBranchDivergencePass();
       (void) llvm::createRewriteSymbolsPass();
