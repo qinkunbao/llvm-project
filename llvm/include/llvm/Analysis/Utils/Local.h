@@ -25,26 +25,29 @@ namespace llvm {
 /// pointer). Return the result as a signed integer of intptr size.
 /// When NoAssumptions is true, no assumptions about index computation not
 /// overflowing is made.
-template <typename IRBuilderTy>
-Value *EmitGEPOffset(IRBuilderTy *Builder, const DataLayout &DL, User *GEP,
-                     bool NoAssumptions = false) {
-  GEPOperator *GEPOp = cast<GEPOperator>(GEP);
-  Type *IntIdxTy = DL.getIndexType(GEP->getType());
+
+template <typename IRBuilderTy, class OpItTy>
+std::pair<Value *, Type *>
+EmitGEPOffset(IRBuilderTy *Builder, const DataLayout &DL,
+              generic_gep_type_iterator<OpItTy> GTI, OpItTy IdxBegin,
+              OpItTy IdxEnd, Type *GEPType, StringRef GEPName, bool IsInBounds,
+              bool NoAssumptions = false) {
+  Type *IntIdxTy = DL.getIndexType(GEPType);
   Value *Result = nullptr;
 
   // If the GEP is inbounds, we know that none of the addressing operations will
   // overflow in a signed sense.
-  bool isInBounds = GEPOp->isInBounds() && !NoAssumptions;
+  bool isInBounds = IsInBounds && !NoAssumptions;
 
   // Build a mask for high order bits.
   unsigned IntPtrWidth = IntIdxTy->getScalarType()->getIntegerBitWidth();
   uint64_t PtrSizeMask =
       std::numeric_limits<uint64_t>::max() >> (64 - IntPtrWidth);
+  Type *IndexedType = nullptr;
 
-  gep_type_iterator GTI = gep_type_begin(GEP);
-  for (User::op_iterator i = GEP->op_begin() + 1, e = GEP->op_end(); i != e;
-       ++i, ++GTI) {
+  for (OpItTy i = IdxBegin, e = IdxEnd; i != e; ++i, ++GTI) {
     Value *Op = *i;
+    IndexedType = GTI.getIndexedType();
     uint64_t Size = DL.getTypeAllocSize(GTI.getIndexedType()) & PtrSizeMask;
     Value *Offset;
     if (Constant *OpC = dyn_cast<Constant>(Op)) {
@@ -54,6 +57,7 @@ Value *EmitGEPOffset(IRBuilderTy *Builder, const DataLayout &DL, User *GEP,
       // Handle a struct index, which adds its field offset to the pointer.
       if (StructType *STy = GTI.getStructTypeOrNull()) {
         uint64_t OpValue = OpC->getUniqueInteger().getZExtValue();
+        IndexedType = STy->getElementType(OpValue);
         Size = DL.getStructLayout(STy)->getElementOffset(OpValue);
         if (!Size)
           continue;
@@ -83,21 +87,33 @@ Value *EmitGEPOffset(IRBuilderTy *Builder, const DataLayout &DL, User *GEP,
       if (Size != 1) {
         // We'll let instcombine(mul) convert this to a shl if possible.
         Op = Builder->CreateMul(Op, ConstantInt::get(IntIdxTy, Size),
-                                GEP->getName().str() + ".idx", false /*NUW*/,
+                                GEPName.str() + ".idx", false /*NUW*/,
                                 isInBounds /*NSW*/);
       }
       Offset = Op;
     }
 
     if (Result)
-      Result = Builder->CreateAdd(Result, Offset, GEP->getName().str()+".offs",
+      Result = Builder->CreateAdd(Result, Offset, GEPName.str() + ".offs",
                                   false /*NUW*/, isInBounds /*NSW*/);
     else
       Result = Offset;
   }
-  return Result ? Result : Constant::getNullValue(IntIdxTy);
+  if (!Result)
+    Result = Constant::getNullValue(IntIdxTy);
+  return std::make_pair(Result, IndexedType);
 }
 
+template <typename IRBuilderTy>
+Value *EmitGEPOffset(IRBuilderTy *Builder, const DataLayout &DL, User *GEP,
+                     bool NoAssumptions = false) {
+  User::const_op_iterator IdxBegin = GEP->op_begin() + 1,
+                          IdxEnd = GEP->op_end();
+  return EmitGEPOffset(Builder, DL, gep_type_begin(GEP), IdxBegin, IdxEnd,
+                       GEP->getType(), GEP->getName(),
+                       cast<GEPOperator>(GEP)->isInBounds(), NoAssumptions)
+      .first;
+}
 }
 
 #endif // LLVM_TRANSFORMS_UTILS_LOCAL_H
