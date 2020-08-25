@@ -5133,6 +5133,17 @@ bool AArch64InstructionSelector::selectIntrinsic(MachineInstr &I,
                                                 AArch64::GPR64RegClass);
       }
 
+      if (STI.isTargetDarwin()) {
+        // If we're doing LR signing, we need to fixup ReturnAddr: strip it.
+        // If not, on Darwin, we know we will never seen a frame with a signed LR.
+        if (MF.getFunction().hasFnAttribute("ptrauth-returns"))
+          MIB.buildInstr(AArch64::XPACIuntied, {DstReg}, {MFReturnAddr});
+        else
+          MIB.buildCopy({DstReg}, {MFReturnAddr});
+        I.eraseFromParent();
+        return true;
+      }
+
       if (STI.hasPAuth()) {
         MIB.buildInstr(AArch64::XPACI, {DstReg}, {MFReturnAddr});
       } else {
@@ -5160,6 +5171,19 @@ bool AArch64InstructionSelector::selectIntrinsic(MachineInstr &I,
     else {
       MFI.setReturnAddressIsTaken(true);
 
+      if (STI.isTargetDarwin()) {
+        // If we're doing LR signing, we need to fixup ReturnAddr: strip it.
+        // If not, on Darwin, we know we will never seen a frame with a signed LR.
+        if (MF.getFunction().hasFnAttribute("ptrauth-returns")) {
+          Register TmpReg = MRI.createVirtualRegister(&AArch64::GPR64RegClass);
+          MIB.buildInstr(AArch64::LDRXui, {TmpReg}, {FrameAddr}).addImm(1);
+          MIB.buildInstr(AArch64::XPACIuntied, {DstReg}, {TmpReg});
+        } else {
+          MIB.buildInstr(AArch64::LDRXui, {DstReg}, {FrameAddr}).addImm(1);
+        }
+        I.eraseFromParent();
+        return true;
+      }
       if (STI.hasPAuth()) {
         Register TmpReg = MRI.createVirtualRegister(&AArch64::GPR64RegClass);
         MIB.buildInstr(AArch64::LDRXui, {TmpReg}, {FrameAddr}).addImm(1);
