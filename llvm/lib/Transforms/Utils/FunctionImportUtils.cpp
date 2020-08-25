@@ -228,6 +228,13 @@ void FunctionImportGlobalProcessing::processGlobalForThinLTO(GlobalValue &GV) {
   // If global value dead stripping is not enabled in summary then
   // propagateConstants hasn't been run. We can't internalize GV
   // in such case.
+  //
+  // Ignore llvm.ptrauth globals:
+  // - we don't need to internalize them (because they're artificial and aren't
+  //   emitted as symbols)
+  // - we can't set their initializer to 'zeroinitializer' (because the
+  //   initializer struct has to be present, because it's interpreted as a list
+  //   of ConstantExpr operands).
   if (!GV.isDeclaration() && VI && ImportIndex.withAttributePropagation()) {
     if (GlobalVariable *V = dyn_cast<GlobalVariable>(&GV)) {
       // We can have more than one local with the same GUID, in the case of
@@ -242,6 +249,7 @@ void FunctionImportGlobalProcessing::processGlobalForThinLTO(GlobalValue &GV) {
       auto *GVS = dyn_cast_or_null<GlobalVarSummary>(
           ImportIndex.findSummaryInModule(VI, M.getModuleIdentifier()));
       if (GVS &&
+          V->getSection() != "llvm.ptrauth" &&
           (ImportIndex.isReadOnly(GVS) || ImportIndex.isWriteOnly(GVS))) {
         V->addAttribute("thinlto-internalize");
         // Objects referenced by writeonly GV initializer should not be
