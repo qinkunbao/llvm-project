@@ -25,6 +25,7 @@
 #ifndef LLVM_LIB_TRANSFORMS_COROUTINES_COROINSTR_H
 #define LLVM_LIB_TRANSFORMS_COROUTINES_COROINSTR_H
 
+#include "llvm/IR/GlobalPtrAuthInfo.h"
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/Support/raw_ostream.h"
@@ -223,7 +224,16 @@ public:
   /// attributes, and calling convention of the continuation function(s)
   /// are taken from this declaration.
   Function *getPrototype() const {
-    return cast<Function>(getArgOperand(PrototypeArg)->stripPointerCasts());
+    Value *rawPrototype = getArgOperand(PrototypeArg)->stripPointerCasts();
+    if (auto global = GlobalPtrAuthInfo::analyze(rawPrototype)) {
+      rawPrototype =
+        const_cast<Constant*>(global->getPointer()->stripPointerCasts());
+    }
+    return cast<Function>(rawPrototype);
+  }
+
+  Optional<GlobalPtrAuthInfo> getPtrAuthInfo() const {
+    return GlobalPtrAuthInfo::analyze(getArgOperand(PrototypeArg));
   }
 
   /// Return the function to use for allocating memory.
