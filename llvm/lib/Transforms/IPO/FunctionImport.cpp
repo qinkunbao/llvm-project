@@ -973,6 +973,8 @@ bool llvm::convertToDeclaration(GlobalValue &GV) {
     F->clearMetadata();
     F->setComdat(nullptr);
   } else if (GlobalVariable *V = dyn_cast<GlobalVariable>(&GV)) {
+    if (V->getSection() == "llvm.ptrauth")
+      report_fatal_error("can't convert llvm.ptrauth to declaration!");
     V->setInitializer(nullptr);
     V->setLinkage(GlobalValue::ExternalLinkage);
     V->clearMetadata();

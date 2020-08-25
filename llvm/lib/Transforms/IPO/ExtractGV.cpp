@@ -94,6 +94,9 @@ namespace {
             continue;
         }
 
+        if (I->getSection() == "llvm.ptrauth")
+          continue;
+
         makeVisible(*I, Delete);
 
         if (Delete) {

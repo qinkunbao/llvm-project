@@ -23,6 +23,7 @@
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/GlobalAlias.h"
+#include "llvm/IR/GlobalPtrAuthInfo.h"
 #include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/InstrTypes.h"
@@ -48,6 +49,10 @@ isSimpleEnoughValueToCommit(Constant *C,
                             SmallPtrSetImpl<Constant *> &SimpleConstants,
                             const DataLayout &DL);
 
+static bool isPtrauthWrapperGlobal(Constant *C) {
+  return GlobalPtrAuthInfo::analyze(C) != None;
+}
+
 /// Return true if the specified constant can be handled by the code generator.
 /// We don't want to generate something like:
 ///   void *X = &X/42;
@@ -62,8 +67,10 @@ isSimpleEnoughValueToCommitHelper(Constant *C,
                                   const DataLayout &DL) {
   // Simple global addresses are supported, do not allow dllimport or
   // thread-local globals.
+  // Conservatively disallow any nested llvm.ptrauth global as well.
   if (auto *GV = dyn_cast<GlobalValue>(C))
-    return !GV->hasDLLImportStorageClass() && !GV->isThreadLocal();
+    return !GV->hasDLLImportStorageClass() && !GV->isThreadLocal() &&
+           !isPtrauthWrapperGlobal(GV);
 
   // Simple integer, undef, constant aggregate zero, etc are all supported.
   if (C->getNumOperands() == 0 || isa<BlockAddress>(C))
@@ -350,7 +357,13 @@ bool Evaluator::EvaluateBlock(BasicBlock::iterator CurInst,
 
       // If this might be too difficult for the backend to handle (e.g. the addr
       // of one global variable divided by another) then we can't commit it.
-      if (!isSimpleEnoughValueToCommit(Val, SimpleConstants, DL)) {
+      // If it's a simple-enough top-level llvm.ptrauth global, allow it;
+      // we conservatively disallow any nested llvm.ptrauth global usage when
+      // checking the constants.  Make sure to only check the constant if
+      // it's not a ptrauth global, to avoid incorrectly caching it as
+      // simple.
+      if (!isPtrauthWrapperGlobal(Val) &&
+          !isSimpleEnoughValueToCommit(Val, SimpleConstants, DL)) {
         LLVM_DEBUG(dbgs() << "Store value is too complex to evaluate store. "
                           << *Val << "\n");
         return false;

@@ -946,6 +946,11 @@ bool IRLinker::shouldLink(GlobalValue *DGV, GlobalValue &SGV) {
   if (ValuesToLink.count(&SGV) || SGV.hasLocalLinkage())
     return true;
 
+  // ptrauth wrapper globals can't be prototypes.
+  if (auto *GV = dyn_cast<GlobalVariable>(&SGV))
+    if (GV->getSection() == "llvm.ptrauth")
+      return true;
+
   if (DGV && !DGV->isDeclarationForLinker())
     return false;
 
