@@ -138,6 +138,8 @@ private:
                                    const StackOffset &OffsetFromDefCFA) const;
   bool shouldCombineCSRLocalStackBumpInEpilogue(MachineBasicBlock &MBB,
                                                 unsigned StackBumpBytes) const;
+
+  bool shouldAuthenticateLR(const MachineFunction &MF) const;
 };
 
 } // End llvm namespace
