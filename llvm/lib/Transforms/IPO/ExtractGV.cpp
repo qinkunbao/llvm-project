@@ -93,6 +93,9 @@ namespace {
             continue;
         }
 
+        if (GV.getSection() == "llvm.ptrauth")
+          continue;
+
         makeVisible(GV, Delete);
 
         if (Delete) {
