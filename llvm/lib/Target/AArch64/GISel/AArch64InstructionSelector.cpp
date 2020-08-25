@@ -3280,10 +3280,12 @@ bool AArch64InstructionSelector::selectTLSGlobalValue(
   // TLS calls preserve all registers except those that absolutely must be
   // trashed: X0 (it takes an argument), LR (it's a call) and NZCV (let's not be
   // silly).
-  MIB.buildInstr(getBLRCallOpcode(MF), {}, {Load})
-      .addUse(AArch64::X0, RegState::Implicit)
-      .addDef(AArch64::X0, RegState::Implicit)
-      .addRegMask(TRI.getTLSCallPreservedMask());
+  bool IsAuthCall = MF.getFunction().hasFnAttribute("ptrauth-calls");
+  MIB.buildInstr(IsAuthCall ? AArch64::BLRAAZ : getBLRCallOpcode(MF), {},
+                 {Load})
+    .addUse(AArch64::X0, RegState::Implicit)
+    .addDef(AArch64::X0, RegState::Implicit)
+    .addRegMask(TRI.getTLSCallPreservedMask());
 
   MIB.buildCopy(I.getOperand(0).getReg(), Register(AArch64::X0));
   RBI.constrainGenericRegister(I.getOperand(0).getReg(), AArch64::GPR64RegClass,
