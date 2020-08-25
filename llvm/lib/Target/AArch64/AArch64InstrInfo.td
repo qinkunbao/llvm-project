@@ -7834,7 +7834,18 @@ let Predicates = [HasLS64] in {
   def : ST64BPattern<int_aarch64_st64bv0, ST64BV0>;
 }
 
+//-----------------------------------------------------------------------------
+// v8.3 Pointer Authentication late patterns
+
+let Predicates = [HasPAuth] in {
+def : Pat<(int_ptrauth_blend GPR64:$Rd, imm64_0_65535:$imm),
+          (MOVKXi GPR64:$Rd, (trunc_imm imm64_0_65535:$imm), 48)>;
+def : Pat<(int_ptrauth_blend GPR64:$Rd, GPR64:$Rn),
+          (BFMXri GPR64:$Rd, GPR64:$Rn, 16, 15)>;
+}
+
 include "AArch64InstrAtomics.td"
+
 include "AArch64SVEInstrInfo.td"
 
 include "AArch64InstrGISel.td"

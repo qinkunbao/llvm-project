@@ -5030,6 +5030,25 @@ bool AArch64InstructionSelector::selectIntrinsic(MachineInstr &I,
     I.eraseFromParent();
     return true;
   }
+  case Intrinsic::ptrauth_blend: {
+    MachineFunction &MF = *I.getParent()->getParent();
+    auto RHS = getConstantVRegVal(I.getOperand(3).getReg(), MRI);
+    if (RHS.hasValue()) {
+      I.setDesc(TII.get(AArch64::MOVKXi));
+      I.RemoveOperand(1);
+      I.RemoveOperand(2);
+      MachineInstrBuilder(MF, I)
+          .addImm(RHS->getZExtValue() & 0xffff)
+          .addImm(48)
+          .constrainAllUses(TII, TRI, RBI);
+    } else {
+      I.setDesc(TII.get(AArch64::BFMXri));
+      I.RemoveOperand(1);
+      MachineInstrBuilder(MF, I).addImm(16).addImm(15).constrainAllUses(
+          TII, TRI, RBI);
+    }
+    return true;
+  }
   case Intrinsic::frameaddress:
   case Intrinsic::returnaddress: {
     MachineFunction &MF = *I.getParent()->getParent();
