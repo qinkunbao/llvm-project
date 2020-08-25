@@ -1192,7 +1192,30 @@ StringRef sys::getHostCPUName() {
 }
 #elif defined(__APPLE__) && defined(__aarch64__)
 StringRef sys::getHostCPUName() {
-  return "cyclone";
+  host_basic_info_data_t hostInfo;
+  mach_msg_type_number_t infoCount;
+
+  infoCount = HOST_BASIC_INFO_COUNT;
+  mach_port_t hostPort = mach_host_self();
+  host_info(hostPort, HOST_BASIC_INFO, (host_info_t)&hostInfo, &infoCount);
+  mach_port_deallocate(mach_task_self(), hostPort);
+
+  // CPU type should always be arm64 on __aarch64__
+  if (hostInfo.cpu_type != CPU_TYPE_ARM64) {
+    assert(false &&
+           "CPUType not equal to ARM64 should not be possible on ARM64");
+    return "generic";
+  }
+
+  switch (hostInfo.cpu_subtype) {
+  case CPU_SUBTYPE_ARM64_ALL:
+    return "cyclone";
+  case CPU_SUBTYPE_ARM64E:
+    return "apple-a12";
+  default:;
+  }
+
+  return "generic";
 }
 #elif defined(__APPLE__) && defined(__arm__)
 StringRef sys::getHostCPUName() {
