@@ -5004,8 +5004,20 @@ static bool mayTailCallThisCC(CallingConv::ID CC) {
   }
 }
 
+static void analyzeCallOperands(const SmallVectorImpl<ISD::OutputArg> &Outs,
+                                CallingConv::ID CallConv, CCState &CCInfo,
+                                const AArch64TargetLowering &TL) {
+  for (unsigned I = 0, E = Outs.size(); I < E; ++I) {
+    MVT ArgVT = Outs[I].VT;
+    ISD::ArgFlagsTy ArgFlags = Outs[I].Flags;
+    CCAssignFn *AssignFn =
+        TL.CCAssignFnForCall(CallConv, /*IsVarArg=*/ !Outs[I].IsFixed);
+    AssignFn(I, ArgVT, ArgVT, CCValAssign::Full, ArgFlags, CCInfo);
+  }
+}
+
 bool AArch64TargetLowering::isEligibleForTailCallOptimization(
-    SDValue Callee, CallingConv::ID CalleeCC, bool isVarArg,
+    SDValue Callee, CallingConv::ID CalleeCC, bool isVarArg, bool IsMustTail,
     const SmallVectorImpl<ISD::OutputArg> &Outs,
     const SmallVectorImpl<SDValue> &OutVals,
     const SmallVectorImpl<ISD::InputArg> &Ins, SelectionDAG &DAG) const {
@@ -5036,20 +5048,22 @@ bool AArch64TargetLowering::isEligibleForTailCallOptimization(
   // Byval parameters hand the function a pointer directly into the stack area
   // we want to reuse during a tail call. Working around this *is* possible (see
   // X86) but less efficient and uglier in LowerCall.
-  for (Function::const_arg_iterator i = CallerF.arg_begin(),
-                                    e = CallerF.arg_end();
-       i != e; ++i) {
-    if (i->hasByValAttr())
-      return false;
+  if (!(IsMustTail && Subtarget->isTargetDarwin())) {
+    for (Function::const_arg_iterator i = CallerF.arg_begin(),
+                                      e = CallerF.arg_end();
+         i != e; ++i) {
+      if (i->hasByValAttr())
+        return false;
 
-    // On Windows, "inreg" attributes signify non-aggregate indirect returns.
-    // In this case, it is necessary to save/restore X0 in the callee. Tail
-    // call opt interferes with this. So we disable tail call opt when the
-    // caller has an argument with "inreg" attribute.
+      // On Windows, "inreg" attributes signify non-aggregate indirect returns.
+      // In this case, it is necessary to save/restore X0 in the callee. Tail
+      // call opt interferes with this. So we disable tail call opt when the
+      // caller has an argument with "inreg" attribute.
 
-    // FIXME: Check whether the callee also has an "inreg" argument.
-    if (i->hasInRegAttr())
-      return false;
+      // FIXME: Check whether the callee also has an "inreg" argument.
+      if (i->hasInRegAttr())
+        return false;
+    }
   }
 
   if (getTargetMachine().Options.GuaranteedTailCallOpt)
@@ -5080,7 +5094,8 @@ bool AArch64TargetLowering::isEligibleForTailCallOptimization(
          "Unexpected variadic calling convention");
 
   LLVMContext &C = *DAG.getContext();
-  if (isVarArg && !Outs.empty()) {
+  if (isVarArg && !(IsMustTail && Subtarget->isTargetDarwin()) &&
+      !Outs.empty()) {
     // At least two cases here: if caller is fastcc then we can't have any
     // memory arguments (we'd be expected to clean up the stack afterwards). If
     // caller is C then we could potentially use its argument area.
@@ -5090,7 +5105,7 @@ bool AArch64TargetLowering::isEligibleForTailCallOptimization(
     SmallVector<CCValAssign, 16> ArgLocs;
     CCState CCInfo(CalleeCC, isVarArg, MF, ArgLocs, C);
 
-    CCInfo.AnalyzeCallOperands(Outs, CCAssignFnForCall(CalleeCC, true));
+    analyzeCallOperands(Outs, CalleeCC, CCInfo, *this);
     for (const CCValAssign &ArgLoc : ArgLocs)
       if (!ArgLoc.isRegLoc())
         return false;
@@ -5121,7 +5136,7 @@ bool AArch64TargetLowering::isEligibleForTailCallOptimization(
   SmallVector<CCValAssign, 16> ArgLocs;
   CCState CCInfo(CalleeCC, isVarArg, MF, ArgLocs, C);
 
-  CCInfo.AnalyzeCallOperands(Outs, CCAssignFnForCall(CalleeCC, isVarArg));
+  analyzeCallOperands(Outs, CalleeCC, CCInfo, *this);
 
   const AArch64FunctionInfo *FuncInfo = MF.getInfo<AArch64FunctionInfo>();
 
@@ -5227,8 +5242,9 @@ AArch64TargetLowering::LowerCall(CallLoweringInfo &CLI,
 
   if (IsTailCall) {
     // Check if it's really possible to do a tail call.
+    bool IsMustTail = CLI.CB && CLI.CB->isMustTailCall();
     IsTailCall = isEligibleForTailCallOptimization(
-        Callee, CallConv, IsVarArg, Outs, OutVals, Ins, DAG);
+        Callee, CallConv, IsVarArg, IsMustTail, Outs, OutVals, Ins, DAG);
     if (!IsTailCall && CLI.CB && CLI.CB->isMustTailCall())
       report_fatal_error("failed to perform tail call elimination on a call "
                          "site marked musttail");
