@@ -495,6 +495,9 @@ public:
                                 unsigned Minor, unsigned Update,
                                 VersionTuple SDKVersion) {}
 
+  /// Specify Mach-O ptrauth ABI version.
+  virtual void EmitPtrAuthABIVersion(unsigned PtrAuthABIVersion, bool PtrAuthKernelABIVersion) {}
+
   void emitVersionForTarget(const Triple &Target,
                             const VersionTuple &SDKVersion);
 

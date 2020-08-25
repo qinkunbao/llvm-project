@@ -2038,6 +2038,13 @@ static void ParsePointerAuthArgs(LangOptions &Opts, ArgList &Args,
   Opts.SoftPointerAuth = Args.hasArg(OPT_fptrauth_soft);
   Opts.PointerAuthBlockDescriptorPointers =
       Args.hasArg(OPT_fptrauth_block_descriptor_pointers);
+
+  Opts.PointerAuthABIVersionEncoded =
+      Args.hasArg(OPT_fptrauth_abi_version_EQ) ||
+      Args.hasArg(OPT_fptrauth_kernel_abi_version);
+  Opts.PointerAuthABIVersion =
+      getLastArgIntValue(Args, OPT_fptrauth_abi_version_EQ, 0, Diags);
+  Opts.PointerAuthKernelABIVersion = Args.hasArg(OPT_fptrauth_kernel_abi_version);
 }
 
 void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,

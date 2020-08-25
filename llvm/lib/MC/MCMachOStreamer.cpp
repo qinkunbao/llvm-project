@@ -92,6 +92,8 @@ public:
                       unsigned Update, VersionTuple SDKVersion) override;
   void emitBuildVersion(unsigned Platform, unsigned Major, unsigned Minor,
                         unsigned Update, VersionTuple SDKVersion) override;
+  void EmitPtrAuthABIVersion(unsigned PtrAuthABIVersion,
+                             bool PtrAuthKernelABIVersion) override;
   void emitThumbFunc(MCSymbol *Func) override;
   bool emitSymbolAttribute(MCSymbol *Symbol, MCSymbolAttr Attribute) override;
   void emitSymbolDesc(MCSymbol *Symbol, unsigned DescValue) override;
@@ -284,6 +286,12 @@ void MCMachOStreamer::emitBuildVersion(unsigned Platform, unsigned Major,
                                        VersionTuple SDKVersion) {
   getAssembler().setBuildVersion((MachO::PlatformType)Platform, Major, Minor,
                                  Update, SDKVersion);
+}
+
+void MCMachOStreamer::EmitPtrAuthABIVersion(unsigned PtrAuthABIVersion,
+                                            bool PtrAuthKernelABIVersion) {
+  getAssembler().setPtrAuthABIVersion(PtrAuthABIVersion);
+  getAssembler().setPtrAuthKernelABIVersion(PtrAuthKernelABIVersion);
 }
 
 void MCMachOStreamer::emitThumbFunc(MCSymbol *Symbol) {

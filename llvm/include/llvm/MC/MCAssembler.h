@@ -154,6 +154,9 @@ private:
 
   VersionInfoType VersionInfo;
 
+  Optional<unsigned> PtrAuthABIVersion;
+  bool PtrAuthKernelABIVersion;
+
   /// Evaluate a fixup to a relocatable expression and the value which should be
   /// placed into the fixup.
   ///
@@ -282,6 +285,11 @@ public:
     VersionInfo.Update = Update;
     VersionInfo.SDKVersion = SDKVersion;
   }
+
+  Optional<unsigned> getPtrAuthABIVersion() const { return PtrAuthABIVersion; }
+  void setPtrAuthABIVersion(unsigned V) { PtrAuthABIVersion = V; }
+  bool getPtrAuthKernelABIVersion() const { return PtrAuthKernelABIVersion; }
+  void setPtrAuthKernelABIVersion(bool V) { PtrAuthKernelABIVersion = V; }
 
   /// Reuse an assembler instance
   ///

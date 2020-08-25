@@ -6843,6 +6843,11 @@ Some optimisations are only when the entire LTO unit is present in the current
 module. This is represented by the ``LTOPostLink`` module flags metadata, which
 will be created with a value of ``1`` when LTO linking occurs.
 
+Pointer Authentication ABI Version Module Flags Metadata
+--------------------------------------------------------
+
+FIXME: write about abi version, maybe?
+
 Automatic Linker Flags Named Metadata
 =====================================
 

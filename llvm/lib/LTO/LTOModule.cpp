@@ -30,6 +30,7 @@
 #include "llvm/Object/IRObjectFile.h"
 #include "llvm/Object/MachO.h"
 #include "llvm/Object/ObjectFile.h"
+#include "llvm/Support/Error.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Host.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -685,5 +686,12 @@ Expected<uint32_t> LTOModule::getMachOCPUType() const {
 }
 
 Expected<uint32_t> LTOModule::getMachOCPUSubType() const {
+  if (Error E = const_cast<Module *>(Mod.get())->materializeMetadata())
+    return std::move(E);
+  // If there is a ptrauth version in the module, take that into account.
+  if (Optional<Module::PtrAuthABIVersion> ABIVersion =
+          Mod->getPtrAuthABIVersion())
+    return MachO::getCPUSubType(Triple(Mod->getTargetTriple()),
+                                ABIVersion->Version, ABIVersion->Kernel);
   return MachO::getCPUSubType(Triple(Mod->getTargetTriple()));
 }

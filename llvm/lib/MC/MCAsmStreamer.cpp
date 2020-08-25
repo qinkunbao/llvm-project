@@ -159,6 +159,8 @@ public:
                       unsigned Update, VersionTuple SDKVersion) override;
   void emitBuildVersion(unsigned Platform, unsigned Major, unsigned Minor,
                         unsigned Update, VersionTuple SDKVersion) override;
+  void EmitPtrAuthABIVersion(unsigned PtrAuthABIVersion,
+                             bool PtrAuthKernelABIVersion) override;
   void emitThumbFunc(MCSymbol *Func) override;
 
   void emitAssignment(MCSymbol *Symbol, const MCExpr *Value) override;
@@ -603,6 +605,16 @@ void MCAsmStreamer::emitBuildVersion(unsigned Platform, unsigned Major,
   if (Update)
     OS << ", " << Update;
   EmitSDKVersionSuffix(OS, SDKVersion);
+  EmitEOL();
+}
+
+void MCAsmStreamer::EmitPtrAuthABIVersion(unsigned PtrAuthABIVersion,
+                                          bool PtrAuthKernelABIVersion) {
+  if (PtrAuthKernelABIVersion)
+    OS << "\t.ptrauth_kernel_abi_version ";
+  else
+    OS << "\t.ptrauth_abi_version ";
+  OS << PtrAuthABIVersion;
   EmitEOL();
 }
 
