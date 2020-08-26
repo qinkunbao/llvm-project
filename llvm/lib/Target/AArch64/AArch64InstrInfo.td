@@ -1106,7 +1106,16 @@ let Predicates = [HasPAuth] in {
   defm AUT : SignAuth<0b001, 0b011, "aut", null_frag>;
 
   def XPACI : ClearAuth<0, "xpaci">;
+  // Pseudo of the previous instruction with untied operands. Lowers to:
+  // mov $dst, $src
+  // xpaci $dst
+  def XPACIuntied : Pseudo<(outs GPR64:$dst), (ins GPR64:$src), []>, Sched<[]>;
+  def : Pat<(int_ptrauth_strip GPR64:$Rd, 0), (XPACI GPR64:$Rd)>;
+  def : Pat<(int_ptrauth_strip GPR64:$Rd, 1), (XPACI GPR64:$Rd)>;
+
   def XPACD : ClearAuth<1, "xpacd">;
+  def : Pat<(int_ptrauth_strip GPR64:$Rd, 2), (XPACD GPR64:$Rd)>;
+  def : Pat<(int_ptrauth_strip GPR64:$Rd, 3), (XPACD GPR64:$Rd)>;
 
   def PACGA : SignAuthTwoOperand<0b1100, "pacga", int_ptrauth_sign_generic>;
 
