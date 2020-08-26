@@ -1956,10 +1956,11 @@ class OneXRegData<bits<3> opc, string asm, SDPatternOperator node>
   let Inst{31} = 1;
 }
 
-class SignAuthOneData<bits<3> opcode_prefix, bits<2> opcode, string asm>
+class SignAuthOneData<bits<3> opcode_prefix, bits<2> opcode, string asm,
+                      SDPatternOperator op>
   : I<(outs GPR64:$Rd), (ins GPR64:$src, GPR64sp:$Rn), asm, "\t$Rd, $Rn",
       "$Rd = $src",
-      []>,
+      [(set GPR64:$Rd, (op GPR64:$src, opcode, GPR64sp:$Rn))]>,
     Sched<[WriteI, ReadI]> {
   bits<5> Rd;
   bits<5> Rn;
@@ -1970,9 +1971,10 @@ class SignAuthOneData<bits<3> opcode_prefix, bits<2> opcode, string asm>
   let Inst{4-0} = Rd;
 }
 
-class SignAuthZero<bits<3> opcode_prefix, bits<2> opcode, string asm>
+class SignAuthZero<bits<3> opcode_prefix, bits<2> opcode, string asm,
+                   SDPatternOperator op>
   : I<(outs GPR64:$Rd), (ins GPR64:$src), asm, "\t$Rd", "$Rd = $src",
-      []>, Sched<[]> {
+      [(set GPR64:$Rd, (op GPR64:$src, opcode, (i64 0)))]>, Sched<[]> {
   bits<5> Rd;
   let Inst{31-15} = 0b11011010110000010;
   let Inst{14-12} = opcode_prefix;
