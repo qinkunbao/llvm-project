@@ -4898,6 +4898,35 @@ bool AArch64InstructionSelector::selectBuildVector(
   return true;
 }
 
+static std::tuple<uint16_t, Register>
+extractPtrauthBlendDiscriminators(Register Disc, MachineRegisterInfo &MRI) {
+  Register AddrDisc = Disc;
+  uint16_t ConstDisc = 0;
+
+  if (auto ConstDiscVal = getConstantVRegVal(Disc, MRI)) {
+    if (isUInt<16>(ConstDiscVal->getZExtValue())) {
+      ConstDisc = ConstDiscVal->getZExtValue();
+      AddrDisc = AArch64::XZR;
+    }
+    return std::make_tuple(ConstDisc, AddrDisc);
+  }
+
+  auto *DiscMI = MRI.getVRegDef(Disc);
+  if (!DiscMI || DiscMI->getOpcode() != TargetOpcode::G_INTRINSIC ||
+      DiscMI->getOperand(1).getIntrinsicID() != Intrinsic::ptrauth_blend)
+    return std::make_tuple(ConstDisc, AddrDisc);
+
+  if (auto ConstDiscVal =
+      getConstantVRegVal(DiscMI->getOperand(3).getReg(), MRI)) {
+    if (isUInt<16>(ConstDiscVal->getZExtValue())) {
+      ConstDisc = ConstDiscVal->getZExtValue();
+      AddrDisc = DiscMI->getOperand(2).getReg();
+    }
+  }
+  return std::make_tuple(ConstDisc, AddrDisc);
+}
+
+
 /// Helper function to find an intrinsic ID on an a MachineInstr. Returns the
 /// ID if it exists, and 0 otherwise.
 static unsigned findIntrinsicID(MachineInstr &I) {
@@ -5027,6 +5056,64 @@ bool AArch64InstructionSelector::selectIntrinsic(MachineInstr &I,
 
     RBI.constrainGenericRegister(DstReg, AArch64::GPR64RegClass, MRI);
     RBI.constrainGenericRegister(ValReg, AArch64::GPR64RegClass, MRI);
+    I.eraseFromParent();
+    return true;
+  }
+  case Intrinsic::ptrauth_resign: {
+    Register DstReg = I.getOperand(0).getReg();
+    Register ValReg = I.getOperand(2).getReg();
+    uint64_t AUTKey = I.getOperand(3).getImm();
+    Register AUTDisc = I.getOperand(4).getReg();
+    uint64_t PACKey = I.getOperand(5).getImm();
+    Register PACDisc = I.getOperand(6).getReg();
+
+    Register AUTAddrDisc = AUTDisc;
+    uint16_t AUTConstDiscC = 0;
+    std::tie(AUTConstDiscC, AUTAddrDisc) =
+      extractPtrauthBlendDiscriminators(AUTDisc, MRI);
+
+    Register PACAddrDisc = PACDisc;
+    uint16_t PACConstDiscC = 0;
+    std::tie(PACConstDiscC, PACAddrDisc) =
+      extractPtrauthBlendDiscriminators(PACDisc, MRI);
+
+    MIRBuilder.buildCopy({AArch64::X16}, {ValReg});
+    MIRBuilder.buildInstr(TargetOpcode::IMPLICIT_DEF, {AArch64::X17}, {});
+    MIRBuilder.buildInstr(AArch64::AUTPAC)
+        .addImm(AUTKey)
+        .addImm(AUTConstDiscC)
+        .addUse(AUTAddrDisc)
+        .addImm(PACKey)
+        .addImm(PACConstDiscC)
+        .addUse(PACAddrDisc)
+        .constrainAllUses(TII, TRI, RBI);
+    MIRBuilder.buildCopy({DstReg}, Register(AArch64::X16));
+
+    RBI.constrainGenericRegister(DstReg, AArch64::GPR64RegClass, MRI);
+    I.eraseFromParent();
+    return true;
+  }
+  case Intrinsic::ptrauth_auth: {
+    Register DstReg = I.getOperand(0).getReg();
+    Register ValReg = I.getOperand(2).getReg();
+    uint64_t AUTKey = I.getOperand(3).getImm();
+    Register AUTDisc = I.getOperand(4).getReg();
+
+    Register AUTAddrDisc = AUTDisc;
+    uint16_t AUTConstDiscC = 0;
+    std::tie(AUTConstDiscC, AUTAddrDisc) =
+      extractPtrauthBlendDiscriminators(AUTDisc, MRI);
+
+    MIRBuilder.buildCopy({AArch64::X16}, {ValReg});
+    MIRBuilder.buildInstr(TargetOpcode::IMPLICIT_DEF, {AArch64::X17}, {});
+    MIRBuilder.buildInstr(AArch64::AUT)
+        .addImm(AUTKey)
+        .addImm(AUTConstDiscC)
+        .addUse(AUTAddrDisc)
+        .constrainAllUses(TII, TRI, RBI);
+    MIRBuilder.buildCopy({DstReg}, Register(AArch64::X16));
+
+    RBI.constrainGenericRegister(DstReg, AArch64::GPR64RegClass, MRI);
     I.eraseFromParent();
     return true;
   }

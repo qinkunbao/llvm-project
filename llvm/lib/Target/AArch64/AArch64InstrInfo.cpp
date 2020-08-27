@@ -126,6 +126,12 @@ unsigned AArch64InstrInfo::getInstSizeInBytes(const MachineInstr &MI) const {
     // This gets lowered to 1 4-byte instructions.
     NumBytes = 4;
     break;
+  case AArch64::AUT:
+    NumBytes = 32;
+    break;
+  case AArch64::AUTPAC:
+    NumBytes = 48;
+    break;
   case AArch64::JumpTableDest32:
   case AArch64::JumpTableDest16:
   case AArch64::JumpTableDest8:
