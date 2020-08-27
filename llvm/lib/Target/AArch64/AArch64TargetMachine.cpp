@@ -213,6 +213,7 @@ extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeAArch64Target() {
   initializeAArch64StackTaggingPass(*PR);
   initializeAArch64StackTaggingPreRAPass(*PR);
   initializeAArch64LowerHomogeneousPrologEpilogPass(*PR);
+  initializeAArch64ExpandHardenedPseudosPass(*PR);
 }
 
 //===----------------------------------------------------------------------===//
@@ -747,6 +748,10 @@ void AArch64PassConfig::addPreEmitPass() {
 
   if (TM->getOptLevel() != CodeGenOpt::None && EnableCompressJumpTables)
     addPass(createAArch64CompressJumpTablesPass());
+
+  // Expand hardened pseudo-instructions.
+  // Do this now to enable LOH emission.
+  addPass(createAArch64ExpandHardenedPseudosPass());
 
   if (TM->getOptLevel() != CodeGenOpt::None && EnableCollectLOH &&
       TM->getTargetTriple().isOSBinFormatMachO())
