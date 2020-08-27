@@ -1973,6 +1973,19 @@ public:
   /// representations of operand bundles (see documentation above).
   void getOperandBundlesAsDefs(SmallVectorImpl<OperandBundleDef> &Defs) const;
 
+  /// Return the list of operand bundles attached to this instruction as
+  /// a vector of OperandBundleDefs, only including bundles with tags other
+  /// than those specified in \p IDs.
+  void getOperandBundlesAsDefsOtherThan(SmallVectorImpl<OperandBundleDef> &Defs,
+                                        ArrayRef<uint32_t> IDs) const {
+    for (unsigned i = 0, e = getNumOperandBundles(); i != e; ++i) {
+      OperandBundleUse U = getOperandBundleAt(i);
+      uint32_t ID = U.getTagID();
+      if (!is_contained(IDs, ID))
+        Defs.emplace_back(U);
+    }
+  }
+
   /// Return the operand bundle for the operand at index OpIdx.
   ///
   /// It is an error to call this with an OpIdx that does not correspond to an
