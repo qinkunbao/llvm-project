@@ -17,6 +17,7 @@ be signed/authenticated.
 At the IR level, it is represented using:
 
 * a [set of intrinsics](#intrinsics) (to sign/authenticate pointers)
+* a [call operand bundle](#operand-bundle) (to authenticate called pointers)
 * a [set of function attributes](#attributes) (to describe what pointers are
   signed and how, to control implicit codegen in the backend, as well as
   preserve invariants in the mid-level optimizer)
@@ -263,6 +264,39 @@ The ``integer discriminator`` argument is a small integer.
 The '``llvm.ptrauth.blend``' intrinsic combines a small integer discriminator
 with a pointer address discriminator, in a way that is specified by the target
 implementation.
+
+
+### Operand Bundle
+
+As a way to enforce CFI, function pointers used as indirect call targets are
+signed when materialized, and authenticated before calls.
+
+To prevent the intermediate, unauthenticated pointer from being exposed to
+attackers (similar to [``llvm.ptrauth.resign``](#llvm-ptrauth-resign)), the
+representation guarantees that the intermediate call target is never attackable
+(e.g., by being spilled to memory), using the ``ptrauth`` operand bundle.
+
+```llvm
+define void @f(void ()* %fp) {
+  call void %fp() [ "ptrauth"(i32 <key>, i64 <data>) ]
+  ret void
+}
+```
+
+is functionally equivalent to:
+
+```llvm
+define void @f(void ()* %fp) {
+  %fp_i = ptrtoint void ()* %fp to i64
+  %fp_auth = call i64 @llvm.ptrauth.auth.i64(i64 %fp_i, i32 <key>, i64 <data>)
+  %fp_auth_p = inttoptr i64 %fp_auth to void ()*
+  call void %fp_auth_p()
+  ret void
+}
+```
+
+but with the added guarantee that ``%fp_i``, ``%fp_auth``, and ``%fp_auth_p``
+are never attackable.
 
 
 ### Function Attributes
