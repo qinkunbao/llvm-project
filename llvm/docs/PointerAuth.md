@@ -467,3 +467,124 @@ The pointer authentication information is encoded into the addend, as such:
 | -- | -- | ----- | ----- | ------ | --------------- | -------- |
 |  1 |  0 |   0   |  key  |  addr  |  discriminator  |  addend  |
 ```
+
+### Pointer Authentication for ELF
+
+#### Assembly Representation
+
+The assembly-level syntax for relocations is shared with arm64e
+as described above. ELF also supports specifying pointer signing
+information on symbols, in order to support ``dlsym`` on signed C
+function pointers with discriminators.
+
+```asm
+    .aarch64_auth target,<key>,<discriminator>
+    or
+    .aarch64_auth target,none
+```
+
+where:
+* ``key`` is the ARMv8.3 key identifier (``ia``, ``ib``, ``da``, ``db``)
+* ``discriminator`` is the 16-bit unsigned discriminator value
+* The ``none`` variant is used when the address must not be signed by
+  ``dlsym`` (e.g. it is a global variable).
+
+#### Object File Representation
+
+At the binary object file level,
+[Authenticated Relocations](#authenticated-global-relocation) have two
+possible representations: symbolic relocations and relative relocations.
+
+Symbolic relocations are the signed equivalent of ``R_AARCH64_ABS64``,
+and are represented using the ``R_AARCH64_AUTH64`` relocation
+type. Relative relocations are the signed equivalent of
+``R_AARCH64_RELATIVE``, and are represented using the
+``R_AARCH64_AUTH_RELATIVE`` relocation type.  For both of these
+relocation types, the relocation's addend field, ``r_addend``, has its
+usual meaning. The pointer authentication information is stored at
+the place (i.e. the address being relocated) in the following format:
+
+```
+| 63-19 | 18-17 |   16   | 15     -      0 |
+| ----- | ----- | ------ | --------------- |
+|   0   |  key  |  addr  |  discriminator  |
+```
+
+Signed relative relocations may also be stored in a compressed format,
+similar to the ``RELR`` format used for regular relative relocations. In
+this format, a section with type ``SHT_AARCH64_AUTH_RELR`` stores
+a list of virtual addresses requiring relocation in the ``RELR``
+format. The section is referenced by a ``DT_AARCH64_AUTH_RELR``
+section in the dynamic table. At each of these addresses is a word
+in which the addend is stored in the lower 32 bits and the pointer
+authentication information is stored in the upper 32 bits. This format
+may only be used if the addend is < 2<sup>32</sup>, otherwise an
+``R_AARCH64_AUTH_RELATIVE`` relocation must be used.
+
+Implementation note: This prototype repository does not implement
+``AUTH_RELR``.
+
+In order to allow statically linked executables to relocate themselves,
+the linker must define symbols named ``__rela_auth_begin`` and
+``__rela_auth_end`` which point to the beginning and end of the
+region of ``.rela.dyn`` that contains ``R_AARCH64_AUTH_RELATIVE``
+relocations. These symbols would not be defined if RELR or Android
+relocation packing is enabled or if the executable has multiple
+partitions, thus linking a static executable with any of these features
+enabled would not be supported and would result in a link failure due
+to the undefined ``__rela_auth_begin`` and ``__rela_auth_end`` symbols.
+
+The pointer authentication information for symbols is stored in a
+section named ``.symauth`` with type ``SHT_AARCH64_AUTH``, which is
+a side table for `.symtab` similar to ``.symtab_shndx``. Each entry
+in the table is a 32-bit value specified as follows:
+
+```
+|  31  |  30   | 30-19 | 18-17 |   16   | 15     -      0 |
+| ---- | ----- | ----- | ----- | ------ | --------------- |
+| sign |  set  |   0   |  key  |    0   |  discriminator  |
+```
+
+The ``discriminator`` and ``key`` fields have the same meaning as
+they do for relocations (there is no ``addr`` field because this field
+has no meaning for symbols). The ``sign`` field indicates whether the
+address of this symbol should be signed when its address is taken by
+``dlsym`` and the ``set`` field indicates whether an assembly directive
+was used to set the symbol's pointer authentication information
+(this may be used by the linker to detect cases where a directive
+was required but not present).
+
+A similar side table named ``.dynauth`` is present in the dynamic
+symbol table of ELF executables and shared libraries and referenced
+by the dynamic table using tag ``DT_AARCH64_AUTH``.
+
+Object files conforming to the ABI should contain an ELF note. This
+note should contain an identifier for the "high-level" ABI that this
+object file conforms to (this may contain a vendor name and version
+number).
+
+Implementation note: This prototype has no support for the ELF note.
+The following purposes are anticipated for the note:
+
+1. The linker must issue an error at link time if note presence or the
+   ABI identifier is inconsistent between the input object files.
+
+2. If an ELF note is present at link time, the linker must issue an error
+   if a symbol with type ``STT_FUNC`` without pointer authentication
+   information would be present in the dynamic symbol table. In the
+   absence of an ELF note the prototype makes this behavior conditional
+   on a flag, ``--warn-ptrauth``.
+
+3. When the dynamic loader loads an executable without the note, or
+   with a note and an unrecognized ABI identifier, it must disable all
+   keys other than IA (which is reserved for use for return addresses)
+   by causing the corresponding key enable bits in ``SCTLR_EL1`` to
+   be cleared while the process is running, for example by issuing the
+   ``prctl(PR_PAC_SET_ENABLED_KEYS)`` syscall proposed in [this Linux
+   kernel patch](https://patchwork.kernel.org/patch/11695653/). This
+   will allow the process to load libraries conforming to the PAC
+   ABI without causing compatibility problems.
+
+4. If an ELF note was present in the executable, the dynamic loader must
+   forbid loading a binary without an ELF note or a binary with
+   a different ABI identifier in the ELF note.
