@@ -1814,7 +1814,8 @@ bool AsmPrinter::doFinalization(Module &M) {
     for (const GlobalValue &GV : M.global_values())
       if (!GV.use_empty() && !GV.isThreadLocal() &&
           !GV.hasDLLImportStorageClass() && !GV.getName().startswith("llvm.") &&
-          !GV.hasAtLeastLocalUnnamedAddr() && GV.getSection() != "llvm.ptrauth")
+          !GV.hasAtLeastLocalUnnamedAddr() &&
+          !(isa<GlobalVariable>(GV) && GV.getSection() == "llvm.ptrauth"))
         OutStreamer->emitAddrsigSym(getSymbol(&GV));
   }
 

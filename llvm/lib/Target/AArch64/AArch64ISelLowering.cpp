@@ -5515,7 +5515,7 @@ AArch64TargetLowering::LowerCall(CallLoweringInfo &CLI,
       assert(Subtarget->isTargetWindows() &&
              "Windows is the only supported COFF target");
       Callee = getGOT(G, DAG, AArch64II::MO_DLLIMPORT);
-    } else if (GV->getSection() == "llvm.ptrauth") {
+    } else if (isa<GlobalVariable>(GV) && GV->getSection() == "llvm.ptrauth") {
       // FIXME: this should deal with PtrAuthGlobalAddress instead
       // If we're directly referencing a ptrauth wrapper, we need to materialize
       // it from its __auth_ptr slot.
