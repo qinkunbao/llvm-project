@@ -49,7 +49,7 @@ cp $androiddir/bionic/libc/include/stdatomic.h $treepath/lib64/clang/$shortver/i
 cp $androiddir/bionic/libc/include/bits/stdatomic.h $treepath/lib64/clang/$shortver/include/bits/
 
 cp $builddir/lib/clang/$builddirver/lib/linux/libclang_rt.* $treepath/lib64/clang/$shortver/lib/linux/
-python $llvm_androiddir/mapfile.py $treepath/lib64/clang/$shortver/lib/linux/libclang_rt.hwasan-aarch64-android.so $treepath/lib64/clang/$shortver/lib/linux/libclang_rt.hwasan-aarch64-android.map.txt
+python3 $llvm_androiddir/mapfile.py $treepath/lib64/clang/$shortver/lib/linux/libclang_rt.hwasan-aarch64-android.so $treepath/lib64/clang/$shortver/lib/linux/libclang_rt.hwasan-aarch64-android.map.txt
 
 if [ -e $treepath/lib ] ; then
   mv $treepath/lib/* $treepath/lib64/
