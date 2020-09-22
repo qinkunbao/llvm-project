@@ -1413,7 +1413,8 @@ Error ELFBuilder<ELFT>::readProgramHeaders(const ELFFile<ELFT> &HeadersFile) {
     return Headers.takeError();
 
   for (const typename ELFFile<ELFT>::Elf_Phdr &Phdr : *Headers) {
-    if (Phdr.p_offset + Phdr.p_filesz > HeadersFile.getBufSize())
+    if (Phdr.p_offset + Phdr.p_filesz > HeadersFile.getBufSize() &&
+        Phdr.p_filesz != 0)
       return createStringError(
           errc::invalid_argument,
           "program header with offset 0x" + Twine::utohexstr(Phdr.p_offset) +
