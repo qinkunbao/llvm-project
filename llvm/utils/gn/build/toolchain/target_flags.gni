@@ -1,6 +1,11 @@
 import("//llvm/triples.gni")
 import("//llvm/utils/gn/build/toolchain/compiler.gni")
 
+declare_args() {
+  use_fake_pac = false
+  use_pac = false
+}
+
 # Flags in this file are passed both to the compiler that's building
 # compiler-rt at build time (via normal gn cflags/ldflags), as well as to the
 # compiler building compiler-rt test programs at test time (via
@@ -26,9 +31,15 @@ if (current_os == "android") {
       "-fptrauth-calls",
       "-fptrauth-indirect-gotos",
       "-fptrauth-auth-traps",
-      "-mllvm",
-      "-fake-pac",
     ]
+    if (use_pac) {
+      target_flags += [ "-march=armv8.3a" ]
+    } else if (use_fake_pac) {
+      target_flags += [
+        "-mllvm",
+        "-fake-pac",
+      ]
+    }
   }
 } else if (current_os == "ios") {
   if (current_cpu == "arm64") {
