@@ -1,0 +1,124 @@
+Building AOSP with the PAC Prototype
+====================================
+
+This prototype supports two possible targets:
+
+1. An emulated device (FVP) which uses real PAC instructions.
+2. A real device (DragonBoard 845c) which uses fake PAC.
+
+Fake PAC is a compiler hack that uses alternative instruction sequences
+in place of the PAC instructions, in order to enable testing on
+hardware without PAC support. These instruction sequences check that
+the key and discriminator used at "signing" time match the key and
+discriminator used at "authentication" time, by having both the
+"signing" and "authentication" operations XOR the discriminator
+and a bit representing the chosen key into the signature bits of
+the pointer. The goal of these alternative instruction sequences
+is not to provide any real security (the pointers are not actually
+authenticated), but rather to enable experimentation with different
+PAC signing schemes, as well as testing software compatibility
+with the presence of non-zero signature bits in pointer values,
+in an environment with the performance and other characteristics of
+real hardware.
+
+The DragonBoard 845c was chosen due to its fully open source vendor
+partition, which allows easy experimentation with ABI changes.
+
+Fake PAC should also work on FVP in case that is needed for debugging
+purposes.
+
+Building the compiler
+---------------------
+
+The compiler needs to be built against NDK r21 or later. This
+prototype requires the use of the gn build system [1] to build the
+compiler. Something like this args.gn should work:
+
+clang_base_path = "/usr"
+llvm_enable_assertions = true
+llvm_targets_to_build = "all"
+android_ndk_path = "/path/to/android-ndk-r21"
+is_static_build = true
+use_fake_pac = true
+
+The builtins library needs to match the ABI used by the target,
+i.e. it needs to use either real PAC or fake PAC. To build with real
+PAC instead of fake PAC, replace "use_fake_pac = true" with
+"use_pac = true" in args.gn.
+
+The script llvm/utils/frankendroid can be used to build and prepare a
+gn-built compiler and builtins library to be used by the Android build
+system. See the comments at the top of that file for how to use it.
+
+[1] https://github.com/llvm/llvm-project/blob/master/llvm/utils/gn/README.rst
+
+Building the NDK libc++
+-----------------------
+
+Some operating system components are built against NDK libc++,
+so its ABI needs to match. Apply the diff in aosp/ndk.diff and see
+aosp/ndk.notes for quick notes on how to rebuild this component of
+the NDK. Replace "-march=armv8.3a" with "-mllvm -fake-pac" in the
+code touched by the diff to build with fake PAC instead of real PAC.
+
+Patching AOSP
+-------------
+
+Apply the patches in the aosp directory with file names beginning
+00* to the root of your AOSP checkout with "patch -p1". The patches
+strace.diff and mesa3d.diff need to be applied to the respective
+directories in external.
+
+Patching the kernel
+-------------------
+
+This prototype requires use of the android-mainline kernel. The patches
+in the linux directory must be applied and the kernel must be rebuilt.
+This applies to both FVP and DragonBoard 845c. Follow the normal
+target-specific instructions linked below to rebuild the kernel.
+
+Building AOSP
+-------------
+
+Generate the file bionic/libc/include/symauth.h in the AOSP source
+directory by running the script llvm/utils/compute-discriminators.
+The contents of this file are dependent on the signing schema so it
+must be updated if the schema is changed.
+
+Some environment variables need to be set. Set
+TARGET_EXPERIMENTAL_PAC=1 to build with real PAC, or
+TARGET_EXPERIMENTAL_PAC=fake to build with fake PAC.
+
+Set LLVM_PREBUILTS_VERSION to the basename of your LLVM
+source directory. This is the name of the subdirectory under
+prebuilts/clang/host/linux-x86 that was created by the frankendroid
+script.
+
+Set ENABLE_CFI=false because this prototype is not compatible
+with the software-based CFI used in Android.
+
+Aside from that, follow the target-specific instructions.
+
+For FVP, see https://cs.android.com/android/platform/superproject/+/master:device/generic/goldfish/fvpbase/README.md
+For DragonBoard 845c, see https://source.android.com/setup/build/devices#845cdragonboard
+
+Running AOSP
+------------
+
+The resulting image should be fully functional with some
+exceptions.
+
+Applications built against the existing ABI should work as a result
+of the PAC keys used for function pointers being disabled in the
+processes hosting said applications, but with fake PAC, applications
+must be built with x18 reserved because fake PAC uses x18 to store the
+state of which keys are enabled (with real PAC this state is stored in
+a system register which is inaccessible to applications, so this is
+not a compatibility concern for real PAC). The NDK started building
+applications with x18 reserved by default starting with r20 so it is
+likely that applications will work as long as they were built recently.
+
+64-bit applications that use WebView and the PAC ABI will crash on
+startup because WebView is provided as a prebuilt and therefore does
+not conform to the PAC ABI. The WebView prebuilt will need to be
+rebuilt and instructions for doing so will be provided at a later date.
