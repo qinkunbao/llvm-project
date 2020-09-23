@@ -165,8 +165,6 @@ vmsplice
 wait4
 write
 writev
-android_memset16
-android_memset32
 llrint
 llrintf
 lrint
