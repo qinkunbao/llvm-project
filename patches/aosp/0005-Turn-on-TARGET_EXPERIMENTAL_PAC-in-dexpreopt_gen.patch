@@ -1,7 +1,7 @@
-From 6ccfcbe8db12b375aa0e6e0a0c4c5ba8a4b7daee Mon Sep 17 00:00:00 2001
+From 77a420829b49d672e237edc82af12e954c931051 Mon Sep 17 00:00:00 2001
 From: Peter Collingbourne <pcc@google.com>
 Date: Fri, 10 Jul 2020 20:51:53 -0700
-Subject: [PATCH 5/5] Turn on TARGET_EXPERIMENTAL_PAC in dexpreopt_gen
+Subject: [PATCH 05/16] Turn on TARGET_EXPERIMENTAL_PAC in dexpreopt_gen
 
 ---
  build/make/core/dex_preopt_odex_install.mk | 1 +
@@ -9,7 +9,7 @@ Subject: [PATCH 5/5] Turn on TARGET_EXPERIMENTAL_PAC in dexpreopt_gen
  2 files changed, 3 insertions(+), 2 deletions(-)
 
 diff --git a/build/make/core/dex_preopt_odex_install.mk b/build/make/core/dex_preopt_odex_install.mk
-index f738c3e8ba..a7b42e1004 100644
+index 799b62321b..4b4e5857c3 100644
 --- a/build/make/core/dex_preopt_odex_install.mk
 +++ b/build/make/core/dex_preopt_odex_install.mk
 @@ -270,6 +270,7 @@ ifdef LOCAL_DEX_PREOPT
@@ -21,10 +21,10 @@ index f738c3e8ba..a7b42e1004 100644
  	-global_soong $(PRIVATE_GLOBAL_SOONG_CONFIG) \
  	-global $(PRIVATE_GLOBAL_CONFIG) \
 diff --git a/build/soong/dexpreopt/dexpreopt.go b/build/soong/dexpreopt/dexpreopt.go
-index 974daf935d..da43bf8f2a 100644
+index 578f69db8a..a1d1f67543 100644
 --- a/build/soong/dexpreopt/dexpreopt.go
 +++ b/build/soong/dexpreopt/dexpreopt.go
-@@ -375,8 +375,8 @@ func dexpreoptCommand(ctx android.PathContext, globalSoong *GlobalSoongConfig, g
+@@ -413,8 +413,8 @@ func dexpreoptCommand(ctx android.PathContext, globalSoong *GlobalSoongConfig, g
  
  	cmd := rule.Command().Text(`ANDROID_LOG_TAGS="*:e"`)
  
@@ -36,5 +36,5 @@ index 974daf935d..da43bf8f2a 100644
  
  	cmd = cmd.Tool(globalSoong.Dex2oat).
 -- 
-2.27.0.389.gc38d7665816-goog
+2.28.0.681.g6f77f65b4e-goog
 

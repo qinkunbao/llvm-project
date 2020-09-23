@@ -1,0 +1,229 @@
+From 1cc813649165c6fd698e097121fba3c1324702a6 Mon Sep 17 00:00:00 2001
+From: Peter Collingbourne <pcc@google.com>
+Date: Fri, 18 Sep 2020 18:02:29 -0700
+Subject: [PATCH 13/16] Make it so that we actually use the v8a zygote to host
+ v8a apps
+
+---
+ frameworks/base/cmds/app_process/app_main.cpp |  9 +++
+ .../core/java/android/os/ZygoteProcess.java   | 63 +++++++++++++++++++
+ .../jni/com_android_internal_os_Zygote.cpp    |  3 +
+ .../main/java/dalvik/system/VMRuntime.java    |  1 +
+ 4 files changed, 76 insertions(+)
+
+diff --git a/frameworks/base/cmds/app_process/app_main.cpp b/frameworks/base/cmds/app_process/app_main.cpp
+index 12083b6fe2..7539e48ed3 100644
+--- a/frameworks/base/cmds/app_process/app_main.cpp
++++ b/frameworks/base/cmds/app_process/app_main.cpp
+@@ -310,12 +310,21 @@ int main(int argc, char* const argv[])
+             args.add(String8("start-system-server"));
+         }
+ 
++#ifdef ANDROID_EXPERIMENTAL_PAC
++        const char *prop;
++        if (getppid() == 1) {
++            prop = "arm64-v9a";
++        } else {
++            prop = "arm64-v8a";
++        }
++#else
+         char prop[PROP_VALUE_MAX];
+         if (property_get(ABI_LIST_PROPERTY, prop, NULL) == 0) {
+             LOG_ALWAYS_FATAL("app_process: Unable to determine ABI list from property %s.",
+                 ABI_LIST_PROPERTY);
+             return 11;
+         }
++#endif
+ 
+         String8 abiFlag("--abi-list=");
+         abiFlag.append(prop);
+diff --git a/frameworks/base/core/java/android/os/ZygoteProcess.java b/frameworks/base/core/java/android/os/ZygoteProcess.java
+index 77e724beb7..32e0d040d4 100644
+--- a/frameworks/base/core/java/android/os/ZygoteProcess.java
++++ b/frameworks/base/core/java/android/os/ZygoteProcess.java
+@@ -98,6 +98,8 @@ public class ZygoteProcess {
+      */
+     private final LocalSocketAddress mZygoteSecondarySocketAddress;
+ 
++    private final LocalSocketAddress mZygoteV8aSocketAddress;
++
+     /**
+      * The name of the socket used to communicate with the primary USAP pool.
+      */
+@@ -108,6 +110,8 @@ public class ZygoteProcess {
+      */
+     private final LocalSocketAddress mUsapPoolSecondarySocketAddress;
+ 
++    private final LocalSocketAddress mUsapPoolV8aSocketAddress;
++
+     public ZygoteProcess() {
+         mZygoteSocketAddress =
+                 new LocalSocketAddress(Zygote.PRIMARY_SOCKET_NAME,
+@@ -115,6 +119,9 @@ public class ZygoteProcess {
+         mZygoteSecondarySocketAddress =
+                 new LocalSocketAddress(Zygote.SECONDARY_SOCKET_NAME,
+                                        LocalSocketAddress.Namespace.RESERVED);
++        mZygoteV8aSocketAddress =
++                new LocalSocketAddress("zygote_arm64_v8a",
++                                       LocalSocketAddress.Namespace.RESERVED);
+ 
+         mUsapPoolSocketAddress =
+                 new LocalSocketAddress(Zygote.USAP_POOL_PRIMARY_SOCKET_NAME,
+@@ -122,6 +129,9 @@ public class ZygoteProcess {
+         mUsapPoolSecondarySocketAddress =
+                 new LocalSocketAddress(Zygote.USAP_POOL_SECONDARY_SOCKET_NAME,
+                                        LocalSocketAddress.Namespace.RESERVED);
++        mUsapPoolV8aSocketAddress =
++                new LocalSocketAddress("usap_pool_arm64_v8a",
++                                       LocalSocketAddress.Namespace.RESERVED);
+ 
+         // This constructor is used to create the primary and secondary Zygotes, which can support
+         // Unspecialized App Process Pools.
+@@ -132,9 +142,11 @@ public class ZygoteProcess {
+                          LocalSocketAddress secondarySocketAddress) {
+         mZygoteSocketAddress = primarySocketAddress;
+         mZygoteSecondarySocketAddress = secondarySocketAddress;
++        mZygoteV8aSocketAddress = null;
+ 
+         mUsapPoolSocketAddress = null;
+         mUsapPoolSecondarySocketAddress = null;
++        mUsapPoolV8aSocketAddress = null;
+ 
+         // This constructor is used to create the primary and secondary Zygotes, which CAN NOT
+         // support Unspecialized App Process Pools.
+@@ -277,6 +289,8 @@ public class ZygoteProcess {
+      */
+     private ZygoteState secondaryZygoteState;
+ 
++    private ZygoteState v8aZygoteState;
++
+     /**
+      * If this Zygote supports the creation and maintenance of a USAP pool.
+      *
+@@ -849,6 +863,9 @@ public class ZygoteProcess {
+         if (secondaryZygoteState != null) {
+             secondaryZygoteState.close();
+         }
++        if (v8aZygoteState != null) {
++            v8aZygoteState.close();
++        }
+     }
+ 
+     /**
+@@ -937,6 +954,9 @@ public class ZygoteProcess {
+             if (ok) {
+                 ok = maybeSetApiDenylistExemptions(secondaryZygoteState, true);
+             }
++            if (ok) {
++                ok = maybeSetApiDenylistExemptions(v8aZygoteState, true);
++            }
+             return ok;
+         }
+     }
+@@ -953,6 +973,7 @@ public class ZygoteProcess {
+             mHiddenApiAccessLogSampleRate = rate;
+             maybeSetHiddenApiAccessLogSampleRate(primaryZygoteState);
+             maybeSetHiddenApiAccessLogSampleRate(secondaryZygoteState);
++            maybeSetHiddenApiAccessLogSampleRate(v8aZygoteState);
+         }
+     }
+ 
+@@ -968,6 +989,7 @@ public class ZygoteProcess {
+             mHiddenApiAccessStatslogSampleRate = rate;
+             maybeSetHiddenApiAccessStatslogSampleRate(primaryZygoteState);
+             maybeSetHiddenApiAccessStatslogSampleRate(secondaryZygoteState);
++            maybeSetHiddenApiAccessStatslogSampleRate(v8aZygoteState);
+         }
+     }
+ 
+@@ -1074,6 +1096,18 @@ public class ZygoteProcess {
+         }
+     }
+ 
++    @GuardedBy("mLock")
++    private void attemptConnectionToV8aZygote() throws IOException {
++        if (v8aZygoteState == null || v8aZygoteState.isClosed()) {
++            v8aZygoteState =
++                    ZygoteState.connect(mZygoteV8aSocketAddress,
++                            mUsapPoolV8aSocketAddress);
++
++            maybeSetApiDenylistExemptions(v8aZygoteState, false);
++            maybeSetHiddenApiAccessLogSampleRate(v8aZygoteState);
++        }
++    }
++
+     /**
+      * Tries to open a session socket to a Zygote process with a compatible ABI if one is not
+      * already open. If a compatible session socket is already open that session socket is returned.
+@@ -1097,6 +1131,15 @@ public class ZygoteProcess {
+                     return secondaryZygoteState;
+                 }
+             }
++
++            if (mZygoteV8aSocketAddress != null) {
++                // The primary zygote didn't match. Try the secondary.
++                attemptConnectionToV8aZygote();
++
++                if (v8aZygoteState.matches(abi)) {
++                    return v8aZygoteState;
++                }
++            }
+         } catch (IOException ioe) {
+             throw new ZygoteStartFailedEx("Error connecting to zygote", ioe);
+         }
+@@ -1262,6 +1305,26 @@ public class ZygoteProcess {
+                 }
+             }
+ 
++            if (mZygoteV8aSocketAddress != null) {
++                try {
++                    attemptConnectionToV8aZygote();
++
++                    try {
++                        v8aZygoteState.mZygoteOutputWriter.write(command);
++                        v8aZygoteState.mZygoteOutputWriter.flush();
++
++                        // Wait for the v8a Zygote to finish its work.
++                        v8aZygoteState.mZygoteInputStream.readInt();
++                    } catch (IOException ioe) {
++                        throw new IllegalStateException(
++                                "USAP pool state change cause an irrecoverable error",
++                                ioe);
++                    }
++                } catch (IOException ioe) {
++                    // No v8a zygote present.  This is expected on some devices.
++                }
++            }
++
+             // Wait for the response from the primary zygote here so the primary/secondary zygotes
+             // can work concurrently.
+             try {
+diff --git a/frameworks/base/core/jni/com_android_internal_os_Zygote.cpp b/frameworks/base/core/jni/com_android_internal_os_Zygote.cpp
+index 9f47b80d8f..af9e7b4e96 100644
+--- a/frameworks/base/core/jni/com_android_internal_os_Zygote.cpp
++++ b/frameworks/base/core/jni/com_android_internal_os_Zygote.cpp
+@@ -911,6 +911,9 @@ static void DetachDescriptors(JNIEnv* env,
+     }
+ 
+     for (int fd : fds_to_close) {
++      if (fd == -1) {
++        continue;
++      }
+       ALOGV("Switching descriptor %d to /dev/null", fd);
+       if (dup3(devnull_fd, fd, O_CLOEXEC) == -1) {
+         fail_fn(StringPrintf("Failed dup3() on descriptor %d: %s", fd, strerror(errno)));
+diff --git a/libcore/libart/src/main/java/dalvik/system/VMRuntime.java b/libcore/libart/src/main/java/dalvik/system/VMRuntime.java
+index b6bb2bf60f..bc04f51e72 100644
+--- a/libcore/libart/src/main/java/dalvik/system/VMRuntime.java
++++ b/libcore/libart/src/main/java/dalvik/system/VMRuntime.java
+@@ -62,6 +62,7 @@ public final class VMRuntime {
+         ABI_TO_INSTRUCTION_SET_MAP.put("x86_64", "x86_64");
+         ABI_TO_INSTRUCTION_SET_MAP.put("arm64-v8a", "arm64");
+         ABI_TO_INSTRUCTION_SET_MAP.put("arm64-v8a-hwasan", "arm64");
++        ABI_TO_INSTRUCTION_SET_MAP.put("arm64-v9a", "arm64");
+     }
+ 
+     /**
+-- 
+2.28.0.681.g6f77f65b4e-goog
+

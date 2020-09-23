@@ -1,0 +1,25 @@
+From 78c656be5d6081c14ee0463de0c038bfcd4f9a57 Mon Sep 17 00:00:00 2001
+From: Peter Collingbourne <pcc@google.com>
+Date: Fri, 10 Jul 2020 22:51:34 -0700
+Subject: [PATCH 12/16] Fix another () -> (void)
+
+---
+ system/core/libstats/socket/stats_event.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/system/core/libstats/socket/stats_event.c b/system/core/libstats/socket/stats_event.c
+index f3e808756c..544557d673 100644
+--- a/system/core/libstats/socket/stats_event.c
++++ b/system/core/libstats/socket/stats_event.c
+@@ -87,7 +87,7 @@ static int64_t get_elapsed_realtime_ns() {
+     return (int64_t)t.tv_sec * 1000000000LL + t.tv_nsec;
+ }
+ 
+-AStatsEvent* AStatsEvent_obtain() {
++AStatsEvent* AStatsEvent_obtain(void) {
+     AStatsEvent* event = malloc(sizeof(AStatsEvent));
+     event->lastFieldPos = 0;
+     event->numBytesWritten = 2;  // reserve first 2 bytes for root event type and number of elements
+-- 
+2.28.0.681.g6f77f65b4e-goog
+

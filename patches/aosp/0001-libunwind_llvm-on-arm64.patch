@@ -1,7 +1,7 @@
-From b403efb7b4f44f9da75919e044b9fe6d4aea81ab Mon Sep 17 00:00:00 2001
+From 83c40826454550903c87c90168d9db67d4242f49 Mon Sep 17 00:00:00 2001
 From: Peter Collingbourne <pcc@google.com>
 Date: Thu, 9 Jul 2020 16:28:16 -0700
-Subject: [PATCH 1/5] libunwind_llvm on arm64
+Subject: [PATCH 01/16] libunwind_llvm on arm64
 
 ---
  bionic/libc/Android.bp             | 2 +-
@@ -12,10 +12,10 @@ Subject: [PATCH 1/5] libunwind_llvm on arm64
  5 files changed, 12 insertions(+), 3 deletions(-)
 
 diff --git a/bionic/libc/Android.bp b/bionic/libc/Android.bp
-index 48c9dd0448..ff1c987b9c 100644
+index 49b75c1030..e73e266b39 100644
 --- a/bionic/libc/Android.bp
 +++ b/bionic/libc/Android.bp
-@@ -1665,7 +1665,7 @@ cc_library {
+@@ -1684,7 +1684,7 @@ cc_library {
              },
  
              shared: {
@@ -62,7 +62,7 @@ index a2abb1a322..3c2ee40204 100644
          my_static_libraries += libgcc_stripped
          my_ldflags += -Wl,--exclude-libs,libgcc_stripped.a
 diff --git a/build/soong/cc/stl.go b/build/soong/cc/stl.go
-index 4e74c7fb0a..08141168c3 100644
+index e18fe95477..2d42a1fa67 100644
 --- a/build/soong/cc/stl.go
 +++ b/build/soong/cc/stl.go
 @@ -156,7 +156,7 @@ func needsLibAndroidSupport(ctx BaseModuleContext) bool {
@@ -89,5 +89,5 @@ index 578330637c..aa98f2e072 100644
      min_sdk_version: "apex_inherit",
  }
 -- 
-2.27.0.389.gc38d7665816-goog
+2.28.0.681.g6f77f65b4e-goog
 

@@ -1,0 +1,234 @@
+From a7e873cf38b60347d48e3e06513c8a90572de95f Mon Sep 17 00:00:00 2001
+From: Peter Collingbourne <pcc@google.com>
+Date: Tue, 22 Sep 2020 19:00:45 -0700
+Subject: [PATCH 16/16] Use correct function types in pthread tests
+
+---
+ bionic/tests/pthread_test.cpp | 108 +++++++++++++++++++++++++---------
+ 1 file changed, 79 insertions(+), 29 deletions(-)
+
+diff --git a/bionic/tests/pthread_test.cpp b/bionic/tests/pthread_test.cpp
+index 851b86f508..ad0fa3a472 100644
+--- a/bionic/tests/pthread_test.cpp
++++ b/bionic/tests/pthread_test.cpp
+@@ -942,6 +942,11 @@ static void pthread_rwlock_wakeup_helper(RwlockWakeupHelperArg* arg) {
+   arg->progress = RwlockWakeupHelperArg::LOCK_ACCESSED;
+ }
+ 
++static void* pthread_rwlock_wakeup_thread(void* ptr) {
++  pthread_rwlock_wakeup_helper(reinterpret_cast<RwlockWakeupHelperArg*>(ptr));
++  return nullptr;
++}
++
+ static void test_pthread_rwlock_reader_wakeup_writer(std::function<int (pthread_rwlock_t*)> lock_function) {
+   RwlockWakeupHelperArg wakeup_arg;
+   ASSERT_EQ(0, pthread_rwlock_init(&wakeup_arg.lock, nullptr));
+@@ -952,8 +957,7 @@ static void test_pthread_rwlock_reader_wakeup_writer(std::function<int (pthread_
+   wakeup_arg.lock_function = lock_function;
+ 
+   pthread_t thread;
+-  ASSERT_EQ(0, pthread_create(&thread, nullptr,
+-    reinterpret_cast<void* (*)(void*)>(pthread_rwlock_wakeup_helper), &wakeup_arg));
++  ASSERT_EQ(0, pthread_create(&thread, nullptr, pthread_rwlock_wakeup_thread, &wakeup_arg));
+   WaitUntilThreadSleep(wakeup_arg.tid);
+   ASSERT_EQ(RwlockWakeupHelperArg::LOCK_WAITING, wakeup_arg.progress);
+ 
+@@ -1019,8 +1023,7 @@ static void test_pthread_rwlock_writer_wakeup_reader(std::function<int (pthread_
+   wakeup_arg.lock_function = lock_function;
+ 
+   pthread_t thread;
+-  ASSERT_EQ(0, pthread_create(&thread, nullptr,
+-    reinterpret_cast<void* (*)(void*)>(pthread_rwlock_wakeup_helper), &wakeup_arg));
++  ASSERT_EQ(0, pthread_create(&thread, nullptr, pthread_rwlock_wakeup_thread, &wakeup_arg));
+   WaitUntilThreadSleep(wakeup_arg.tid);
+   ASSERT_EQ(RwlockWakeupHelperArg::LOCK_WAITING, wakeup_arg.progress);
+ 
+@@ -1100,6 +1103,11 @@ static void pthread_rwlock_wakeup_timeout_helper(RwlockWakeupHelperArg* arg) {
+   arg->progress = RwlockWakeupHelperArg::LOCK_TIMEDOUT;
+ }
+ 
++static void* pthread_rwlock_wakeup_timeout_thread(void* ptr) {
++  pthread_rwlock_wakeup_timeout_helper(reinterpret_cast<RwlockWakeupHelperArg*>(ptr));
++  return nullptr;
++}
++
+ static void pthread_rwlock_timedrdlock_timeout_helper(
+     clockid_t clock, int (*lock_function)(pthread_rwlock_t* __rwlock, const timespec* __timeout)) {
+   RwlockWakeupHelperArg wakeup_arg;
+@@ -1112,8 +1120,7 @@ static void pthread_rwlock_timedrdlock_timeout_helper(
+   wakeup_arg.clock = clock;
+ 
+   pthread_t thread;
+-  ASSERT_EQ(0, pthread_create(&thread, nullptr,
+-      reinterpret_cast<void* (*)(void*)>(pthread_rwlock_wakeup_timeout_helper), &wakeup_arg));
++  ASSERT_EQ(0, pthread_create(&thread, nullptr, pthread_rwlock_wakeup_timeout_thread, &wakeup_arg));
+   WaitUntilThreadSleep(wakeup_arg.tid);
+   ASSERT_EQ(RwlockWakeupHelperArg::LOCK_WAITING, wakeup_arg.progress);
+ 
+@@ -1180,8 +1187,7 @@ static void pthread_rwlock_timedwrlock_timeout_helper(
+   wakeup_arg.clock = clock;
+ 
+   pthread_t thread;
+-  ASSERT_EQ(0, pthread_create(&thread, nullptr,
+-      reinterpret_cast<void* (*)(void*)>(pthread_rwlock_wakeup_timeout_helper), &wakeup_arg));
++  ASSERT_EQ(0, pthread_create(&thread, nullptr, pthread_rwlock_wakeup_timeout_thread, &wakeup_arg));
+   WaitUntilThreadSleep(wakeup_arg.tid);
+   ASSERT_EQ(RwlockWakeupHelperArg::LOCK_WAITING, wakeup_arg.progress);
+ 
+@@ -1261,15 +1267,25 @@ class RwlockKindTestHelper {
+   void CreateWriterThread(pthread_t& thread, std::atomic<pid_t>& tid) {
+     tid = 0;
+     ThreadArg* arg = new ThreadArg(this, tid);
+-    ASSERT_EQ(0, pthread_create(&thread, nullptr,
+-                                reinterpret_cast<void* (*)(void*)>(WriterThreadFn), arg));
++    ASSERT_EQ(0, pthread_create(
++                     &thread, nullptr,
++                     [](void* arg) -> void* {
++                       WriterThreadFn(reinterpret_cast<ThreadArg*>(arg));
++                       return nullptr;
++                     },
++                     arg));
+   }
+ 
+   void CreateReaderThread(pthread_t& thread, std::atomic<pid_t>& tid) {
+     tid = 0;
+     ThreadArg* arg = new ThreadArg(this, tid);
+-    ASSERT_EQ(0, pthread_create(&thread, nullptr,
+-                                reinterpret_cast<void* (*)(void*)>(ReaderThreadFn), arg));
++    ASSERT_EQ(0, pthread_create(
++                     &thread, nullptr,
++                     [](void* arg) -> void* {
++                       ReaderThreadFn(reinterpret_cast<ThreadArg*>(arg));
++                       return nullptr;
++                     },
++                     arg));
+   }
+ 
+  private:
+@@ -1498,8 +1514,13 @@ class pthread_CondWakeupTest : public ::testing::Test {
+       std::function<int(pthread_cond_t* cond, pthread_mutex_t* mutex)> wait_function) {
+     progress = INITIALIZED;
+     this->wait_function = wait_function;
+-    ASSERT_EQ(0, pthread_create(&thread, nullptr, reinterpret_cast<void* (*)(void*)>(WaitThreadFn),
+-                                this));
++    ASSERT_EQ(0, pthread_create(
++                     &thread, nullptr,
++                     [](void* arg) -> void* {
++                       WaitThreadFn(reinterpret_cast<pthread_CondWakeupTest*>(arg));
++                       return nullptr;
++                     },
++                     this));
+     while (progress != WAITING) {
+       usleep(5000);
+     }
+@@ -1874,7 +1895,7 @@ TEST(pthread, pthread_attr_getstack_in_signal_handler) {
+   ASSERT_EQ(0, munmap(sig_stack, sig_stack_size));
+ }
+ 
+-static void pthread_attr_getstack_18908062_helper(void*) {
++static void pthread_attr_getstack_18908062_helper() {
+   char local_variable;
+   pthread_attr_t attributes;
+   pthread_getattr_np(pthread_self(), &attributes);
+@@ -1891,9 +1912,13 @@ static void pthread_attr_getstack_18908062_helper(void*) {
+ // [stack_base, stack_base + stack_size). see b/18908062.
+ TEST(pthread, pthread_attr_getstack_18908062) {
+   pthread_t t;
+-  ASSERT_EQ(0, pthread_create(&t, nullptr,
+-            reinterpret_cast<void* (*)(void*)>(pthread_attr_getstack_18908062_helper),
+-            nullptr));
++  ASSERT_EQ(0, pthread_create(
++                   &t, nullptr,
++                   [](void*) -> void* {
++                     pthread_attr_getstack_18908062_helper();
++                     return nullptr;
++                   },
++                   nullptr));
+   ASSERT_EQ(0, pthread_join(t, nullptr));
+ }
+ 
+@@ -2198,8 +2223,13 @@ class MutexWakeupHelper {
+     tid = 0;
+ 
+     pthread_t thread;
+-    ASSERT_EQ(0, pthread_create(&thread, nullptr,
+-      reinterpret_cast<void* (*)(void*)>(MutexWakeupHelper::thread_fn), this));
++    ASSERT_EQ(0, pthread_create(
++                     &thread, nullptr,
++                     [](void* arg) -> void* {
++                       thread_fn(reinterpret_cast<MutexWakeupHelper*>(arg));
++                       return nullptr;
++                     },
++                     this));
+ 
+     WaitUntilThreadSleep(tid);
+     ASSERT_EQ(LOCK_WAITING, progress);
+@@ -2296,8 +2326,13 @@ public:
+     child_tid = 0;
+ 
+     pthread_t thread;
+-    ASSERT_EQ(0, pthread_create(&thread, nullptr,
+-              reinterpret_cast<void* (*)(void*)>(PIMutexWakeupHelper::thread_fn), this));
++    ASSERT_EQ(0, pthread_create(
++                     &thread, nullptr,
++                     [](void* arg) -> void* {
++                       thread_fn(reinterpret_cast<PIMutexWakeupHelper*>(arg));
++                       return nullptr;
++                     },
++                     this));
+ 
+     WaitUntilThreadSleep(child_tid);
+     ASSERT_EQ(LOCK_CHILD_READY, progress);
+@@ -2704,8 +2739,13 @@ TEST(pthread, pthread_barrier_smoke) {
+   for (size_t i = 0; i < threads.size(); ++i) {
+     args[i].id = i;
+     args[i].data = &data;
+-    ASSERT_EQ(0, pthread_create(&threads[i], nullptr,
+-                                reinterpret_cast<void* (*)(void*)>(BarrierTestHelper), &args[i]));
++    ASSERT_EQ(0, pthread_create(
++                     &threads[i], nullptr,
++                     [](void* arg) -> void* {
++                       BarrierTestHelper(reinterpret_cast<BarrierTestHelperArg*>(arg));
++                       return nullptr;
++                     },
++                     &args[i]));
+   }
+   for (size_t i = 0; i < threads.size(); ++i) {
+     ASSERT_EQ(0, pthread_join(threads[i], nullptr));
+@@ -2731,8 +2771,13 @@ TEST(pthread, pthread_barrier_destroy) {
+   BarrierDestroyTestArg arg;
+   arg.tid = 0;
+   arg.barrier = &barrier;
+-  ASSERT_EQ(0, pthread_create(&thread, nullptr,
+-                              reinterpret_cast<void* (*)(void*)>(BarrierDestroyTestHelper), &arg));
++  ASSERT_EQ(0, pthread_create(
++                   &thread, nullptr,
++                   [](void* arg) -> void* {
++                     BarrierDestroyTestHelper(reinterpret_cast<BarrierDestroyTestArg*>(arg));
++                     return nullptr;
++                   },
++                   &arg));
+   WaitUntilThreadSleep(arg.tid);
+   ASSERT_EQ(EBUSY, pthread_barrier_destroy(&barrier));
+   ASSERT_EQ(PTHREAD_BARRIER_SERIAL_THREAD, pthread_barrier_wait(&barrier));
+@@ -2777,9 +2822,14 @@ TEST(pthread, pthread_barrier_check_ordering) {
+     args[i].array = array;
+     args[i].array_length = THREAD_COUNT;
+     args[i].id = i;
+-    ASSERT_EQ(0, pthread_create(&threads[i], nullptr,
+-                                reinterpret_cast<void* (*)(void*)>(BarrierOrderingTestHelper),
+-                                &args[i]));
++    ASSERT_EQ(0,
++              pthread_create(
++                  &threads[i], nullptr,
++                  [](void* arg) -> void* {
++                    BarrierOrderingTestHelper(reinterpret_cast<BarrierOrderingTestHelperArg*>(arg));
++                    return nullptr;
++                  },
++                  &args[i]));
+   }
+   for (size_t i = 0; i < THREAD_COUNT; ++i) {
+     ASSERT_EQ(0, pthread_join(threads[i], nullptr));
+-- 
+2.28.0.681.g6f77f65b4e-goog
+

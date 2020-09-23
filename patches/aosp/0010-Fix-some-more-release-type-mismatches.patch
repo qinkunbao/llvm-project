@@ -1,0 +1,96 @@
+From dfadbaf3568c260ec77588d6106c23e803a436f7 Mon Sep 17 00:00:00 2001
+From: Peter Collingbourne <pcc@google.com>
+Date: Fri, 10 Jul 2020 20:52:36 -0700
+Subject: [PATCH 10/16] Fix some more release type mismatches
+
+---
+ frameworks/base/libs/hwui/jni/FontFamily.cpp       | 12 ++++--------
+ frameworks/base/libs/hwui/jni/Typeface.cpp         |  4 ++--
+ frameworks/base/libs/hwui/jni/fonts/Font.cpp       |  4 ++--
+ frameworks/base/libs/hwui/jni/fonts/FontFamily.cpp |  4 ++--
+ 4 files changed, 10 insertions(+), 14 deletions(-)
+
+diff --git a/frameworks/base/libs/hwui/jni/FontFamily.cpp b/frameworks/base/libs/hwui/jni/FontFamily.cpp
+index a2fef1e193..ae0aed6878 100644
+--- a/frameworks/base/libs/hwui/jni/FontFamily.cpp
++++ b/frameworks/base/libs/hwui/jni/FontFamily.cpp
+@@ -50,10 +50,6 @@ static inline NativeFamilyBuilder* toNativeBuilder(jlong ptr) {
+     return reinterpret_cast<NativeFamilyBuilder*>(ptr);
+ }
+ 
+-static inline FontFamilyWrapper* toFamily(jlong ptr) {
+-    return reinterpret_cast<FontFamilyWrapper*>(ptr);
+-}
+-
+ template<typename Ptr> static inline jlong toJLong(Ptr ptr) {
+     return reinterpret_cast<jlong>(ptr);
+ }
+@@ -86,16 +82,16 @@ static jlong FontFamily_create(CRITICAL_JNI_PARAMS_COMMA jlong builderPtr) {
+     return toJLong(new FontFamilyWrapper(std::move(family)));
+ }
+ 
+-static void releaseBuilder(jlong builderPtr) {
+-    delete toNativeBuilder(builderPtr);
++static void releaseBuilder(NativeFamilyBuilder* builderPtr) {
++    delete builderPtr;
+ }
+ 
+ static jlong FontFamily_getBuilderReleaseFunc(CRITICAL_JNI_PARAMS) {
+     return toJLong(&releaseBuilder);
+ }
+ 
+-static void releaseFamily(jlong familyPtr) {
+-    delete toFamily(familyPtr);
++static void releaseFamily(FontFamilyWrapper* familyPtr) {
++    delete familyPtr;
+ }
+ 
+ static jlong FontFamily_getFamilyReleaseFunc(CRITICAL_JNI_PARAMS) {
+diff --git a/frameworks/base/libs/hwui/jni/Typeface.cpp b/frameworks/base/libs/hwui/jni/Typeface.cpp
+index 2a5f402a4f..3a87caecb9 100644
+--- a/frameworks/base/libs/hwui/jni/Typeface.cpp
++++ b/frameworks/base/libs/hwui/jni/Typeface.cpp
+@@ -71,8 +71,8 @@ static jlong Typeface_createWeightAlias(JNIEnv* env, jobject, jlong familyHandle
+     return toJLong(Typeface::createWithDifferentBaseWeight(toTypeface(familyHandle), weight));
+ }
+ 
+-static void releaseFunc(jlong ptr) {
+-    delete toTypeface(ptr);
++static void releaseFunc(Typeface* ptr) {
++    delete ptr;
+ }
+ 
+ // CriticalNative
+diff --git a/frameworks/base/libs/hwui/jni/fonts/Font.cpp b/frameworks/base/libs/hwui/jni/fonts/Font.cpp
+index 5714cd1d03..1289c0aaea 100644
+--- a/frameworks/base/libs/hwui/jni/fonts/Font.cpp
++++ b/frameworks/base/libs/hwui/jni/fonts/Font.cpp
+@@ -43,8 +43,8 @@ static inline NativeFontBuilder* toBuilder(jlong ptr) {
+     return reinterpret_cast<NativeFontBuilder*>(ptr);
+ }
+ 
+-static void releaseFont(jlong font) {
+-    delete reinterpret_cast<FontWrapper*>(font);
++static void releaseFont(FontWrapper* font) {
++    delete font;
+ }
+ 
+ static void release_global_ref(const void* /*data*/, void* context) {
+diff --git a/frameworks/base/libs/hwui/jni/fonts/FontFamily.cpp b/frameworks/base/libs/hwui/jni/fonts/FontFamily.cpp
+index df619d9f14..2799109df9 100644
+--- a/frameworks/base/libs/hwui/jni/fonts/FontFamily.cpp
++++ b/frameworks/base/libs/hwui/jni/fonts/FontFamily.cpp
+@@ -41,8 +41,8 @@ static inline FontWrapper* toFontWrapper(jlong ptr) {
+     return reinterpret_cast<FontWrapper*>(ptr);
+ }
+ 
+-static void releaseFontFamily(jlong family) {
+-    delete reinterpret_cast<FontFamilyWrapper*>(family);
++static void releaseFontFamily(FontFamilyWrapper* family) {
++    delete family;
+ }
+ 
+ // Regular JNI
+-- 
+2.28.0.681.g6f77f65b4e-goog
+

@@ -1,7 +1,7 @@
-From b5c17962f49c93f72aee8084bdcbeceb434d3d26 Mon Sep 17 00:00:00 2001
+From dbe77fbe3be3d14e8017a70ae9474ebe994e121a Mon Sep 17 00:00:00 2001
 From: Peter Collingbourne <pcc@google.com>
 Date: Thu, 9 Jul 2020 16:33:03 -0700
-Subject: [PATCH 3/5] PAC
+Subject: [PATCH 03/16] PAC
 
 ---
  art/compiler/jni/quick/jni_compiler.cc        |  1 +
@@ -60,24 +60,21 @@ Subject: [PATCH 3/5] PAC
  .../boringssl/src/crypto/fipsmodule/bcm.c     |  4 ++
  external/libcxxabi/src/private_typeinfo.cpp   | 12 +++++
  .../libunwind_llvm/src/UnwindRegistersSave.S  |  2 +
- .../swiftshader/src/D3D9/Direct3DDevice9.cpp  |  3 ++
  external/swiftshader/src/Main/FrameBuffer.cpp |  3 ++
- .../src/Pipeline/SpirvShaderSampling.cpp      | 15 ++++--
+ .../src/Pipeline/SpirvShaderSampling.cpp      |  6 ++-
  .../swiftshader/src/Reactor/Coroutine.hpp     | 11 ++++-
  external/swiftshader/src/Renderer/Blitter.cpp |  3 ++
  .../swiftshader/src/Renderer/Renderer.cpp     |  9 ++++
- .../llvm/lib/Support/TargetParser.cpp         |  3 +-
- .../CodeGen/AArch64/arm64-platform-reg.ll     |  1 +
  .../vixl/src/aarch64/assembler-aarch64.cc     | 33 +++++++++----
  external/vixl/src/aarch64/constants-aarch64.h | 20 ++++----
  .../com/android/internal/os/ZygoteInit.java   | 11 ++++-
  .../com/android/internal/os/ZygoteServer.java | 23 +++++----
- .../base/core/jni/android/graphics/Matrix.cpp |  3 +-
- .../jni/android/graphics/text/LineBreaker.cpp |  8 ++--
- .../android/graphics/text/MeasuredText.cpp    |  4 +-
- .../jni/com_android_internal_os_Zygote.cpp    | 10 +++-
+ .../jni/com_android_internal_os_Zygote.cpp    |  9 ++--
  .../com_android_internal_os_ZygoteInit.cpp    | 27 +++++++++++
  frameworks/base/core/jni/fd_utils.cpp         |  2 +
+ .../libs/hwui/jni/android_graphics_Matrix.cpp |  3 +-
+ .../base/libs/hwui/jni/text/LineBreaker.cpp   |  8 ++--
+ .../base/libs/hwui/jni/text/MeasuredText.cpp  |  4 +-
  .../native/opengl/libs/EGL/getProcAddress.cpp |  7 +++
  frameworks/native/opengl/libs/GLES2/gl2.cpp   |  7 +++
  frameworks/native/opengl/libs/GLES_CM/gl.cpp  |  7 +++
@@ -90,17 +87,16 @@ Subject: [PATCH 3/5] PAC
  .../rsCpuIntrinsics_advsimd_YuvToRGB.S        |  2 +-
  libnativehelper/JniConstants.c                |  2 +-
  system/bt/osi/src/alarm.cc                    |  4 +-
- .../libcutils/arch-arm64/android_memset.S     |  2 +
- system/core/libstats/socket/statsd_writer.c   | 12 ++---
+ system/core/libstats/socket/statsd_writer.c   | 18 +++----
  system/core/libstats/socket/statsd_writer.h   |  6 +--
- system/core/libunwindstack/RegsArm64.cpp      |  3 ++
+ system/core/libunwindstack/RegsArm64.cpp      | 16 +------
  system/core/libutils/Threads.cpp              | 47 ++++++++-----------
  system/core/rootdir/init.zygote64_32.rc       |  2 +
  system/sepolicy/private/file_contexts         |  2 +
- 93 files changed, 597 insertions(+), 147 deletions(-)
+ 89 files changed, 580 insertions(+), 164 deletions(-)
 
 diff --git a/art/compiler/jni/quick/jni_compiler.cc b/art/compiler/jni/quick/jni_compiler.cc
-index 913a3baa27..3518f451cc 100644
+index e7dd6cf6be..b8a257862f 100644
 --- a/art/compiler/jni/quick/jni_compiler.cc
 +++ b/art/compiler/jni/quick/jni_compiler.cc
 @@ -518,6 +518,7 @@ static JniCompiledMethod ArtJniCompileMethodInternal(const CompilerOptions& comp
@@ -112,10 +108,10 @@ index 913a3baa27..3518f451cc 100644
        ArtMethod::EntryPointFromJniOffset(InstructionSetPointerSize(instruction_set));
    if (UNLIKELY(is_critical_native)) {
 diff --git a/art/compiler/optimizing/code_generator_arm64.cc b/art/compiler/optimizing/code_generator_arm64.cc
-index 7d1af05f12..f2135aa602 100644
+index 46c65aff4d..1bd6380a48 100644
 --- a/art/compiler/optimizing/code_generator_arm64.cc
 +++ b/art/compiler/optimizing/code_generator_arm64.cc
-@@ -1172,6 +1172,9 @@ void CodeGeneratorARM64::MaybeIncrementHotness(bool is_frame_entry) {
+@@ -1177,6 +1177,9 @@ void CodeGeneratorARM64::MaybeIncrementHotness(bool is_frame_entry) {
        __ Ldr(lr, MemOperand(tr, entrypoint_offset));
        // Note: we don't record the call here (and therefore don't generate a stack
        // map), as the entrypoint should never be suspended.
@@ -125,7 +121,7 @@ index 7d1af05f12..f2135aa602 100644
        __ Blr(lr);
        if (HasEmptyFrame()) {
          CHECK(is_frame_entry);
-@@ -1828,6 +1831,9 @@ void CodeGeneratorARM64::InvokeRuntime(QuickEntrypointEnum entrypoint,
+@@ -1833,6 +1836,9 @@ void CodeGeneratorARM64::InvokeRuntime(QuickEntrypointEnum entrypoint,
    // For JIT, thunk sharing is per-method, so the gains would be smaller or even negative.
    if (slow_path == nullptr || GetCompilerOptions().IsJitCompiler()) {
      __ Ldr(lr, MemOperand(tr, entrypoint_offset.Int32Value()));
@@ -135,7 +131,7 @@ index 7d1af05f12..f2135aa602 100644
      // Ensure the pc position is recorded immediately after the `blr` instruction.
      ExactAssemblyScope eas(GetVIXLAssembler(), kInstructionSize, CodeBufferCheckScope::kExactSize);
      __ blr(lr);
-@@ -1849,6 +1855,9 @@ void CodeGeneratorARM64::InvokeRuntimeWithoutRecordingPcInfo(int32_t entry_point
+@@ -1854,6 +1860,9 @@ void CodeGeneratorARM64::InvokeRuntimeWithoutRecordingPcInfo(int32_t entry_point
                                                               SlowPathCode* slow_path) {
    ValidateInvokeRuntimeWithoutRecordingPcInfo(instruction, slow_path);
    __ Ldr(lr, MemOperand(tr, entry_point_offset));
@@ -145,7 +141,7 @@ index 7d1af05f12..f2135aa602 100644
    __ Blr(lr);
  }
  
-@@ -4354,6 +4363,7 @@ void InstructionCodeGeneratorARM64::VisitInvokeInterface(HInvokeInterface* invok
+@@ -4421,6 +4430,7 @@ void InstructionCodeGeneratorARM64::VisitInvokeInterface(HInvokeInterface* invok
    __ Ldr(temp, MemOperand(temp, method_offset));
    // lr = temp->GetEntryPoint();
    __ Ldr(lr, MemOperand(temp, entry_point.Int32Value()));
@@ -153,7 +149,7 @@ index 7d1af05f12..f2135aa602 100644
  
    {
      // Ensure the pc position is recorded immediately after the `blr` instruction.
-@@ -4474,6 +4484,7 @@ void CodeGeneratorARM64::GenerateStaticOrDirectCall(
+@@ -4541,6 +4551,7 @@ void CodeGeneratorARM64::GenerateStaticOrDirectCall(
    auto call_code_pointer_member = [&](MemberOffset offset) {
      // LR = callee_method->member;
      __ Ldr(lr, MemOperand(XRegisterFrom(callee_method), offset.Int32Value()));
@@ -161,7 +157,7 @@ index 7d1af05f12..f2135aa602 100644
      {
        // Use a scope to help guarantee that `RecordPcInfo()` records the correct pc.
        ExactAssemblyScope eas(GetVIXLAssembler(),
-@@ -4576,6 +4587,7 @@ void CodeGeneratorARM64::GenerateVirtualCall(
+@@ -4643,6 +4654,7 @@ void CodeGeneratorARM64::GenerateVirtualCall(
    __ Ldr(temp, MemOperand(temp, method_offset));
    // lr = temp->GetEntryPoint();
    __ Ldr(lr, MemOperand(temp, entry_point.SizeValue()));
@@ -169,7 +165,7 @@ index 7d1af05f12..f2135aa602 100644
    {
      // Use a scope to help guarantee that `RecordPcInfo()` records the correct pc.
      ExactAssemblyScope eas(GetVIXLAssembler(), kInstructionSize, CodeBufferCheckScope::kExactSize);
-@@ -6711,6 +6723,9 @@ static void LoadReadBarrierMarkIntrospectionEntrypoint(arm64::Arm64Assembler& as
+@@ -6786,6 +6798,9 @@ static void LoadReadBarrierMarkIntrospectionEntrypoint(arm64::Arm64Assembler& as
    const int32_t entry_point_offset =
        Thread::ReadBarrierMarkEntryPointsOffset<kArm64PointerSize>(ip0.GetCode());
    __ Ldr(entrypoint, MemOperand(tr, entry_point_offset));
@@ -179,7 +175,7 @@ index 7d1af05f12..f2135aa602 100644
  }
  
  void CodeGeneratorARM64::CompileBakerReadBarrierThunk(Arm64Assembler& assembler,
-@@ -6766,7 +6781,7 @@ void CodeGeneratorARM64::CompileBakerReadBarrierThunk(Arm64Assembler& assembler,
+@@ -6841,7 +6856,7 @@ void CodeGeneratorARM64::CompileBakerReadBarrierThunk(Arm64Assembler& assembler,
          __ Ldar(ip0.W(), MemOperand(base_reg));
        }
        // Do not unpoison. With heap poisoning enabled, the entrypoint expects a poisoned reference.
@@ -188,7 +184,7 @@ index 7d1af05f12..f2135aa602 100644
        break;
      }
      case BakerReadBarrierKind::kArray: {
-@@ -6791,7 +6806,7 @@ void CodeGeneratorARM64::CompileBakerReadBarrierThunk(Arm64Assembler& assembler,
+@@ -6866,7 +6881,7 @@ void CodeGeneratorARM64::CompileBakerReadBarrierThunk(Arm64Assembler& assembler,
        __ Bfi(ip1, ip0, 3, 6);               // Insert ip0 to the entrypoint address to create
                                              // a switch case target based on the index register.
        __ Mov(ip0, base_reg);                // Move the base register to ip0.
@@ -479,10 +475,10 @@ index 892790b118..03e6b6c74d 100644
  }  // namespace interpreter
  }  // namespace art
 diff --git a/art/runtime/interpreter/mterp/arm64ng/main.S b/art/runtime/interpreter/mterp/arm64ng/main.S
-index d1ff448cee..2b56d938bf 100644
+index 51ebea164b..b1525e87bd 100644
 --- a/art/runtime/interpreter/mterp/arm64ng/main.S
 +++ b/art/runtime/interpreter/mterp/arm64ng/main.S
-@@ -859,6 +859,9 @@ END \name
+@@ -855,6 +855,9 @@ END \name
        FETCH wip2, 1
        .endif
        ldr lr, [x0, #ART_METHOD_QUICK_CODE_OFFSET_64]
@@ -492,7 +488,7 @@ index d1ff448cee..2b56d938bf 100644
        blr lr
     .endif
     ldrb wip, [xINST]
-@@ -1108,6 +1111,9 @@ END \name
+@@ -1104,6 +1107,9 @@ END \name
        FETCH wip2, 1
        .endif
        ldr lr, [x0, #ART_METHOD_QUICK_CODE_OFFSET_64]
@@ -502,7 +498,7 @@ index d1ff448cee..2b56d938bf 100644
        blr lr
     .endif
     ldrb wip, [xINST]
-@@ -1639,6 +1645,9 @@ NterpNewInstance:
+@@ -1633,6 +1639,9 @@ NterpNewInstance:
     cbnz wMR, 3f
  4:
     ldr lr, [xSELF, #THREAD_ALLOC_OBJECT_ENTRYPOINT_OFFSET]
@@ -512,7 +508,7 @@ index d1ff448cee..2b56d938bf 100644
     blr lr
  1:
     lsr w1, wINST, #8                    // w1 <- A
-@@ -1666,6 +1675,9 @@ NterpNewArray:
+@@ -1660,6 +1669,9 @@ NterpNewArray:
     lsr     w1, wINST, #12              // w1<- B
     GET_VREG w1, w1                     // w1<- vB (array length)
     ldr lr, [xSELF, #THREAD_ALLOC_ARRAY_ENTRYPOINT_OFFSET]
@@ -596,7 +592,7 @@ index b7043dcae8..a67613d14f 100644
  
  #if defined(__aarch64__)
 diff --git a/bionic/libc/bionic/__libc_init_main_thread.cpp b/bionic/libc/bionic/__libc_init_main_thread.cpp
-index 56a8488888..1887265540 100644
+index 95f46e9fad..113c64012b 100644
 --- a/bionic/libc/bionic/__libc_init_main_thread.cpp
 +++ b/bionic/libc/bionic/__libc_init_main_thread.cpp
 @@ -82,6 +82,9 @@ extern "C" void __libc_init_main_thread_early(const KernelArgumentBlock& args,
@@ -660,7 +656,7 @@ index 437de78ce4..379ed20e26 100644
 +}
 +#endif
 diff --git a/bionic/libc/bionic/libc_init_static.cpp b/bionic/libc/bionic/libc_init_static.cpp
-index cf5423e00a..b633a1b99e 100644
+index e3a447dbeb..06c901688d 100644
 --- a/bionic/libc/bionic/libc_init_static.cpp
 +++ b/bionic/libc/bionic/libc_init_static.cpp
 @@ -63,14 +63,30 @@ extern "C" int __cxa_atexit(void (*)(void *), void *, void *);
@@ -695,7 +691,7 @@ index cf5423e00a..b633a1b99e 100644
    if (__rela_iplt_start == nullptr || __rela_iplt_end == nullptr) {
      // These symbols are not emitted by gold. Gold has code to do so, but for
      // whatever reason it is not being run. In these cases ifuncs cannot be
-@@ -173,10 +189,10 @@ __noreturn static void __real_libc_init(void *raw_args,
+@@ -174,10 +190,10 @@ __noreturn static void __real_libc_init(void *raw_args,
    __libc_init_AT_SECURE(args.envp);
    layout_static_tls(args);
    __libc_init_main_thread_final();
@@ -708,7 +704,7 @@ index cf5423e00a..b633a1b99e 100644
  
    // Several Linux ABIs don't pass the onexit pointer, and the ones that
 diff --git a/bionic/libc/bionic/pthread_create.cpp b/bionic/libc/bionic/pthread_create.cpp
-index d4a8bef269..d4e7181219 100644
+index c528105745..20c23ecacb 100644
 --- a/bionic/libc/bionic/pthread_create.cpp
 +++ b/bionic/libc/bionic/pthread_create.cpp
 @@ -128,7 +128,7 @@ static void __init_shadow_call_stack(pthread_internal_t* thread __unused) {
@@ -836,10 +832,10 @@ index 3a58ef3642..46a9fb78df 100644
 +
 +#include "symauth.h"
 diff --git a/bionic/linker/linker.cpp b/bionic/linker/linker.cpp
-index 10608f46f9..2cce414105 100644
+index 302e4b3f99..99fdb369c4 100644
 --- a/bionic/linker/linker.cpp
 +++ b/bionic/linker/linker.cpp
-@@ -2287,6 +2287,14 @@ bool do_dlsym(void* handle,
+@@ -2293,6 +2293,14 @@ bool do_dlsym(void* handle,
        } else {
          *symbol = reinterpret_cast<void*>(found->resolve_symbol_address(sym));
        }
@@ -854,7 +850,7 @@ index 10608f46f9..2cce414105 100644
        failure_guard.Disable();
        LD_LOG(kLogDlsym,
               "... dlsym successful: sym_name=\"%s\", sym_ver=\"%s\", found in=\"%s\", address=%p",
-@@ -2859,6 +2867,13 @@ bool soinfo::prelink_image() {
+@@ -2865,6 +2873,13 @@ bool soinfo::prelink_image() {
          symtab_ = reinterpret_cast<ElfW(Sym)*>(load_bias + d->d_un.d_ptr);
          break;
  
@@ -961,7 +957,7 @@ index 72be5f74c8..f16622aacf 100644
  
  #if defined(__x86_64__)
 diff --git a/bionic/linker/linker_soinfo.cpp b/bionic/linker/linker_soinfo.cpp
-index 4f67003b8e..8ac5136f5a 100644
+index 60fd242cca..9291b96405 100644
 --- a/bionic/linker/linker_soinfo.cpp
 +++ b/bionic/linker/linker_soinfo.cpp
 @@ -468,6 +468,9 @@ static void call_function(const char* function_name __unused,
@@ -985,7 +981,7 @@ index 4f67003b8e..8ac5136f5a 100644
    TRACE("[ Done calling d-tor %s @ %p for '%s' ]", function_name, function, realpath);
  }
 diff --git a/bionic/linker/linker_soinfo.h b/bionic/linker/linker_soinfo.h
-index e1a3c303d5..53296932b7 100644
+index 7372a51e8e..d1c912b483 100644
 --- a/bionic/linker/linker_soinfo.h
 +++ b/bionic/linker/linker_soinfo.h
 @@ -180,11 +180,13 @@ struct soinfo {
@@ -1004,10 +1000,10 @@ index e1a3c303d5..53296932b7 100644
    size_t nbucket_;
    size_t nchain_;
 diff --git a/build/make/core/binary.mk b/build/make/core/binary.mk
-index a70a047a62..66f7ea3d2f 100644
+index be008e68a2..1359247a23 100644
 --- a/build/make/core/binary.mk
 +++ b/build/make/core/binary.mk
-@@ -178,6 +178,11 @@ ifneq ($(LOCAL_SDK_VERSION),)
+@@ -231,6 +231,11 @@ ifneq ($(LOCAL_SDK_VERSION),)
    my_ndk_stl_shared_lib_fullpath :=
    my_ndk_stl_static_lib :=
    my_cpu_variant := $(TARGET_$(LOCAL_2ND_ARCH_VAR_PREFIX)CPU_ABI)
@@ -1042,10 +1038,10 @@ index c7c96d5cff..341fe5a66c 100644
  	// variable values.  The environment is available through ctx.Config().Getenv, ctx.Config().IsEnvTrue, etc.
  	os.Clearenv()
 diff --git a/build/soong/cc/builder.go b/build/soong/cc/builder.go
-index b4f9947d75..0ba18e07ae 100644
+index ef653481dd..f5e3873c5c 100644
 --- a/build/soong/cc/builder.go
 +++ b/build/soong/cc/builder.go
-@@ -140,7 +140,7 @@ var (
+@@ -141,7 +141,7 @@ var (
  		blueprint.RuleParams{
  			Depfile:     "${out}.d",
  			Deps:        blueprint.DepsGCC,
@@ -1054,7 +1050,7 @@ index b4f9947d75..0ba18e07ae 100644
  			CommandDeps: []string{"$stripPath", "$xzCmd"},
  			Pool:        darwinStripPool,
  		},
-@@ -204,7 +204,7 @@ var (
+@@ -214,7 +214,7 @@ var (
  	// -w has been added since header-abi-dumper does not need to produce any sort of diagnostic information.
  	sAbiDump, sAbiDumpRE = remoteexec.StaticRules(pctx, "sAbiDump",
  		blueprint.RuleParams{
@@ -1063,7 +1059,7 @@ index b4f9947d75..0ba18e07ae 100644
  			CommandDeps: []string{"$sAbiDumper"},
  		}, &remoteexec.REParams{
  			Labels:       map[string]string{"type": "abi-dump", "tool": "header-abi-dumper"},
-@@ -910,7 +910,7 @@ func TransformObjsToObj(ctx android.ModuleContext, objFiles android.Paths,
+@@ -931,7 +931,7 @@ func TransformObjsToObj(ctx android.ModuleContext, objFiles android.Paths,
  func TransformBinaryPrefixSymbols(ctx android.ModuleContext, prefix string, inputFile android.Path,
  	flags builderFlags, outputFile android.WritablePath) {
  
@@ -1073,10 +1069,10 @@ index b4f9947d75..0ba18e07ae 100644
  	ctx.Build(pctx, android.BuildParams{
  		Rule:        prefixSymbols,
 diff --git a/build/soong/cc/compiler.go b/build/soong/cc/compiler.go
-index d5ea2c3ae0..84cf42673d 100644
+index f745820044..5514eb2924 100644
 --- a/build/soong/cc/compiler.go
 +++ b/build/soong/cc/compiler.go
-@@ -369,6 +369,24 @@ func (compiler *baseCompiler) compilerFlags(ctx ModuleContext, flags Flags, deps
+@@ -386,6 +386,24 @@ func (compiler *baseCompiler) compilerFlags(ctx ModuleContext, flags Flags, deps
  	flags.Local.ConlyFlags = config.ClangFilterUnknownCflags(flags.Local.ConlyFlags)
  	flags.Local.LdFlags = config.ClangFilterUnknownCflags(flags.Local.LdFlags)
  
@@ -1122,7 +1118,7 @@ index 62d8cc8fb7..ed16c0fe93 100644
  	switch arch.CpuVariant {
  	case "cortex-a53", "cortex-a72", "cortex-a73", "kryo", "exynos-m1", "exynos-m2":
 diff --git a/build/soong/cc/config/global.go b/build/soong/cc/config/global.go
-index 373fc77f41..5fe2e81dd9 100644
+index 32f163d882..4e996a4b6a 100644
 --- a/build/soong/cc/config/global.go
 +++ b/build/soong/cc/config/global.go
 @@ -88,7 +88,6 @@ var (
@@ -1158,7 +1154,7 @@ index 58f8a294ea..a050f8211b 100644
  		"crossCompile")
  )
 diff --git a/build/soong/cc/lto.go b/build/soong/cc/lto.go
-index 4489fc7dd0..2a19202d2e 100644
+index 9868cdfb95..476b238a43 100644
 --- a/build/soong/cc/lto.go
 +++ b/build/soong/cc/lto.go
 @@ -87,15 +87,17 @@ func (lto *lto) flags(ctx BaseModuleContext, flags Flags) Flags {
@@ -1205,10 +1201,10 @@ index acdc581a2d..6dfb8256bc 100644
  
  func (ndk *ndkPrebuiltStlLinker) link(ctx ModuleContext, flags Flags,
 diff --git a/build/soong/cc/sanitize.go b/build/soong/cc/sanitize.go
-index 72ad6d7a0e..66665d8303 100644
+index 174dcfea5c..384aae4254 100644
 --- a/build/soong/cc/sanitize.go
 +++ b/build/soong/cc/sanitize.go
-@@ -509,7 +509,7 @@ func (sanitize *sanitize) flags(ctx ModuleContext, flags Flags) Flags {
+@@ -531,7 +531,7 @@ func (sanitize *sanitize) flags(ctx ModuleContext, flags Flags) Flags {
  		flags.Local.LdFlags = append(flags.Local.LdFlags, `-Wl,-rpath,\$$ORIGIN`)
  	}
  
@@ -1217,7 +1213,7 @@ index 72ad6d7a0e..66665d8303 100644
  		if ctx.Arch().ArchType == android.Arm {
  			// __cfi_check needs to be built as Thumb (see the code in linker_cfi.cpp). LLVM is not set up
  			// to do this on a function basis, so force Thumb on the entire module.
-@@ -535,8 +535,18 @@ func (sanitize *sanitize) flags(ctx ModuleContext, flags Flags) Flags {
+@@ -557,8 +557,18 @@ func (sanitize *sanitize) flags(ctx ModuleContext, flags Flags) Flags {
  		flags.Local.CFlags = append(flags.Local.CFlags, intOverflowCflags...)
  	}
  
@@ -1239,10 +1235,10 @@ index 72ad6d7a0e..66665d8303 100644
  		flags.Local.CFlags = append(flags.Local.CFlags, sanitizeArg)
  		flags.Local.AsFlags = append(flags.Local.AsFlags, sanitizeArg)
 diff --git a/build/soong/dexpreopt/dexpreopt.go b/build/soong/dexpreopt/dexpreopt.go
-index e49fa984e7..974daf935d 100644
+index 4dbda49b33..578f69db8a 100644
 --- a/build/soong/dexpreopt/dexpreopt.go
 +++ b/build/soong/dexpreopt/dexpreopt.go
-@@ -373,9 +373,13 @@ func dexpreoptCommand(ctx android.PathContext, globalSoong *GlobalSoongConfig, g
+@@ -411,9 +411,13 @@ func dexpreoptCommand(ctx android.PathContext, globalSoong *GlobalSoongConfig, g
  		dexLocationArg = strings.TrimPrefix(dexLocationArg, "/system")
  	}
  
@@ -1260,10 +1256,10 @@ index e49fa984e7..974daf935d 100644
  		FlagWithOutput("--write-invocation-to=", invocationPath).ImplicitOutput(invocationPath).
  		Flag("--runtime-arg").FlagWithArg("-Xms", global.Dex2oatXms).
 diff --git a/build/soong/java/dexpreopt_bootjars.go b/build/soong/java/dexpreopt_bootjars.go
-index 41205598ec..81eee0e50c 100644
+index 3addc1a748..b675dff9d4 100644
 --- a/build/soong/java/dexpreopt_bootjars.go
 +++ b/build/soong/java/dexpreopt_bootjars.go
-@@ -393,6 +393,10 @@ func buildBootImageVariant(ctx android.SingletonContext, image *bootImageVariant
+@@ -402,6 +402,10 @@ func buildBootImageVariant(ctx android.SingletonContext, image *bootImageVariant
  		cmd.Text(`ANDROID_LOG_TAGS="*:v"`)
  	}
  
@@ -1337,15 +1333,15 @@ index 40f018425a..c27dc340fc 100755
    ${CLANG_BIN}/llvm-objcopy \
    ${CLANG_BIN}/llvm-readelf \
 diff --git a/build/soong/ui/build/soong.go b/build/soong/ui/build/soong.go
-index 749acb3d5a..677ede690e 100644
+index fb21430114..849327de40 100644
 --- a/build/soong/ui/build/soong.go
 +++ b/build/soong/ui/build/soong.go
 @@ -38,7 +38,7 @@ func runSoong(ctx Context, config Config) {
  		ctx.BeginTrace(metrics.RunSoong, "blueprint bootstrap")
  		defer ctx.EndTrace()
  
--		cmd := Command(ctx, config, "blueprint bootstrap", "build/blueprint/bootstrap.bash", "-t")
-+		cmd := Command(ctx, config, "blueprint bootstrap", "build/blueprint/bootstrap.bash")
+-		cmd := Command(ctx, config, "blueprint bootstrap", "build/blueprint/bootstrap.bash", "-t", "-n")
++		cmd := Command(ctx, config, "blueprint bootstrap", "build/blueprint/bootstrap.bash", "-n")
  		cmd.Environment.Set("BLUEPRINTDIR", "./build/blueprint")
  		cmd.Environment.Set("BOOTSTRAP", "./build/blueprint/bootstrap.bash")
  		cmd.Environment.Set("BUILDDIR", config.SoongOutDir())
@@ -1452,20 +1448,6 @@ index c7c49598bd..199907467f 100644
  NO_EXEC_STACK_DIRECTIVE
 +
 +#include "symauth.h"
-diff --git a/external/swiftshader/src/D3D9/Direct3DDevice9.cpp b/external/swiftshader/src/D3D9/Direct3DDevice9.cpp
-index 2f69420042..b3b932dfa2 100644
---- a/external/swiftshader/src/D3D9/Direct3DDevice9.cpp
-+++ b/external/swiftshader/src/D3D9/Direct3DDevice9.cpp
-@@ -1848,6 +1848,9 @@ namespace D3D9
- 				blitState = update;
- 				blitRoutine = sw::FrameBuffer::copyRoutine(blitState);
- 				blitFunction = (void(__cdecl*)(void*, void*))blitRoutine->getEntry();
-+#ifdef ANDROID_EXPERIMENTAL_PAC
-+                                blitFunction = __builtin_ptrauth_sign_unauthenticated(blitFunction, 0, 0);
-+#endif
- 			}
- 
- 			blitFunction(destBuffer, sourceBuffer);
 diff --git a/external/swiftshader/src/Main/FrameBuffer.cpp b/external/swiftshader/src/Main/FrameBuffer.cpp
 index 2dc5cd660d..67b500a873 100644
 --- a/external/swiftshader/src/Main/FrameBuffer.cpp
@@ -1481,47 +1463,24 @@ index 2dc5cd660d..67b500a873 100644
  
  		blitFunction(framebuffer, renderbuffer, &cursor);
 diff --git a/external/swiftshader/src/Pipeline/SpirvShaderSampling.cpp b/external/swiftshader/src/Pipeline/SpirvShaderSampling.cpp
-index 0de505925a..b74519e267 100644
+index c7902cb2bc..2486ff5679 100644
 --- a/external/swiftshader/src/Pipeline/SpirvShaderSampling.cpp
 +++ b/external/swiftshader/src/Pipeline/SpirvShaderSampling.cpp
-@@ -42,7 +42,10 @@ SpirvShader::ImageSampler *SpirvShader::getImageSampler(uint32_t inst, vk::Sampl
+@@ -90,7 +90,11 @@ SpirvShader::ImageSampler *SpirvShader::getImageSampler(uint32_t inst, vk::Sampl
  
- 	if(auto routine = imageDescriptor->device->findInConstCache(key))
- 	{
--		return (ImageSampler *)(routine->getEntry());
-+		auto *sampler = (ImageSampler *)(routine->getEntry());
-+#ifdef ANDROID_EXPERIMENTAL_PAC
-+                sampler = __builtin_ptrauth_sign_unauthenticated(sampler, 0, 0);
-+#endif
- 	}
+ 	auto routine = cache->getOrCreate(key, createSamplingRoutine);
  
- 	std::unique_lock<std::mutex> lock(imageDescriptor->device->getSamplingRoutineCacheMutex());
-@@ -51,7 +54,10 @@ SpirvShader::ImageSampler *SpirvShader::getImageSampler(uint32_t inst, vk::Sampl
- 	auto routine = cache->query(key);
- 	if(routine)
- 	{
--		return (ImageSampler *)(routine->getEntry());
-+		auto *sampler = (ImageSampler *)(routine->getEntry());
-+#ifdef ANDROID_EXPERIMENTAL_PAC
-+                sampler = __builtin_ptrauth_sign_unauthenticated(sampler, 0, 0);
-+#endif
- 	}
- 
- 	auto type = imageDescriptor->type;
-@@ -95,7 +101,10 @@ SpirvShader::ImageSampler *SpirvShader::getImageSampler(uint32_t inst, vk::Sampl
- 	routine = emitSamplerRoutine(instruction, samplerState);
- 
- 	cache->add(key, routine);
 -	return (ImageSampler *)(routine->getEntry());
 +	auto *sampler = (ImageSampler *)(routine->getEntry());
 +#ifdef ANDROID_EXPERIMENTAL_PAC
-+        sampler = __builtin_ptrauth_sign_unauthenticated(sampler, 0, 0);
++	sampler = __builtin_ptrauth_sign_unauthenticated(sampler, 0, 0);
 +#endif
++	return sampler;
  }
  
  std::shared_ptr<rr::Routine> SpirvShader::emitSamplerRoutine(ImageInstruction instruction, const Sampler &samplerState)
 diff --git a/external/swiftshader/src/Reactor/Coroutine.hpp b/external/swiftshader/src/Reactor/Coroutine.hpp
-index d70ecf0070..92049b242b 100644
+index 05d9204ad2..0dd3933aa6 100644
 --- a/external/swiftshader/src/Reactor/Coroutine.hpp
 +++ b/external/swiftshader/src/Reactor/Coroutine.hpp
 @@ -33,12 +33,18 @@ protected:
@@ -1543,7 +1502,7 @@ index d70ecf0070..92049b242b 100644
  		return pfn(handle, out);
  	}
  
-@@ -191,6 +197,9 @@ Coroutine<Return(Arguments...)>::operator()(Arguments... args)
+@@ -189,6 +195,9 @@ Coroutine<Return(Arguments...)>::operator()(Arguments... args)
  	std::function<Nucleus::CoroutineHandle()> coroutineBegin = [=] {
  		using Sig = Nucleus::CoroutineBegin<Arguments...>;
  		auto pfn = (Sig *)routine->getEntry(Nucleus::CoroutineEntryBegin);
@@ -1553,7 +1512,7 @@ index d70ecf0070..92049b242b 100644
  		auto handle = pfn(args...);
  		return handle;
  	};
-@@ -214,4 +223,4 @@ inline void Yield(const T &val)
+@@ -212,4 +221,4 @@ inline void Yield(const T &val)
  
  }  // namespace rr
  
@@ -1595,30 +1554,6 @@ index de1ab7b909..b39e2e376a 100644
 +#endif
  			draw->setupPrimitives = setupPrimitives;
  			draw->setupState = setupState;
- 
-diff --git a/external/swiftshader/third_party/llvm-7.0/llvm/lib/Support/TargetParser.cpp b/external/swiftshader/third_party/llvm-7.0/llvm/lib/Support/TargetParser.cpp
-index 2c167a4d08..2e757ba4d0 100644
---- a/external/swiftshader/third_party/llvm-7.0/llvm/lib/Support/TargetParser.cpp
-+++ b/external/swiftshader/third_party/llvm-7.0/llvm/lib/Support/TargetParser.cpp
-@@ -935,5 +935,6 @@ unsigned llvm::AArch64::parseArchVersion(StringRef Arch) {
- }
- 
- bool llvm::AArch64::isX18ReservedByDefault(const Triple &TT) {
--  return TT.isOSDarwin() || TT.isOSFuchsia() || TT.isOSWindows();
-+  return TT.isAndroid() || TT.isOSDarwin() || TT.isOSFuchsia() ||
-+         TT.isOSWindows();
- }
-diff --git a/external/swiftshader/third_party/llvm-7.0/llvm/test/CodeGen/AArch64/arm64-platform-reg.ll b/external/swiftshader/third_party/llvm-7.0/llvm/test/CodeGen/AArch64/arm64-platform-reg.ll
-index 145066e697..899759624c 100644
---- a/external/swiftshader/third_party/llvm-7.0/llvm/test/CodeGen/AArch64/arm64-platform-reg.ll
-+++ b/external/swiftshader/third_party/llvm-7.0/llvm/test/CodeGen/AArch64/arm64-platform-reg.ll
-@@ -3,6 +3,7 @@
- ; RUN: llc -mtriple=aarch64-fuchsia -mattr=+reserve-x20 -o - %s | FileCheck %s --check-prefix=CHECK-RESERVE --check-prefix=CHECK-RESERVE-X20
- ; RUN: llc -mtriple=aarch64-fuchsia -mattr=+reserve-x18,+reserve-x20 -o - %s | FileCheck %s --check-prefix=CHECK-RESERVE --check-prefix=CHECK-RESERVE-X18 --check-prefix=CHECK-RESERVE-X20
- ; RUN: llc -mtriple=arm64-linux-gnu -o - %s | FileCheck %s
-+; RUN: llc -mtriple=aarch64-linux-android -o - %s | FileCheck %s --check-prefix=CHECK-RESERVE --check-prefix=CHECK-RESERVE-X18
- ; RUN: llc -mtriple=aarch64-fuchsia -o - %s | FileCheck %s --check-prefix=CHECK-RESERVE --check-prefix=CHECK-RESERVE-X18
- ; RUN: llc -mtriple=aarch64-windows -o - %s | FileCheck %s --check-prefix=CHECK-RESERVE --check-prefix=CHECK-RESERVE-X18
  
 diff --git a/external/vixl/src/aarch64/assembler-aarch64.cc b/external/vixl/src/aarch64/assembler-aarch64.cc
 index 9e73ffaa0c..136f787f9c 100644
@@ -1741,10 +1676,10 @@ index 36f5568da4..bd843d0e27 100644
  
  // Data processing 2 source.
 diff --git a/frameworks/base/core/java/com/android/internal/os/ZygoteInit.java b/frameworks/base/core/java/com/android/internal/os/ZygoteInit.java
-index 2e152123c9..44ee6209f6 100644
+index ef72cee906..e622ac2734 100644
 --- a/frameworks/base/core/java/com/android/internal/os/ZygoteInit.java
 +++ b/frameworks/base/core/java/com/android/internal/os/ZygoteInit.java
-@@ -861,6 +861,9 @@ public class ZygoteInit {
+@@ -884,6 +884,9 @@ public class ZygoteInit {
                      abiList = argv[i].substring(ABI_LIST_ARG.length());
                  } else if (argv[i].startsWith(SOCKET_NAME_ARG)) {
                      zygoteSocketName = argv[i].substring(SOCKET_NAME_ARG.length());
@@ -1754,7 +1689,7 @@ index 2e152123c9..44ee6209f6 100644
                  } else {
                      throw new RuntimeException("Unknown command line argument: " + argv[i]);
                  }
-@@ -895,9 +898,9 @@ public class ZygoteInit {
+@@ -929,9 +932,9 @@ public class ZygoteInit {
  
              ZygoteHooks.stopZygoteNoThreadCreation();
  
@@ -1766,7 +1701,7 @@ index 2e152123c9..44ee6209f6 100644
                  Runnable r = forkSystemServer(abiList, zygoteSocketName, zygoteServer);
  
                  // {@code r == null} in the parent (zygote) process, and {@code r != null} in the
-@@ -908,6 +911,8 @@ public class ZygoteInit {
+@@ -942,6 +945,8 @@ public class ZygoteInit {
                  }
              }
  
@@ -1775,7 +1710,7 @@ index 2e152123c9..44ee6209f6 100644
              Log.i(TAG, "Accepting command socket connections");
  
              // The select loop returns early in the child process after a fork and
-@@ -929,6 +934,8 @@ public class ZygoteInit {
+@@ -963,6 +968,8 @@ public class ZygoteInit {
          }
      }
  
@@ -1785,7 +1720,7 @@ index 2e152123c9..44ee6209f6 100644
       * Return {@code true} if this device configuration has another zygote.
       *
 diff --git a/frameworks/base/core/java/com/android/internal/os/ZygoteServer.java b/frameworks/base/core/java/com/android/internal/os/ZygoteServer.java
-index 8d281b7ce9..670ef7c774 100644
+index 0dd8b599a1..0da911b8c2 100644
 --- a/frameworks/base/core/java/com/android/internal/os/ZygoteServer.java
 +++ b/frameworks/base/core/java/com/android/internal/os/ZygoteServer.java
 @@ -169,20 +169,19 @@ class ZygoteServer {
@@ -1820,95 +1755,38 @@ index 8d281b7ce9..670ef7c774 100644
  
          mUsapPoolSupported = true;
          fetchUsapPoolPolicyProps();
-diff --git a/frameworks/base/core/jni/android/graphics/Matrix.cpp b/frameworks/base/core/jni/android/graphics/Matrix.cpp
-index 755fcfb271..bd47625bcd 100644
---- a/frameworks/base/core/jni/android/graphics/Matrix.cpp
-+++ b/frameworks/base/core/jni/android/graphics/Matrix.cpp
-@@ -34,8 +34,7 @@ public:
- 
-     // ---------------- Regular JNI -----------------------------
- 
--    static void finalizer(jlong objHandle) {
--        SkMatrix* obj = reinterpret_cast<SkMatrix*>(objHandle);
-+    static void finalizer(SkMatrix* obj) {
-         delete obj;
-     }
- 
-diff --git a/frameworks/base/core/jni/android/graphics/text/LineBreaker.cpp b/frameworks/base/core/jni/android/graphics/text/LineBreaker.cpp
-index a23f99af5f..55f2dc6825 100644
---- a/frameworks/base/core/jni/android/graphics/text/LineBreaker.cpp
-+++ b/frameworks/base/core/jni/android/graphics/text/LineBreaker.cpp
-@@ -63,8 +63,8 @@ static jlong nInit(JNIEnv* env, jclass /* unused */,
-             jintArrayToFloatVector(env, indents)));
- }
- 
--static void nFinish(jlong nativePtr) {
--    delete toNative(nativePtr);
-+static void nFinish(minikin::android::StaticLayoutNative* nativePtr) {
-+    delete nativePtr;
- }
- 
- // CriticalNative
-@@ -122,8 +122,8 @@ static jint nGetLineFlag(jlong ptr, jint i) {
-     return reinterpret_cast<minikin::LineBreakResult*>(ptr)->flags[i];
- }
- 
--static void nReleaseResult(jlong ptr) {
--    delete reinterpret_cast<minikin::LineBreakResult*>(ptr);
-+static void nReleaseResult(minikin::LineBreakResult* ptr) {
-+    delete ptr;
- }
- 
- static jlong nGetReleaseResultFunc() {
-diff --git a/frameworks/base/core/jni/android/graphics/text/MeasuredText.cpp b/frameworks/base/core/jni/android/graphics/text/MeasuredText.cpp
-index 68ba38b939..a56c785b08 100644
---- a/frameworks/base/core/jni/android/graphics/text/MeasuredText.cpp
-+++ b/frameworks/base/core/jni/android/graphics/text/MeasuredText.cpp
-@@ -55,8 +55,8 @@ template<typename Ptr> static inline jlong toJLong(Ptr ptr) {
-     return reinterpret_cast<jlong>(ptr);
- }
- 
--static void releaseMeasuredParagraph(jlong measuredTextPtr) {
--    delete toMeasuredParagraph(measuredTextPtr);
-+static void releaseMeasuredParagraph(minikin::MeasuredText* measuredTextPtr) {
-+    delete measuredTextPtr;
- }
- 
- // Regular JNI
 diff --git a/frameworks/base/core/jni/com_android_internal_os_Zygote.cpp b/frameworks/base/core/jni/com_android_internal_os_Zygote.cpp
-index 18be3741e8..28403b17c2 100644
+index dadf08f2cc..9f47b80d8f 100644
 --- a/frameworks/base/core/jni/com_android_internal_os_Zygote.cpp
 +++ b/frameworks/base/core/jni/com_android_internal_os_Zygote.cpp
-@@ -1714,7 +1714,10 @@ static void com_android_internal_os_Zygote_nativeInitNativeState(JNIEnv* env, jc
+@@ -2333,16 +2333,17 @@ static void com_android_internal_os_Zygote_nativeInitNativeState(JNIEnv* env, jc
+    * Obtain file descriptors created by init from the environment.
     */
  
-   std::string android_socket_prefix(ANDROID_SOCKET_PREFIX);
--  std::string env_var_name = android_socket_prefix + (is_primary ? "zygote" : "zygote_secondary");
-+  std::string env_var_name =
-+      android_socket_prefix +
-+      (is_primary ? (getppid() == 1 ? "zygote" : "zygote_arm64_v8a")
-+                  : "zygote_secondary");
-   char* env_var_val = getenv(env_var_name.c_str());
- 
-   if (env_var_val != nullptr) {
-@@ -1724,7 +1727,10 @@ static void com_android_internal_os_Zygote_nativeInitNativeState(JNIEnv* env, jc
+-  gZygoteSocketFD =
+-      android_get_control_socket(is_primary ? "zygote" : "zygote_secondary");
++  gZygoteSocketFD = android_get_control_socket(
++          is_primary ? (getppid() == 1 ? "zygote" : "zygote_arm64_v8a") : "zygote_secondary");
+   if (gZygoteSocketFD >= 0) {
+     ALOGV("Zygote:zygoteSocketFD = %d", gZygoteSocketFD);
+   } else {
      ALOGE("Unable to fetch Zygote socket file descriptor");
    }
  
--  env_var_name = android_socket_prefix + (is_primary ? "usap_pool_primary" : "usap_pool_secondary");
-+  env_var_name = android_socket_prefix +
-+                 (is_primary ? (getppid() == 1 ? "usap_pool_primary"
-+                                               : "usap_pool_arm64_v8a")
-+                             : "usap_pool_secondary");
-   env_var_val = getenv(env_var_name.c_str());
- 
-   if (env_var_val != nullptr) {
+-  gUsapPoolSocketFD =
+-      android_get_control_socket(is_primary ? "usap_pool_primary" : "usap_pool_secondary");
++  gUsapPoolSocketFD = android_get_control_socket(
++          is_primary ? (getppid() == 1 ? "usap_pool_primary" : "usap_pool_arm64_v8a")
++                     : "usap_pool_secondary");
+   if (gUsapPoolSocketFD >= 0) {
+     ALOGV("Zygote:usapPoolSocketFD = %d", gUsapPoolSocketFD);
+   } else {
 diff --git a/frameworks/base/core/jni/com_android_internal_os_ZygoteInit.cpp b/frameworks/base/core/jni/com_android_internal_os_ZygoteInit.cpp
-index c2a5ee43db..36e9b1d379 100644
+index a5152b6e68..6a6fef1bae 100644
 --- a/frameworks/base/core/jni/com_android_internal_os_ZygoteInit.cpp
 +++ b/frameworks/base/core/jni/com_android_internal_os_ZygoteInit.cpp
-@@ -69,11 +69,38 @@ void android_internal_os_ZygoteInit_nativePreloadGraphicsDriver(JNIEnv* env, jcl
-     }
+@@ -63,11 +63,38 @@ void android_internal_os_ZygoteInit_nativePreloadGraphicsDriver(JNIEnv* env, jcl
+     zygote_preload_graphics();
  }
  
 +void android_internal_os_ZygoteInit_nativeMarkPagesMergeable(JNIEnv* env) {
@@ -1947,10 +1825,10 @@ index c2a5ee43db..36e9b1d379 100644
  
  }  // anonymous namespace
 diff --git a/frameworks/base/core/jni/fd_utils.cpp b/frameworks/base/core/jni/fd_utils.cpp
-index 8fc1758c44..a5a0f9a1de 100644
+index 38981b0caa..6257ce767a 100644
 --- a/frameworks/base/core/jni/fd_utils.cpp
 +++ b/frameworks/base/core/jni/fd_utils.cpp
-@@ -41,7 +41,9 @@ static const char* kPathWhitelist[] = {
+@@ -45,7 +45,9 @@ static const char* kPathWhitelist[] = {
          "/apex/com.android.tethering/javalib/framework-tethering.jar",
          "/dev/null",
          "/dev/socket/zygote",
@@ -1960,6 +1838,61 @@ index 8fc1758c44..a5a0f9a1de 100644
          "/dev/socket/usap_pool_primary",
          "/dev/socket/usap_pool_secondary",
          "/dev/socket/webview_zygote",
+diff --git a/frameworks/base/libs/hwui/jni/android_graphics_Matrix.cpp b/frameworks/base/libs/hwui/jni/android_graphics_Matrix.cpp
+index 7338ef24cb..040bf781f7 100644
+--- a/frameworks/base/libs/hwui/jni/android_graphics_Matrix.cpp
++++ b/frameworks/base/libs/hwui/jni/android_graphics_Matrix.cpp
+@@ -31,8 +31,7 @@ public:
+ 
+     // ---------------- Regular JNI -----------------------------
+ 
+-    static void finalizer(jlong objHandle) {
+-        SkMatrix* obj = reinterpret_cast<SkMatrix*>(objHandle);
++    static void finalizer(SkMatrix* obj) {
+         delete obj;
+     }
+ 
+diff --git a/frameworks/base/libs/hwui/jni/text/LineBreaker.cpp b/frameworks/base/libs/hwui/jni/text/LineBreaker.cpp
+index 69865171a0..249623923e 100644
+--- a/frameworks/base/libs/hwui/jni/text/LineBreaker.cpp
++++ b/frameworks/base/libs/hwui/jni/text/LineBreaker.cpp
+@@ -63,8 +63,8 @@ static jlong nInit(JNIEnv* env, jclass /* unused */,
+             jintArrayToFloatVector(env, indents)));
+ }
+ 
+-static void nFinish(jlong nativePtr) {
+-    delete toNative(nativePtr);
++static void nFinish(minikin::android::StaticLayoutNative* nativePtr) {
++    delete nativePtr;
+ }
+ 
+ // CriticalNative
+@@ -122,8 +122,8 @@ static jint nGetLineFlag(CRITICAL_JNI_PARAMS_COMMA jlong ptr, jint i) {
+     return reinterpret_cast<minikin::LineBreakResult*>(ptr)->flags[i];
+ }
+ 
+-static void nReleaseResult(jlong ptr) {
+-    delete reinterpret_cast<minikin::LineBreakResult*>(ptr);
++static void nReleaseResult(minikin::LineBreakResult* ptr) {
++    delete ptr;
+ }
+ 
+ static jlong nGetReleaseResultFunc(CRITICAL_JNI_PARAMS) {
+diff --git a/frameworks/base/libs/hwui/jni/text/MeasuredText.cpp b/frameworks/base/libs/hwui/jni/text/MeasuredText.cpp
+index 7793746ee2..3c0dc657b8 100644
+--- a/frameworks/base/libs/hwui/jni/text/MeasuredText.cpp
++++ b/frameworks/base/libs/hwui/jni/text/MeasuredText.cpp
+@@ -54,8 +54,8 @@ template<typename Ptr> static inline jlong toJLong(Ptr ptr) {
+     return reinterpret_cast<jlong>(ptr);
+ }
+ 
+-static void releaseMeasuredParagraph(jlong measuredTextPtr) {
+-    delete toMeasuredParagraph(measuredTextPtr);
++static void releaseMeasuredParagraph(minikin::MeasuredText* measuredTextPtr) {
++    delete measuredTextPtr;
+ }
+ 
+ // Regular JNI
 diff --git a/frameworks/native/opengl/libs/EGL/getProcAddress.cpp b/frameworks/native/opengl/libs/EGL/getProcAddress.cpp
 index fedc7893db..021a906174 100644
 --- a/frameworks/native/opengl/libs/EGL/getProcAddress.cpp
@@ -2159,21 +2092,11 @@ index 1170880d63..c9264e3177 100644
    sigevent.sigev_notify_attributes = &thread_attr;
    if (timer_create(clock_id, &sigevent, timer) == -1) {
      LOG_ERROR("%s unable to create timer with clock %d: %s", __func__, clock_id,
-diff --git a/system/core/libcutils/arch-arm64/android_memset.S b/system/core/libcutils/arch-arm64/android_memset.S
-index 9a83a68763..edc7feed7a 100644
---- a/system/core/libcutils/arch-arm64/android_memset.S
-+++ b/system/core/libcutils/arch-arm64/android_memset.S
-@@ -209,3 +209,5 @@ ENTRY(android_memset32)
- 	b.ne	.Ltail_maybe_long
- 	ret
- END(android_memset32)
-+
-+#include "symauth.h"
 diff --git a/system/core/libstats/socket/statsd_writer.c b/system/core/libstats/socket/statsd_writer.c
-index 04d3b46440..1553d8178d 100644
+index 73b7a7e714..9b7844a904 100644
 --- a/system/core/libstats/socket/statsd_writer.c
 +++ b/system/core/libstats/socket/statsd_writer.c
-@@ -57,11 +57,11 @@ void statsd_writer_init_unlock() {
+@@ -57,12 +57,12 @@ void statsd_writer_init_unlock() {
      pthread_mutex_unlock(&log_init_lock);
  }
  
@@ -2185,11 +2108,13 @@ index 04d3b46440..1553d8178d 100644
 +static void statsdClose(void);
  static int statsdWrite(struct timespec* ts, struct iovec* vec, size_t nr);
 -static void statsdNoteDrop();
+-static int statsdIsClosed();
 +static void statsdNoteDrop(int, int);
++static int statsdIsClosed(void);
  
  struct android_log_transport_write statsdLoggerWrite = {
          .name = "statsd",
-@@ -74,7 +74,7 @@ struct android_log_transport_write statsdLoggerWrite = {
+@@ -76,7 +76,7 @@ struct android_log_transport_write statsdLoggerWrite = {
  };
  
  /* log_init_lock assumed */
@@ -2198,7 +2123,7 @@ index 04d3b46440..1553d8178d 100644
      int i, ret = 0;
  
      i = atomic_load(&statsdLoggerWrite.sock);
-@@ -133,7 +133,7 @@ static void __statsdClose(int negative_errno) {
+@@ -135,11 +135,11 @@ static void __statsdClose(int negative_errno) {
      }
  }
  
@@ -2207,8 +2132,22 @@ index 04d3b46440..1553d8178d 100644
      __statsdClose(-EBADF);
  }
  
+-static int statsdAvailable() {
++static int statsdAvailable(void) {
+     if (atomic_load(&statsdLoggerWrite.sock) < 0) {
+         if (access("/dev/socket/statsdw", W_OK) == 0) {
+             return 0;
+@@ -155,7 +155,7 @@ static void statsdNoteDrop(int error, int tag) {
+     atomic_exchange_explicit(&atom_tag, tag, memory_order_relaxed);
+ }
+ 
+-static int statsdIsClosed() {
++static int statsdIsClosed(void) {
+     if (atomic_load(&statsdLoggerWrite.sock) < 0) {
+         return 1;
+     }
 diff --git a/system/core/libstats/socket/statsd_writer.h b/system/core/libstats/socket/statsd_writer.h
-index fe2d37cbc7..6682f3833f 100644
+index 562bda5df3..52032ac21e 100644
 --- a/system/core/libstats/socket/statsd_writer.h
 +++ b/system/core/libstats/socket/statsd_writer.h
 @@ -33,9 +33,9 @@ void statsd_writer_init_unlock();
@@ -2225,21 +2164,36 @@ index fe2d37cbc7..6682f3833f 100644
      int (*write)(struct timespec* ts, struct iovec* vec, size_t nr);
      /* note one log drop */
 diff --git a/system/core/libunwindstack/RegsArm64.cpp b/system/core/libunwindstack/RegsArm64.cpp
-index 5b7431a57c..5bfd51341f 100644
+index b496187cb1..f27e16ffff 100644
 --- a/system/core/libunwindstack/RegsArm64.cpp
 +++ b/system/core/libunwindstack/RegsArm64.cpp
-@@ -45,6 +45,9 @@ uint64_t RegsArm64::sp() {
+@@ -48,23 +48,9 @@ uint64_t RegsArm64::sp() {
  }
  
  void RegsArm64::set_pc(uint64_t pc) {
-+#if defined(__aarch64__)
+-  // If the target is aarch64 then the return address may have been
+-  // signed using the Armv8.3-A Pointer Authentication extension. The
+-  // original return address can be restored by stripping out the
+-  // authentication code using a mask or xpaclri. xpaclri is a NOP on
+-  // pre-Armv8.3-A architectures.
+-  if ((0 != pc) && IsRASigned()) {
+-    if (pac_mask_) {
+-      pc &= ~pac_mask_;
+ #if defined(__aarch64__)
+-    } else {
+-      register uint64_t x30 __asm("x30") = pc;
+-      // This is XPACLRI.
+-      asm("hint 0x7" : "+r"(x30));
+-      pc = x30;
 +  pc &= 0x7fffffffff;
-+#endif
+ #endif
+-    }
+-  }
    regs_[ARM64_REG_PC] = pc;
  }
  
 diff --git a/system/core/libutils/Threads.cpp b/system/core/libutils/Threads.cpp
-index 147db542db..dd476392a3 100644
+index 55eadb07a6..2145629370 100644
 --- a/system/core/libutils/Threads.cpp
 +++ b/system/core/libutils/Threads.cpp
 @@ -65,23 +65,24 @@ using namespace android;
@@ -2331,7 +2285,7 @@ index 147db542db..dd476392a3 100644
      if (result != 0) {
          ALOGE("androidCreateRawThreadEtc failed (entry=%p, res=%d, %s)\n"
 diff --git a/system/core/rootdir/init.zygote64_32.rc b/system/core/rootdir/init.zygote64_32.rc
-index 3e8016867c..756c251bea 100644
+index fb9e99b691..ce7445ceba 100644
 --- a/system/core/rootdir/init.zygote64_32.rc
 +++ b/system/core/rootdir/init.zygote64_32.rc
 @@ -5,6 +5,8 @@ service zygote /system/bin/app_process64 -Xzygote /system/bin --zygote --start-s
@@ -2340,14 +2294,14 @@ index 3e8016867c..756c251bea 100644
      socket usap_pool_primary stream 660 root system
 +    socket zygote_arm64_v8a stream 660 root system
 +    socket usap_pool_arm64_v8a stream 660 root system
+     onrestart exec_background - system system -- /system/bin/vdc volume abort_fuse
      onrestart write /sys/power/state on
      onrestart restart audioserver
-     onrestart restart cameraserver
 diff --git a/system/sepolicy/private/file_contexts b/system/sepolicy/private/file_contexts
-index eaefec3f99..a45a340510 100644
+index 27bbb3d73b..80d8d717e9 100644
 --- a/system/sepolicy/private/file_contexts
 +++ b/system/sepolicy/private/file_contexts
-@@ -162,8 +162,10 @@
+@@ -163,8 +163,10 @@
  /dev/socket/wpa_wlan[0-9] u:object_r:wpa_socket:s0
  /dev/socket/zygote	u:object_r:zygote_socket:s0
  /dev/socket/zygote_secondary	u:object_r:zygote_socket:s0
@@ -2359,5 +2313,5 @@ index eaefec3f99..a45a340510 100644
  /dev/tty		u:object_r:owntty_device:s0
  /dev/tty[0-9]*		u:object_r:tty_device:s0
 -- 
-2.27.0.389.gc38d7665816-goog
+2.28.0.681.g6f77f65b4e-goog
 

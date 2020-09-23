@@ -1,0 +1,28 @@
+From f63a989db366e673b3453dbe3eb957df9d1a24d4 Mon Sep 17 00:00:00 2001
+From: Peter Collingbourne <pcc@google.com>
+Date: Fri, 18 Sep 2020 18:03:05 -0700
+Subject: [PATCH 14/16] Change the abilist so that we support loading apps with
+ the arm64-v9a ABI
+
+---
+ build/make/core/board_config.mk | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/build/make/core/board_config.mk b/build/make/core/board_config.mk
+index 95d8af88f0..dbe76ee325 100644
+--- a/build/make/core/board_config.mk
++++ b/build/make/core/board_config.mk
+@@ -228,6 +228,10 @@ ifeq (,$(TARGET_CPU_ABI_LIST_64_BIT))
+   endif
+ endif
+ 
++ifneq (,$(TARGET_EXPERIMENTAL_PAC))
++  TARGET_CPU_ABI_LIST_64_BIT := arm64-v9a $(TARGET_CPU_ABI_LIST_64_BIT)
++endif
++
+ # "arm64-v8a-hwasan", the ABI for libraries compiled with HWASAN, is supported
+ # in all builds with SANITIZE_TARGET=hwaddress.
+ ifneq ($(filter hwaddress,$(SANITIZE_TARGET)),)
+-- 
+2.28.0.681.g6f77f65b4e-goog
+

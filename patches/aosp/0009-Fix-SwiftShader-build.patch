@@ -1,0 +1,32 @@
+From c1aa2e6d5f36efb5062784ead21d9671acfd5816 Mon Sep 17 00:00:00 2001
+From: Peter Collingbourne <pcc@google.com>
+Date: Fri, 17 Jul 2020 14:49:24 -0700
+Subject: [PATCH 09/16] Fix SwiftShader build
+
+---
+ external/swiftshader/src/Pipeline/SpirvShaderSampling.cpp | 7 ++++---
+ 1 file changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/external/swiftshader/src/Pipeline/SpirvShaderSampling.cpp b/external/swiftshader/src/Pipeline/SpirvShaderSampling.cpp
+index 2486ff5679..1e4ca6fdd5 100644
+--- a/external/swiftshader/src/Pipeline/SpirvShaderSampling.cpp
++++ b/external/swiftshader/src/Pipeline/SpirvShaderSampling.cpp
+@@ -90,11 +90,12 @@ SpirvShader::ImageSampler *SpirvShader::getImageSampler(uint32_t inst, vk::Sampl
+ 
+ 	auto routine = cache->getOrCreate(key, createSamplingRoutine);
+ 
+-	auto *sampler = (ImageSampler *)(routine->getEntry());
++	cache->add(key, routine);
++	auto *samplerFn = (ImageSampler *)(routine->getEntry());
+ #ifdef ANDROID_EXPERIMENTAL_PAC
+-	sampler = __builtin_ptrauth_sign_unauthenticated(sampler, 0, 0);
++	samplerFn = __builtin_ptrauth_sign_unauthenticated(samplerFn, 0, 0);
+ #endif
+-	return sampler;
++	return samplerFn;
+ }
+ 
+ std::shared_ptr<rr::Routine> SpirvShader::emitSamplerRoutine(ImageInstruction instruction, const Sampler &samplerState)
+-- 
+2.28.0.681.g6f77f65b4e-goog
+

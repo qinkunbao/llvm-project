@@ -1,0 +1,26 @@
+From afca4ce0612ac2e80adc9c842d9eb3d1ee2c04cb Mon Sep 17 00:00:00 2001
+From: Peter Collingbourne <pcc@google.com>
+Date: Thu, 16 Jul 2020 17:56:41 -0700
+Subject: [PATCH 07/16] Support TARGET_EXPERIMENTAL_PAC=size for size
+ measurements
+
+---
+ build/soong/cc/config/arm64_device.go | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/build/soong/cc/config/arm64_device.go b/build/soong/cc/config/arm64_device.go
+index 8f4a6ace22..60b09586ca 100644
+--- a/build/soong/cc/config/arm64_device.go
++++ b/build/soong/cc/config/arm64_device.go
+@@ -211,6 +211,8 @@ func arm64ToolchainFactory(arch android.Arch) Toolchain {
+ 		toolchainClangCflags = append(toolchainClangCflags, "-DANDROID_EXPERIMENTAL_PAC", "-fptrauth-returns", "-fptrauth-intrinsics", "-fptrauth-calls", "-fptrauth-indirect-gotos", "-fptrauth-auth-traps")
+ 		if android.TargetExperimentalPac == "fake" {
+ 			toolchainClangCflags = append(toolchainClangCflags, "-mllvm", "-fake-pac", "-DANDROID_FAKE_PAC")
++		} else if android.TargetExperimentalPac == "size" {
++			toolchainClangCflags = append(toolchainClangCflags, "-march=armv8.3a", "-mllvm", "-pac-size-measurements-only")
+ 		} else {
+ 			toolchainClangCflags = append(toolchainClangCflags, "-march=armv8.3a")
+ 		}
+-- 
+2.28.0.681.g6f77f65b4e-goog
+

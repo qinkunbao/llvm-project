@@ -1,7 +1,7 @@
-From 1390fd52383dad3e07e15bdac34254b89d42cad1 Mon Sep 17 00:00:00 2001
+From 6540bf6b2a33cf98635735962bbc9bc27fcad8e7 Mon Sep 17 00:00:00 2001
 From: Peter Collingbourne <pcc@google.com>
 Date: Thu, 9 Jul 2020 16:30:24 -0700
-Subject: [PATCH 2/5] Disable ASLR in ART
+Subject: [PATCH 02/16] Disable ASLR in ART
 
 ---
  art/libartbase/base/mem_map.cc      | 2 +-
@@ -9,7 +9,7 @@ Subject: [PATCH 2/5] Disable ASLR in ART
  2 files changed, 4 insertions(+), 4 deletions(-)
 
 diff --git a/art/libartbase/base/mem_map.cc b/art/libartbase/base/mem_map.cc
-index bd880dacb6..7c92c2a3fe 100644
+index aa07f1c6ef..8db10fd67e 100644
 --- a/art/libartbase/base/mem_map.cc
 +++ b/art/libartbase/base/mem_map.cc
 @@ -134,7 +134,7 @@ uintptr_t CreateStartPos(uint64_t input) {
@@ -22,7 +22,7 @@ index bd880dacb6..7c92c2a3fe 100644
    arc4random_buf(&random_data, sizeof(random_data));
    return CreateStartPos(random_data);
 diff --git a/art/runtime/gc/space/image_space.cc b/art/runtime/gc/space/image_space.cc
-index d26c32a290..39106848a8 100644
+index af63f68ca4..7a4bb905ff 100644
 --- a/art/runtime/gc/space/image_space.cc
 +++ b/art/runtime/gc/space/image_space.cc
 @@ -112,7 +112,7 @@ static int32_t ChooseRelocationOffsetDelta(int32_t min_delta, int32_t max_delta)
@@ -53,5 +53,5 @@ index d26c32a290..39106848a8 100644
          ReserveBootImageMemory(addr, image_reservation_size + extra_reservation_size, error_msg);
      if (!image_reservation.IsValid()) {
 -- 
-2.27.0.389.gc38d7665816-goog
+2.28.0.681.g6f77f65b4e-goog
 
