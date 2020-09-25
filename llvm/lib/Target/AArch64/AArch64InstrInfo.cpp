@@ -204,11 +204,11 @@ unsigned AArch64InstrInfo::getInstSizeInBytes(const MachineInstr &MI) const {
 
   case AArch64::LDRAAindexed:
   case AArch64::LDRABindexed:
-    return FakePAC ? 28 : 4;
+    return FakePAC ? 36 : 4;
 
   case AArch64::LDRAAwriteback:
   case AArch64::LDRABwriteback:
-    return FakePAC ? 16 : 4;
+    return FakePAC ? 20 : 4;
 
   case TargetOpcode::BUNDLE:
     NumBytes = getInstBundleLength(MI);

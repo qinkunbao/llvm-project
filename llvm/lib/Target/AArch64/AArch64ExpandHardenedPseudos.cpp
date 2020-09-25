@@ -250,9 +250,9 @@ bool AArch64ExpandHardenedPseudos::expandMI(MachineInstr &MI) {
     unsigned PACNumInsts = 1;
     if (FakePAC) {
       if (DiscReg == AArch64::XZR || DiscReg == AArch64::SP)
-        PACNumInsts = 2;
+        PACNumInsts = 3;
       else
-        PACNumInsts = 5;
+        PACNumInsts = 4;
     }
     BuildMI(MBB, MBBI, DL, TII->get(AArch64::CBZX), AArch64::X16)
       .addImm(PACNumInsts + 1);

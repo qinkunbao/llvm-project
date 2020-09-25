@@ -272,6 +272,36 @@ public:
           break;
         }
 
+        bool Aut = false;
+        switch (Inst.getOpcode()) {
+        case AArch64::AUTIA:
+        case AArch64::AUTIAZ:
+        case AArch64::AUTIZA:
+        case AArch64::AUTIA1716:
+        case AArch64::AUTIASP:
+        case AArch64::RETAA:
+        case AArch64::BRAA:
+        case AArch64::BRAAZ:
+        case AArch64::BLRAA:
+        case AArch64::BLRAAZ:
+        case AArch64::AUTIB:
+        case AArch64::AUTIBZ:
+        case AArch64::AUTIZB:
+        case AArch64::AUTIB1716:
+        case AArch64::AUTIBSP:
+        case AArch64::RETAB:
+        case AArch64::BRAB:
+        case AArch64::BRABZ:
+        case AArch64::BLRAB:
+        case AArch64::BLRABZ:
+        case AArch64::AUTDA:
+        case AArch64::AUTDZA:
+        case AArch64::AUTDB:
+        case AArch64::AUTDZB:
+          Aut = true;
+          break;
+        }
+
         unsigned Reg, DiscReg;
         switch (Inst.getOpcode()) {
         case AArch64::PACIAZ:
@@ -345,30 +375,34 @@ public:
         MCInst MI1 = MCInstBuilder(AArch64::TBNZX)
               .addReg(AArch64::X18)
               .addImm(DisableBit)
-              .addImm(DiscReg == AArch64::XZR ? 2 : 5);
+              .addImm(DiscReg == AArch64::XZR ? 3 : 4);
         MCELFStreamer::emitInstruction(MI1, STI);
 
-        if (DiscReg != AArch64::XZR) {
-          MCInst MI2 = MCInstBuilder(AArch64::EXTRXrri) // ror
-                           .addReg(DiscReg)
-                           .addReg(DiscReg)
-                           .addReg(DiscReg)
-                           .addImm(64 - 39);
-          MCELFStreamer::emitInstruction(MI2, STI);
+        if (!Aut) {
+          MCInst MI3 = MCInstBuilder(AArch64::EORXrs)
+                           .addReg(Reg)
+                           .addReg(Reg)
+                           .addReg(Reg)
+                           .addImm(getShifterImm(AArch64_AM::LSL, 39));
+          MCELFStreamer::emitInstruction(MI3, STI);
+        }
 
+        if (DiscReg != AArch64::XZR) {
           MCInst MI3 = MCInstBuilder(AArch64::EORXrs)
                            .addReg(Reg)
                            .addReg(Reg)
                            .addReg(DiscReg)
-                           .addImm(0);
+                           .addImm(getShifterImm(AArch64_AM::ROR, 64 - 39));
           MCELFStreamer::emitInstruction(MI3, STI);
+        }
 
-          MCInst MI4 = MCInstBuilder(AArch64::EXTRXrri) // ror
-                           .addReg(DiscReg)
-                           .addReg(DiscReg)
-                           .addReg(DiscReg)
-                           .addImm(39);
-          MCELFStreamer::emitInstruction(MI4, STI);
+        if (Aut) {
+          MCInst MI3 = MCInstBuilder(AArch64::EORXrs)
+                           .addReg(Reg)
+                           .addReg(Reg)
+                           .addReg(Reg)
+                           .addImm(getShifterImm(AArch64_AM::LSL, 39));
+          MCELFStreamer::emitInstruction(MI3, STI);
         }
 
         MCInst MI5 = MCInstBuilder(AArch64::EORXri)
@@ -440,24 +474,31 @@ public:
           Imm1 = 0;
         }
 
-        MCInst MI1 = MCInstBuilder(Sub ? AArch64::SUBXri : AArch64::ADDXri)
-                         .addReg(Reg1)
-                         .addReg(Reg1)
-                         .addImm(Imm0)
-                         .addImm(Imm1);
-        MCELFStreamer::emitInstruction(MI1, STI);
-
         MCInst MI2 = MCInstBuilder(AArch64::TBNZX)
                          .addReg(AArch64::X18)
                          .addImm(DisableBit)
-                         .addImm(2);
+                         .addImm(3);
         MCELFStreamer::emitInstruction(MI2, STI);
+
+        MCInst MI8 = MCInstBuilder(AArch64::EORXrs)
+                         .addReg(Reg1)
+                         .addReg(Reg1)
+                         .addReg(Reg1)
+                         .addImm(getShifterImm(AArch64_AM::LSL, 39));
+        MCELFStreamer::emitInstruction(MI8, STI);
 
         MCInst MI3 = MCInstBuilder(AArch64::EORXri)
               .addReg(Reg1)
               .addReg(Reg1)
               .addImm(AArch64_AM::encodeLogicalImmediate(1ULL << (DisableBit - 8), 64));
         MCELFStreamer::emitInstruction(MI3, STI);
+
+        MCInst MI1 = MCInstBuilder(Sub ? AArch64::SUBXri : AArch64::ADDXri)
+                         .addReg(Reg1)
+                         .addReg(Reg1)
+                         .addImm(Imm0)
+                         .addImm(Imm1);
+        MCELFStreamer::emitInstruction(MI1, STI);
 
         MCInst MI4 = MCInstBuilder(AArch64::LDRXui)
               .addReg(Reg0)
@@ -466,10 +507,17 @@ public:
         MCELFStreamer::emitInstruction(MI4, STI);
 
         if (!Writeback && Reg0 != Reg1) {
+          MCInst MI7 = MCInstBuilder(Sub ? AArch64::ADDXri : AArch64::SUBXri)
+                           .addReg(Reg1)
+                           .addReg(Reg1)
+                           .addImm(Imm0)
+                           .addImm(Imm1);
+          MCELFStreamer::emitInstruction(MI7, STI);
+
           MCInst MI5 = MCInstBuilder(AArch64::TBNZX)
                            .addReg(AArch64::X18)
                            .addImm(DisableBit)
-                           .addImm(2);
+                           .addImm(3);
           MCELFStreamer::emitInstruction(MI5, STI);
 
           MCInst MI6 = MCInstBuilder(AArch64::EORXri)
@@ -479,12 +527,12 @@ public:
                                1ULL << (DisableBit - 8), 64));
           MCELFStreamer::emitInstruction(MI6, STI);
 
-          MCInst MI7 = MCInstBuilder(Sub ? AArch64::ADDXri : AArch64::SUBXri)
+          MCInst MI8 = MCInstBuilder(AArch64::EORXrs)
                            .addReg(Reg1)
                            .addReg(Reg1)
-                           .addImm(Imm0)
-                           .addImm(Imm1);
-          MCELFStreamer::emitInstruction(MI7, STI);
+                           .addReg(Reg1)
+                           .addImm(getShifterImm(AArch64_AM::LSL, 39));
+          MCELFStreamer::emitInstruction(MI8, STI);
         }
         return;
       }
