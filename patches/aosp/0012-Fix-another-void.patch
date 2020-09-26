@@ -1,7 +1,7 @@
 From 78c656be5d6081c14ee0463de0c038bfcd4f9a57 Mon Sep 17 00:00:00 2001
 From: Peter Collingbourne <pcc@google.com>
 Date: Fri, 10 Jul 2020 22:51:34 -0700
-Subject: [PATCH 12/16] Fix another () -> (void)
+Subject: [PATCH 12/17] Fix another () -> (void)
 
 ---
  system/core/libstats/socket/stats_event.c | 2 +-

@@ -1,7 +1,7 @@
 From a7e873cf38b60347d48e3e06513c8a90572de95f Mon Sep 17 00:00:00 2001
 From: Peter Collingbourne <pcc@google.com>
 Date: Tue, 22 Sep 2020 19:00:45 -0700
-Subject: [PATCH 16/16] Use correct function types in pthread tests
+Subject: [PATCH 16/17] Use correct function types in pthread tests
 
 ---
  bionic/tests/pthread_test.cpp | 108 +++++++++++++++++++++++++---------

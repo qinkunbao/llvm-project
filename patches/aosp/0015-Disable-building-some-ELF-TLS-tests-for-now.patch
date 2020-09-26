@@ -1,7 +1,7 @@
 From 214d6d40eb48e7ee40703a7ed62d7d49a18a385f Mon Sep 17 00:00:00 2001
 From: Peter Collingbourne <pcc@google.com>
 Date: Tue, 22 Sep 2020 16:48:36 -0700
-Subject: [PATCH 15/16] Disable building some ELF TLS tests for now
+Subject: [PATCH 15/17] Disable building some ELF TLS tests for now
 
 They trigger an assertion failure in the compiler.
 ---

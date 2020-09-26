@@ -1,7 +1,7 @@
 From afca4ce0612ac2e80adc9c842d9eb3d1ee2c04cb Mon Sep 17 00:00:00 2001
 From: Peter Collingbourne <pcc@google.com>
 Date: Thu, 16 Jul 2020 17:56:41 -0700
-Subject: [PATCH 07/16] Support TARGET_EXPERIMENTAL_PAC=size for size
+Subject: [PATCH 07/17] Support TARGET_EXPERIMENTAL_PAC=size for size
  measurements
 
 ---

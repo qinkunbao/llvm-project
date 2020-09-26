@@ -1,7 +1,7 @@
 From dbe77fbe3be3d14e8017a70ae9474ebe994e121a Mon Sep 17 00:00:00 2001
 From: Peter Collingbourne <pcc@google.com>
 Date: Thu, 9 Jul 2020 16:33:03 -0700
-Subject: [PATCH 03/16] PAC
+Subject: [PATCH 03/17] PAC
 
 ---
  art/compiler/jni/quick/jni_compiler.cc        |  1 +

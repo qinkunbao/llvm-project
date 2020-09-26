@@ -1,7 +1,7 @@
 From 6540bf6b2a33cf98635735962bbc9bc27fcad8e7 Mon Sep 17 00:00:00 2001
 From: Peter Collingbourne <pcc@google.com>
 Date: Thu, 9 Jul 2020 16:30:24 -0700
-Subject: [PATCH 02/16] Disable ASLR in ART
+Subject: [PATCH 02/17] Disable ASLR in ART
 
 ---
  art/libartbase/base/mem_map.cc      | 2 +-

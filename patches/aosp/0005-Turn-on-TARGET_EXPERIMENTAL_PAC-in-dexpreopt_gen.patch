@@ -1,7 +1,7 @@
 From 77a420829b49d672e237edc82af12e954c931051 Mon Sep 17 00:00:00 2001
 From: Peter Collingbourne <pcc@google.com>
 Date: Fri, 10 Jul 2020 20:51:53 -0700
-Subject: [PATCH 05/16] Turn on TARGET_EXPERIMENTAL_PAC in dexpreopt_gen
+Subject: [PATCH 05/17] Turn on TARGET_EXPERIMENTAL_PAC in dexpreopt_gen
 
 ---
  build/make/core/dex_preopt_odex_install.mk | 1 +

@@ -1,7 +1,7 @@
 From f63a989db366e673b3453dbe3eb957df9d1a24d4 Mon Sep 17 00:00:00 2001
 From: Peter Collingbourne <pcc@google.com>
 Date: Fri, 18 Sep 2020 18:03:05 -0700
-Subject: [PATCH 14/16] Change the abilist so that we support loading apps with
+Subject: [PATCH 14/17] Change the abilist so that we support loading apps with
  the arm64-v9a ABI
 
 ---

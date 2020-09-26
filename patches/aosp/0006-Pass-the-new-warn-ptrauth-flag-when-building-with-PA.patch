@@ -1,7 +1,7 @@
 From c8e38a4bfbbc3d638b609a85c3b07a9ebeae6b3c Mon Sep 17 00:00:00 2001
 From: Peter Collingbourne <pcc@google.com>
 Date: Thu, 16 Jul 2020 17:56:15 -0700
-Subject: [PATCH 06/16] Pass the new --warn-ptrauth flag when building with PAC
+Subject: [PATCH 06/17] Pass the new --warn-ptrauth flag when building with PAC
 
 We don't want to see warnings when PAC is disabled.
 ---

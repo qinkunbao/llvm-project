@@ -1,0 +1,27 @@
+From 1ecd272cdb71c538dce0fe92d55827010ab6bd35 Mon Sep 17 00:00:00 2001
+From: Peter Collingbourne <pcc@google.com>
+Date: Fri, 25 Sep 2020 20:04:40 -0700
+Subject: [PATCH 17/17] Force use of dex2oat64 with PAC
+
+Only the 64-bit dex2oat knows whether PAC is enabled.
+---
+ frameworks/native/cmds/installd/dexopt.cpp | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/frameworks/native/cmds/installd/dexopt.cpp b/frameworks/native/cmds/installd/dexopt.cpp
+index 5076ae6e56..b29f7fc353 100644
+--- a/frameworks/native/cmds/installd/dexopt.cpp
++++ b/frameworks/native/cmds/installd/dexopt.cpp
+@@ -1765,6 +1765,9 @@ int dexopt(const char* dex_path, uid_t uid, const char* pkgname, const char* ins
+     if (!GetProperty("ro.product.cpu.abilist64", "").empty()) {
+       use_dex2oat64 = GetBoolProperty("dalvik.vm.dex2oat64.enabled", false);
+     }
++#ifdef ANDROID_EXPERIMENTAL_PAC
++    use_dex2oat64 = true;
++#endif
+     const char* dex2oat_bin = select_execution_binary(
+         (use_dex2oat64 ? kDex2oat64Path : kDex2oat32Path),
+         (use_dex2oat64 ? kDex2oatDebug64Path : kDex2oatDebug32Path),
+-- 
+2.28.0.681.g6f77f65b4e-goog
+

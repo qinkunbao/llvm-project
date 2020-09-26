@@ -1,7 +1,7 @@
 From 11011a2e8577a9c8a3e9ec8bdf7e6d0c1e93a0ad Mon Sep 17 00:00:00 2001
 From: Peter Collingbourne <pcc@google.com>
 Date: Wed, 15 Jul 2020 19:07:26 -0700
-Subject: [PATCH 04/16] Correctly handle hidden weak symbols in AUTH64
+Subject: [PATCH 04/17] Correctly handle hidden weak symbols in AUTH64
  relocations
 
 ---

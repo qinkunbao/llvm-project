@@ -1,7 +1,7 @@
 From c80f56969290618e647b98eeb6a9e8cb659fa111 Mon Sep 17 00:00:00 2001
 From: Peter Collingbourne <pcc@google.com>
 Date: Fri, 18 Sep 2020 18:01:16 -0700
-Subject: [PATCH 11/16] Fix link under ENABLE_CFI=false
+Subject: [PATCH 11/17] Fix link under ENABLE_CFI=false
 
 ---
  system/bt/vendor_libs/linux/interface/Android.bp | 1 +
