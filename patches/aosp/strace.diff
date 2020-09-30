@@ -1,8 +1,14 @@
 diff --git a/sysent.h b/sysent.h
-index cf2daed..0f1e25f 100644
+index cf2daed..d3ffb2f 100644
 --- a/sysent.h
 +++ b/sysent.h
-@@ -5,7 +5,7 @@ typedef struct sysent {
+@@ -1,11 +1,13 @@
+ #ifndef STRACE_SYSENT_H
+ #define STRACE_SYSENT_H
+ 
++struct tcb;
++
+ typedef struct sysent {
  	unsigned nargs;
  	int	sys_flags;
  	int	sen;
