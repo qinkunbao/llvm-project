@@ -3103,6 +3103,11 @@ static bool ParseHeaderSearchArgs(HeaderSearchOptions &Opts, ArgList &Args,
   return Diags.getNumErrors() == NumErrorsBefore;
 }
 
+static void ParsePointerAuthArgs(LangOptions &Opts, ArgList &Args,
+                                 DiagnosticsEngine &Diags) {
+  Opts.PointerAuthIntrinsics = Args.hasArg(OPT_fptrauth_intrinsics);
+}
+
 void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,
                                          const llvm::Triple &T,
                                          std::vector<std::string> &Includes,
@@ -4464,6 +4469,8 @@ bool CompilerInvocation::CreateFromArgsImpl(
   llvm::Triple T(Res.getTargetOpts().Triple);
   ParseHeaderSearchArgs(Res.getHeaderSearchOpts(), Args, Diags,
                         Res.getFileSystemOpts().WorkingDir);
+
+  ParsePointerAuthArgs(LangOpts, Args, Diags);
 
   ParseLangArgs(LangOpts, Args, DashX, T, Res.getPreprocessorOpts().Includes,
                 Diags);
