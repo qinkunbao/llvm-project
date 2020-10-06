@@ -1344,7 +1344,8 @@ static bool checkPointerAuthEnabled(Sema &S, Expr *E) {
 }
 
 void Sema::diagnosePointerAuthDisabled(SourceLocation loc, SourceRange range) {
-  if (!Context.getTargetInfo().isPointerAuthSupported()) {
+  if (!getLangOpts().SoftPointerAuth &&
+      !Context.getTargetInfo().isPointerAuthSupported()) {
     Diag(loc, diag::err_ptrauth_disabled_target) << range;
   } else {
     Diag(loc, diag::err_ptrauth_disabled) << range;
@@ -1387,6 +1388,57 @@ bool Sema::checkConstantPointerAuthKey(Expr *Arg, unsigned &Result) {
 
   Result = KeyValue->getZExtValue();
   return false;
+}
+
+bool Sema::checkPointerAuthDiscriminatorArg(Expr *arg,
+                                            PointerAuthDiscArgKind kind,
+                                            unsigned &intVal) {
+  if (!arg) {
+    intVal = 0;
+    return true;
+  }
+
+  bool isPtrAuthStruct = kind == PADAK_TypeDiscPtrAuthStruct;
+
+  Optional<llvm::APSInt> result = arg->getIntegerConstantExpr(Context);
+  if (!result) {
+    Diag(arg->getExprLoc(), diag::err_ptrauth_arg_not_ice) << isPtrAuthStruct;
+    return false;
+  }
+
+  unsigned max;
+  bool isAddrDiscArg = false;
+
+  switch (kind) {
+  case PADAK_AddrDiscPtrAuth:
+    max = 1;
+    isAddrDiscArg = true;
+    break;
+  case PADAK_ExtraDiscPtrAuth:
+  case PADAK_TypeDiscPtrAuthStruct:
+    max = PointerAuthQualifier::MaxDiscriminator;
+    break;
+  };
+
+  if (*result < 0 || *result > max) {
+    llvm::SmallString<32> value;
+    {
+      llvm::raw_svector_ostream str(value);
+      str << *result;
+    }
+
+    if (isAddrDiscArg)
+      Diag(arg->getExprLoc(), diag::err_ptrauth_address_discrimination_invalid)
+          << value;
+    else
+      Diag(arg->getExprLoc(), diag::err_ptrauth_extra_discriminator_invalid)
+          << value << max << isPtrAuthStruct;
+
+    return false;
+  };
+
+  intVal = result->getZExtValue();
+  return true;
 }
 
 static std::pair<const ValueDecl *, CharUnits>
@@ -1599,6 +1651,24 @@ static ExprResult SemaPointerAuthAuthAndResign(Sema &S, CallExpr *Call) {
 
   Call->setType(Call->getArgs()[0]->getType());
   return Call;
+}
+
+static ExprResult SemaPointerAuthStringDiscriminator(Sema &S, CallExpr *call) {
+  if (checkPointerAuthEnabled(S, call)) return ExprError();
+
+  // We've already performed normal call type-checking.
+  Expr *arg = call->getArgs()[0]->IgnoreParenImpCasts();
+
+  // Operand must be an ordinary or UTF-8 string literal.
+  auto literal = dyn_cast<StringLiteral>(arg);
+  if (!literal || literal->getCharByteWidth() != 1) {
+    S.Diag(arg->getExprLoc(), diag::err_ptrauth_string_not_literal)
+      << (literal ? 1 : 0)
+      << arg->getSourceRange();
+    return ExprError();
+  }
+
+  return call;
 }
 
 static ExprResult SemaBuiltinLaunder(Sema &S, CallExpr *TheCall) {
@@ -2172,6 +2242,8 @@ Sema::CheckBuiltinFunctionCall(FunctionDecl *FDecl, unsigned BuiltinID,
     return SemaPointerAuthSignGenericData(*this, TheCall);
   case Builtin::BI__builtin_ptrauth_auth_and_resign:
     return SemaPointerAuthAuthAndResign(*this, TheCall);
+  case Builtin::BI__builtin_ptrauth_string_discriminator:
+    return SemaPointerAuthStringDiscriminator(*this, TheCall);
   // OpenCL v2.0, s6.13.16 - Pipe functions
   case Builtin::BIread_pipe:
   case Builtin::BIwrite_pipe:
@@ -10037,6 +10109,9 @@ struct SearchNonTrivialToCopyField
     S.DiagRuntimeBehavior(SL, E, S.PDiag(diag::note_nontrivial_field) << 0);
   }
   void visitARCWeak(QualType FT, SourceLocation SL) {
+    S.DiagRuntimeBehavior(SL, E, S.PDiag(diag::note_nontrivial_field) << 0);
+  }
+  void visitPtrAuth(QualType FT, SourceLocation SL) {
     S.DiagRuntimeBehavior(SL, E, S.PDiag(diag::note_nontrivial_field) << 0);
   }
   void visitStruct(QualType FT, SourceLocation SL) {

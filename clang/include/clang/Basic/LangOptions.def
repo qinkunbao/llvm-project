@@ -145,6 +145,14 @@ LANGOPT(Coroutines        , 1, 0, "C++20 coroutines")
 LANGOPT(DllExportInlines  , 1, 1, "dllexported classes dllexport inline methods")
 LANGOPT(RelaxedTemplateTemplateArgs, 1, 0, "C++17 relaxed matching of template template arguments")
 LANGOPT(PointerAuthIntrinsics, 1, 0, "pointer authentication intrinsics")
+LANGOPT(PointerAuthCalls  , 1, 0, "function pointer authentication")
+LANGOPT(PointerAuthReturns, 1, 0, "return pointer authentication")
+LANGOPT(PointerAuthIndirectGotos, 1, 0, "indirect gotos pointer authentication")
+LANGOPT(PointerAuthAuthTraps, 1, 0, "pointer authentication failure traps")
+LANGOPT(PointerAuthVTPtrAddressDiscrimination, 1, 0, "incorporate address discrimination in authenticated vtable pointers")
+LANGOPT(PointerAuthVTPtrTypeDiscrimination, 1, 0, "incorporate type discrimination in authenticated vtable pointers")
+LANGOPT(SoftPointerAuth   , 1, 0, "software emulation of pointer authentication")
+LANGOPT(PointerAuthBlockDescriptorPointers, 1, 0, "enable signed block descriptors")
 
 LANGOPT(DoubleSquareBracketAttributes, 1, 0, "'[[]]' attributes extension for all language standard modes")
 
@@ -393,6 +401,9 @@ LANGOPT(RegisterStaticDestructors, 1, 1, "Register C++ static destructors")
 LANGOPT(MatrixTypes, 1, 0, "Enable or disable the builtin matrix type")
 
 COMPATIBLE_VALUE_LANGOPT(MaxTokens, 32, 0, "Max number of tokens per TU or 0")
+
+BENIGN_LANGOPT(FunctionPointerTypeDiscrimination, 1, 0,
+               "Use type discrimination for function pointers in arm64e")
 
 ENUM_LANGOPT(SignReturnAddressScope, SignReturnAddressScopeKind, 2, SignReturnAddressScopeKind::None,
              "Scope of return address signing")

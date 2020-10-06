@@ -2552,6 +2552,12 @@ Sema::CheckBaseSpecifier(CXXRecordDecl *Class,
     return nullptr;
   }
 
+  if (!Context.recordsHaveSamePointerAuthKeyAndDiscriminator(Class,
+                                                             CXXBaseDecl))
+    Diag(Class->getLocation(),
+         diag::err_ptrauth_discriminator_mismatch_derived_class)
+        << Class->getDeclName() << CXXBaseDecl->getDeclName();
+
   // A class which contains a flexible array member is not suitable for use as a
   // base class:
   //   - If the layout determines that a base comes before another base,
@@ -6618,6 +6624,12 @@ void Sema::CheckCompletedCXXClass(Scope *S, CXXRecordDecl *Record) {
     }
   }
 
+  // Disallow attribute ptrauth_struct on dynamic classes.
+  if (Context.recordIsPointerAuthSigned(Record) && Record->isDynamicClass())
+    Diag(Record->getLocation(),
+         diag::err_ptrauth_invalid_struct_attr_dynamic_class)
+        << Record->getDeclName();
+
   // Warn if the class has virtual methods but non-virtual public destructor.
   if (Record->isPolymorphic() && !Record->isDependentType()) {
     CXXDestructorDecl *dtor = Record->getDestructor();
@@ -6721,6 +6733,11 @@ void Sema::CheckCompletedCXXClass(Scope *S, CXXRecordDecl *Record) {
     CheckExplicitlyDefaultedFunction(S, FD);
     return false;
   };
+
+  if (!Record->isInvalidDecl() &&
+      Record->hasAttr<VTablePointerAuthenticationAttr>()) {
+    checkIncorrectVTablePointerAuthenticationAttribute(*Record);
+  }
 
   auto CompleteMemberFunction = [&](CXXMethodDecl *M) {
     // Check whether the explicitly-defaulted members are valid.
@@ -8747,6 +8764,8 @@ struct SpecialMemberDeletionInfo
 
   bool shouldDeleteForVariantObjCPtrMember(FieldDecl *FD, QualType FieldType);
 
+  bool shouldDeleteForVariantPtrAuthMember(FieldDecl *FD, QualType FieldType);
+
   bool visitBase(CXXBaseSpecifier *Base) { return shouldDeleteForBase(Base); }
   bool visitField(FieldDecl *Field) { return shouldDeleteForField(Field); }
 
@@ -8819,14 +8838,14 @@ bool SpecialMemberDeletionInfo::shouldDeleteForSubobjectCall(
       S.Diag(Field->getLocation(),
              diag::note_deleted_special_member_class_subobject)
         << getEffectiveCSM() << MD->getParent() << /*IsField*/true
-        << Field << DiagKind << IsDtorCallInCtor << /*IsObjCPtr*/false;
+        << Field << DiagKind << IsDtorCallInCtor << 0;
     } else {
       CXXBaseSpecifier *Base = Subobj.get<CXXBaseSpecifier*>();
       S.Diag(Base->getBeginLoc(),
              diag::note_deleted_special_member_class_subobject)
           << getEffectiveCSM() << MD->getParent() << /*IsField*/ false
           << Base->getType() << DiagKind << IsDtorCallInCtor
-          << /*IsObjCPtr*/false;
+          << 0;
     }
 
     if (DiagKind == 1)
@@ -8896,11 +8915,35 @@ bool SpecialMemberDeletionInfo::shouldDeleteForVariantObjCPtrMember(
     S.Diag(FD->getLocation(),
            diag::note_deleted_special_member_class_subobject)
         << getEffectiveCSM() << ParentClass << /*IsField*/true
-        << FD << 4 << /*IsDtorCallInCtor*/false << /*IsObjCPtr*/true;
+        << FD << 4 << /*IsDtorCallInCtor*/false << 1;
   }
 
   return true;
 }
+
+bool SpecialMemberDeletionInfo::shouldDeleteForVariantPtrAuthMember(
+    FieldDecl *FD, QualType FieldType) {
+  // Copy/move constructors/assignment operators are deleted if the field has an
+  // address-discriminated ptrauth qualifier.
+  PointerAuthQualifier Q = FieldType.getPointerAuth();
+
+  if (!Q || !Q.isAddressDiscriminated())
+    return false;
+
+  if (CSM == Sema::CXXDefaultConstructor || CSM == Sema::CXXDestructor)
+    return false;
+
+  if (Diagnose) {
+    auto *ParentClass = cast<CXXRecordDecl>(FD->getParent());
+    S.Diag(FD->getLocation(),
+           diag::note_deleted_special_member_class_subobject)
+        << getEffectiveCSM() << ParentClass << /*IsField*/true
+        << FD << 4 << /*IsDtorCallInCtor*/false << 2;
+  }
+
+  return true;
+}
+
 
 /// Check whether we should delete a special member function due to the class
 /// having a particular direct or virtual base class.
@@ -8923,7 +8966,7 @@ bool SpecialMemberDeletionInfo::shouldDeleteForBase(CXXBaseSpecifier *Base) {
              diag::note_deleted_special_member_class_subobject)
           << getEffectiveCSM() << MD->getParent() << /*IsField*/ false
           << Base->getType() << /*Deleted*/ 1 << /*IsDtorCallInCtor*/ false
-          << /*IsObjCPtr*/false;
+          << 0;
       S.NoteDeletedFunction(BaseCtor);
     }
     return BaseCtor->isDeleted();
@@ -8938,6 +8981,9 @@ bool SpecialMemberDeletionInfo::shouldDeleteForField(FieldDecl *FD) {
   CXXRecordDecl *FieldRecord = FieldType->getAsCXXRecordDecl();
 
   if (inUnion() && shouldDeleteForVariantObjCPtrMember(FD, FieldType))
+    return true;
+
+  if (inUnion() && shouldDeleteForVariantPtrAuthMember(FD, FieldType))
     return true;
 
   if (CSM == Sema::CXXDefaultConstructor) {
@@ -9002,6 +9048,9 @@ bool SpecialMemberDeletionInfo::shouldDeleteForField(FieldDecl *FD) {
         QualType UnionFieldType = S.Context.getBaseElementType(UI->getType());
 
         if (shouldDeleteForVariantObjCPtrMember(&*UI, UnionFieldType))
+          return true;
+
+        if (shouldDeleteForVariantPtrAuthMember(&*UI, UnionFieldType))
           return true;
 
         if (!UnionFieldType.isConstQualified())
@@ -9830,12 +9879,59 @@ void Sema::checkIllFormedTrivialABIStruct(CXXRecordDecl &RD) {
       return;
     }
 
+    // Ill-formed if the field is an address-discriminated pointer.
+    if (FT.hasAddressDiscriminatedPointerAuth()) {
+      PrintDiagAndRemoveAttr(6);
+      return;
+    }
+
     if (const auto *RT = FT->getBaseElementTypeUnsafe()->getAs<RecordType>())
       if (!RT->isDependentType() &&
           !cast<CXXRecordDecl>(RT->getDecl())->canPassInRegisters()) {
         PrintDiagAndRemoveAttr(5);
         return;
       }
+  }
+}
+
+void Sema::checkIncorrectVTablePointerAuthenticationAttribute(
+    CXXRecordDecl &RD) {
+  if (RequireCompleteType(RD.getLocation(), Context.getRecordType(&RD),
+                          diag::err_incomplete_type_vtable_pointer_auth)) {
+    return;
+  }
+
+  const CXXRecordDecl *primaryBase = &RD;
+  if (primaryBase->hasAnyDependentBases()) {
+    return;
+  }
+
+  while (1) {
+    assert(primaryBase);
+    const CXXRecordDecl *base = nullptr;
+    for (auto basePtr : primaryBase->bases()) {
+      if (!basePtr.getType()->getAsCXXRecordDecl()->isDynamicClass())
+        continue;
+      base = basePtr.getType()->getAsCXXRecordDecl();
+      break;
+    }
+    if (!base || base == primaryBase || !base->isPolymorphic())
+      break;
+    if (base->isPolymorphic()) {
+      Diag(RD.getAttr<VTablePointerAuthenticationAttr>()->getLocation(),
+           diag::err_non_top_level_vtable_pointer_auth)
+          << &RD << base;
+    } else {
+      break;
+    }
+    primaryBase = base;
+  }
+
+  if (!RD.isPolymorphic()) {
+    Diag(RD.getAttr<VTablePointerAuthenticationAttr>()->getLocation(),
+         diag::err_non_polymorphic_vtable_pointer_auth)
+        << &RD;
+    return;
   }
 }
 

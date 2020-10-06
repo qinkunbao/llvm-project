@@ -756,7 +756,13 @@ void CodeGenFunction::EmitScalarInit(const Expr *init, const ValueDecl *D,
                                      LValue lvalue, bool capturedByInit) {
   Qualifiers::ObjCLifetime lifetime = lvalue.getObjCLifetime();
   if (!lifetime) {
-    llvm::Value *value = EmitScalarExpr(init);
+    llvm::Value *value;
+    if (auto ptrauth = lvalue.getQuals().getPointerAuth()) {
+      value = EmitPointerAuthQualify(ptrauth, init, lvalue.getAddress(*this));
+      lvalue.getQuals().removePtrAuth();
+    } else {
+      value = EmitScalarExpr(init);
+    }
     if (capturedByInit)
       drillIntoBlockVariable(*this, lvalue, cast<VarDecl>(D));
     EmitNullabilityCheck(lvalue, value, init->getExprLoc());
@@ -1423,7 +1429,7 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
   bool EmitDebugInfo = DI && CGM.getCodeGenOpts().hasReducedDebugInfo();
 
   Address address = Address::invalid();
-  Address AllocaAddr = Address::invalid();
+  RawAddress AllocaAddr = RawAddress::invalid();
   Address OpenMPLocalAddr = Address::invalid();
   if (CGM.getLangOpts().OpenMPIRBuilder)
     OpenMPLocalAddr = OMPBuilderCBHelpers::getAddressOfLocalVariable(*this, &D);
@@ -1492,7 +1498,7 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
           // to this variable. Set it to zero to indicate that NRVO was not
           // applied.
           llvm::Value *Zero = Builder.getFalse();
-          Address NRVOFlag =
+          RawAddress NRVOFlag =
             CreateTempAlloca(Zero->getType(), CharUnits::One(), "nrvo");
           EnsureInsertPoint();
           Builder.CreateStore(Zero, NRVOFlag);
@@ -1601,12 +1607,12 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
     if (UsePointerValue)
       DebugAddr = ReturnValuePointer;
 
-    (void)DI->EmitDeclareOfAutoVariable(&D, DebugAddr.getPointer(), Builder,
-                                        UsePointerValue);
+    (void)DI->EmitDeclareOfAutoVariable(&D, DebugAddr.getRawPointer(*this),
+                                        Builder, UsePointerValue);
   }
 
   if (D.hasAttr<AnnotateAttr>() && HaveInsertPoint())
-    EmitVarAnnotations(&D, address.getPointer());
+    EmitVarAnnotations(&D, address.getRawPointer(*this));
 
   // Make sure we call @llvm.lifetime.end.
   if (emission.useLifetimeMarkers())
@@ -1765,12 +1771,12 @@ void CodeGenFunction::emitZeroOrPatternForAutoVarInit(QualType type,
     llvm::Value *BaseSizeInChars =
         llvm::ConstantInt::get(IntPtrTy, EltSize.getQuantity());
     Address Begin = Builder.CreateElementBitCast(Loc, Int8Ty, "vla.begin");
-    llvm::Value *End =
-        Builder.CreateInBoundsGEP(Begin.getPointer(), SizeVal, "vla.end");
+    llvm::Value *End = Builder.CreateInBoundsGEP(Begin.getRawPointer(*this),
+                                                 SizeVal, "vla.end");
     llvm::BasicBlock *OriginBB = Builder.GetInsertBlock();
     EmitBlock(LoopBB);
     llvm::PHINode *Cur = Builder.CreatePHI(Begin.getType(), 2, "vla.cur");
-    Cur->addIncoming(Begin.getPointer(), OriginBB);
+    Cur->addIncoming(Begin.getRawPointer(*this), OriginBB);
     CharUnits CurAlign = Loc.getAlignment().alignmentOfArrayElement(EltSize);
     auto *I =
         Builder.CreateMemCpy(Address(Cur, CurAlign),
@@ -2193,7 +2199,7 @@ void CodeGenFunction::emitDestroy(Address addr, QualType type,
     checkZeroLength = false;
   }
 
-  llvm::Value *begin = addr.getPointer();
+  llvm::Value *begin = addr.getRawPointer(*this);
   llvm::Value *end = Builder.CreateInBoundsGEP(begin, length);
   emitArrayDestroy(begin, end, type, elementAlign, destroyer,
                    checkZeroLength, useEHCleanupForArray);
@@ -2442,16 +2448,15 @@ void CodeGenFunction::EmitParmDecl(const VarDecl &D, ParamValue Arg,
   bool IsScalar = hasScalarEvaluationKind(Ty);
   // If we already have a pointer to the argument, reuse the input pointer.
   if (Arg.isIndirect()) {
-    DeclPtr = Arg.getIndirectAddress();
+    Address Addr = Arg.getIndirectAddress();
     // If we have a prettier pointer type at this point, bitcast to that.
-    unsigned AS = DeclPtr.getType()->getAddressSpace();
+    unsigned AS = Addr.getType()->getAddressSpace();
     llvm::Type *IRTy = ConvertTypeForMem(Ty)->getPointerTo(AS);
-    if (DeclPtr.getType() != IRTy)
-      DeclPtr = Builder.CreateBitCast(DeclPtr, IRTy, D.getName());
+    if (Addr.getType() != IRTy)
+      Addr = Builder.CreateBitCast(Addr, IRTy, D.getName());
     // Indirect argument is in alloca address space, which may be different
     // from the default address space.
     auto AllocaAS = CGM.getASTAllocaAddressSpace();
-    auto *V = DeclPtr.getPointer();
     auto SrcLangAS = getLangOpts().OpenCL ? LangAS::opencl_private : AllocaAS;
     auto DestLangAS =
         getLangOpts().OpenCL ? LangAS::opencl_private : LangAS::Default;
@@ -2459,11 +2464,12 @@ void CodeGenFunction::EmitParmDecl(const VarDecl &D, ParamValue Arg,
       assert(getContext().getTargetAddressSpace(SrcLangAS) ==
              CGM.getDataLayout().getAllocaAddrSpace());
       auto DestAS = getContext().getTargetAddressSpace(DestLangAS);
-      auto *T = V->getType()->getPointerElementType()->getPointerTo(DestAS);
-      DeclPtr = Address(getTargetHooks().performAddrSpaceCast(
-                            *this, V, SrcLangAS, DestLangAS, T, true),
-                        DeclPtr.getAlignment());
+      auto *T = Addr.getType()->getElementType()->getPointerTo(DestAS);
+      Addr = getTargetHooks().performAddrSpaceCast(*this, Addr, SrcLangAS,
+                                                   DestLangAS, T, true);
     }
+
+    DeclPtr = Addr;
 
     // Push a destructor cleanup for this parameter if the ABI requires it.
     // Don't push a cleanup in a thunk for a method that will also emit a
@@ -2566,12 +2572,13 @@ void CodeGenFunction::EmitParmDecl(const VarDecl &D, ParamValue Arg,
   // Emit debug info for param declarations in non-thunk functions.
   if (CGDebugInfo *DI = getDebugInfo()) {
     if (CGM.getCodeGenOpts().hasReducedDebugInfo() && !CurFuncIsThunk) {
-      DI->EmitDeclareOfArgVariable(&D, DeclPtr.getPointer(), ArgNo, Builder);
+      DI->EmitDeclareOfArgVariable(&D, DeclPtr.getRawPointer(*this), ArgNo,
+                                   Builder);
     }
   }
 
   if (D.hasAttr<AnnotateAttr>())
-    EmitVarAnnotations(&D, DeclPtr.getPointer());
+    EmitVarAnnotations(&D, DeclPtr.getRawPointer(*this));
 
   // We can only check return value nullability if all arguments to the
   // function satisfy their nullability preconditions. This makes it necessary

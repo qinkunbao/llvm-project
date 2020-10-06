@@ -3,9 +3,25 @@
 // RUN: %clang -target arm64-apple-darwin -c %s -### 2>&1 | FileCheck %s --check-prefix NONE
 // NONE: "-cc1"
 // NONE-NOT: "-fptrauth-intrinsics"
+// NONE-NOT: "-fptrauth-calls"
+// NONE-NOT: "-fptrauth-returns"
+// NONE-NOT: "-fptrauth-auth-traps"
+// NONE-NOT: "-fptrauth-soft"
+
+// RUN: %clang -target arm64-apple-darwin -fptrauth-calls -c %s -### 2>&1 | FileCheck %s --check-prefix CALL
+// CALL: "-cc1"{{.*}} {{.*}} "-fptrauth-calls"
 
 // RUN: %clang -target arm64-apple-darwin -fptrauth-intrinsics -c %s -### 2>&1 | FileCheck %s --check-prefix INTRIN
 // INTRIN: "-cc1"{{.*}} {{.*}} "-fptrauth-intrinsics"
+
+// RUN: %clang -target arm64-apple-darwin -fptrauth-returns -c %s -### 2>&1 | FileCheck %s --check-prefix RETURN
+// RETURN: "-cc1"{{.*}} {{.*}} "-fptrauth-returns"
+
+// RUN: %clang -target arm64-apple-darwin -fptrauth-auth-traps -c %s -### 2>&1 | FileCheck %s --check-prefix TRAPS
+// TRAPS: "-cc1"{{.*}} {{.*}} "-fptrauth-auth-traps"
+
+// RUN: %clang -target arm64-apple-darwin -fptrauth-soft -c %s -### 2>&1 | FileCheck %s --check-prefix SOFT
+// SOFT: "-cc1"{{.*}} {{.*}} "-fptrauth-soft"
 
 
 // Check the arm64e defaults.
@@ -13,10 +29,29 @@
 // RUN: %clang -target arm64e-apple-darwin -c %s -### 2>&1 | FileCheck %s --check-prefix DEFAULT
 // RUN: %clang -mkernel -target arm64e-apple-darwin -c %s -### 2>&1 | FileCheck %s --check-prefix DEFAULT-KERN
 // RUN: %clang -fapple-kext -target arm64e-apple-darwin -c %s -### 2>&1 | FileCheck %s --check-prefix DEFAULT-KERN
-// DEFAULT: "-fptrauth-intrinsics" "-target-cpu" "apple-a12"{{.*}}
-// DEFAULT-KERN: "-fptrauth-intrinsics" "-target-cpu" "apple-a12"{{.*}}
+// DEFAULT: "-fptrauth-returns" "-fptrauth-intrinsics" "-fptrauth-calls" "-fptrauth-auth-traps" "-target-cpu" "apple-a12"{{.*}}
+// DEFAULT-KERN: "-fptrauth-returns" "-fptrauth-intrinsics" "-fptrauth-calls" "-fptrauth-auth-traps" "-fptrauth-block-descriptor-pointers" "-fptrauth-vtable-pointer-address-discrimination" "-fptrauth-vtable-pointer-type-discrimination" "-fptrauth-function-pointer-type-discrimination" "-target-cpu" "apple-a12"{{.*}}
+
+// RUN: %clang -target arm64e-apple-darwin -fno-ptrauth-calls -c %s -### 2>&1 | FileCheck %s --check-prefix DEFAULT-NOCALL
+// RUN: %clang -mkernel -target arm64e-apple-darwin -fno-ptrauth-calls -c %s -### 2>&1 | FileCheck %s --check-prefix DEFAULT-KERN-NOCALL
+// RUN: %clang -fapple-kext -target arm64e-apple-darwin -fno-ptrauth-calls -c %s -### 2>&1 | FileCheck %s --check-prefix DEFAULT-KERN-NOCALL
+// DEFAULT-NOCALL-NOT: "-fptrauth-calls"
+// DEFAULT-KERN-NOCALL-NOT: "-fptrauth-calls"
+// DEFAULT-NOCALL: "-fptrauth-returns" "-fptrauth-intrinsics" "-fptrauth-auth-traps" "-target-cpu" "apple-a12"
+// DEFAULT-KERN-NOCALL: "-fptrauth-returns" "-fptrauth-intrinsics" "-fptrauth-auth-traps" "-fptrauth-block-descriptor-pointers" "-fptrauth-vtable-pointer-address-discrimination" "-fptrauth-vtable-pointer-type-discrimination" "-fptrauth-function-pointer-type-discrimination" "-target-cpu" "apple-a12"{{.*}}
+
+
+// RUN: %clang -target arm64e-apple-darwin -fno-ptrauth-returns -c %s -### 2>&1 | FileCheck %s --check-prefix NORET
+
+// NORET-NOT: "-fptrauth-returns"
+// NORET: "-fptrauth-intrinsics" "-fptrauth-calls" "-fptrauth-auth-traps" "-target-cpu" "apple-a12"
 
 // RUN: %clang -target arm64e-apple-darwin -fno-ptrauth-intrinsics -c %s -### 2>&1 | FileCheck %s --check-prefix NOINTRIN
 
+// NOINTRIN: "-fptrauth-returns"
 // NOINTRIN-NOT: "-fptrauth-intrinsics"
-// NOINTRIN: "-target-cpu" "apple-a12"{{.*}}
+// NOINTRIN: "-fptrauth-calls" "-fptrauth-auth-traps" "-target-cpu" "apple-a12"{{.*}}
+
+
+// RUN: %clang -target arm64e-apple-darwin -fno-ptrauth-auth-traps -c %s -### 2>&1 | FileCheck %s --check-prefix NOTRAP
+// NOTRAP: "-fptrauth-returns" "-fptrauth-intrinsics" "-fptrauth-calls" "-target-cpu" "apple-a12"

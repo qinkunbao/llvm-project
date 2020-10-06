@@ -27,7 +27,7 @@ bool DominatingValue<RValue>::saved_type::needsSaving(RValue rv) {
   if (rv.isScalar())
     return DominatingLLVMValue::needsSaving(rv.getScalarVal());
   if (rv.isAggregate())
-    return DominatingLLVMValue::needsSaving(rv.getAggregatePointer());
+    return DominatingValue<Address>::needsSaving(rv.getAggregateAddress());
   return true;
 }
 
@@ -35,66 +35,40 @@ DominatingValue<RValue>::saved_type
 DominatingValue<RValue>::saved_type::save(CodeGenFunction &CGF, RValue rv) {
   if (rv.isScalar()) {
     llvm::Value *V = rv.getScalarVal();
-
-    // These automatically dominate and don't need to be saved.
-    if (!DominatingLLVMValue::needsSaving(V))
-      return saved_type(V, ScalarLiteral);
-
-    // Everything else needs an alloca.
-    Address addr =
-      CGF.CreateDefaultAlignTempAlloca(V->getType(), "saved-rvalue");
-    CGF.Builder.CreateStore(V, addr);
-    return saved_type(addr.getPointer(), ScalarAddress);
+    return saved_type(DominatingLLVMValue::save(CGF, V),
+                      DominatingLLVMValue::needsSaving(V) ? ScalarAddress
+                                                          : ScalarLiteral);
   }
 
   if (rv.isComplex()) {
     CodeGenFunction::ComplexPairTy V = rv.getComplexVal();
-    llvm::Type *ComplexTy =
-        llvm::StructType::get(V.first->getType(), V.second->getType());
-    Address addr = CGF.CreateDefaultAlignTempAlloca(ComplexTy, "saved-complex");
-    CGF.Builder.CreateStore(V.first, CGF.Builder.CreateStructGEP(addr, 0));
-    CGF.Builder.CreateStore(V.second, CGF.Builder.CreateStructGEP(addr, 1));
-    return saved_type(addr.getPointer(), ComplexAddress);
+    return saved_type(DominatingLLVMValue::save(CGF, V.first),
+                      DominatingLLVMValue::save(CGF, V.second));
   }
 
   assert(rv.isAggregate());
-  Address V = rv.getAggregateAddress(); // TODO: volatile?
-  if (!DominatingLLVMValue::needsSaving(V.getPointer()))
-    return saved_type(V.getPointer(), AggregateLiteral,
-                      V.getAlignment().getQuantity());
-
-  Address addr =
-    CGF.CreateTempAlloca(V.getType(), CGF.getPointerAlign(), "saved-rvalue");
-  CGF.Builder.CreateStore(V.getPointer(), addr);
-  return saved_type(addr.getPointer(), AggregateAddress,
-                    V.getAlignment().getQuantity());
+  Address V = rv.getAggregateAddress();
+  return saved_type(
+      DominatingValue<Address>::save(CGF, V), rv.isVolatileQualified(),
+      DominatingValue<Address>::needsSaving(V) ? AggregateAddress
+                                               : AggregateLiteral);
 }
 
 /// Given a saved r-value produced by SaveRValue, perform the code
 /// necessary to restore it to usability at the current insertion
 /// point.
 RValue DominatingValue<RValue>::saved_type::restore(CodeGenFunction &CGF) {
-  auto getSavingAddress = [&](llvm::Value *value) {
-    auto alignment = cast<llvm::AllocaInst>(value)->getAlignment();
-    return Address(value, CharUnits::fromQuantity(alignment));
-  };
   switch (K) {
   case ScalarLiteral:
-    return RValue::get(Value);
   case ScalarAddress:
-    return RValue::get(CGF.Builder.CreateLoad(getSavingAddress(Value)));
+    return RValue::get(DominatingLLVMValue::restore(CGF, Vals.first));
   case AggregateLiteral:
-    return RValue::getAggregate(Address(Value, CharUnits::fromQuantity(Align)));
-  case AggregateAddress: {
-    auto addr = CGF.Builder.CreateLoad(getSavingAddress(Value));
-    return RValue::getAggregate(Address(addr, CharUnits::fromQuantity(Align)));
-  }
+  case AggregateAddress:
+    return RValue::getAggregate(
+        DominatingValue<Address>::restore(CGF, AggregateAddr), IsVolatile);
   case ComplexAddress: {
-    Address address = getSavingAddress(Value);
-    llvm::Value *real =
-        CGF.Builder.CreateLoad(CGF.Builder.CreateStructGEP(address, 0));
-    llvm::Value *imag =
-        CGF.Builder.CreateLoad(CGF.Builder.CreateStructGEP(address, 1));
+    llvm::Value *real = DominatingLLVMValue::restore(CGF, Vals.first);
+    llvm::Value *imag = DominatingLLVMValue::restore(CGF, Vals.second);
     return RValue::getComplex(real, imag);
   }
   }
@@ -272,14 +246,14 @@ void EHScopeStack::popNullFixups() {
     BranchFixups.pop_back();
 }
 
-Address CodeGenFunction::createCleanupActiveFlag() {
+RawAddress CodeGenFunction::createCleanupActiveFlag() {
   // Create a variable to decide whether the cleanup needs to be run.
-  Address active = CreateTempAllocaWithoutCast(
+  RawAddress active = CreateTempAllocaWithoutCast(
       Builder.getInt1Ty(), CharUnits::One(), "cleanup.cond");
 
   // Initialize it to false at a site that's guaranteed to be run
   // before each evaluation.
-  setBeforeOutermostConditional(Builder.getFalse(), active);
+  setBeforeOutermostConditional(Builder.getFalse(), active, *this);
 
   // Initialize it to true at the current location.
   Builder.CreateStore(Builder.getTrue(), active);
@@ -287,7 +261,7 @@ Address CodeGenFunction::createCleanupActiveFlag() {
   return active;
 }
 
-void CodeGenFunction::initFullExprCleanupWithFlag(Address ActiveFlag) {
+void CodeGenFunction::initFullExprCleanupWithFlag(RawAddress ActiveFlag) {
   // Set that as the active flag in the cleanup.
   EHCleanupScope &cleanup = cast<EHCleanupScope>(*EHStack.begin());
   assert(!cleanup.hasActiveFlag() && "cleanup already has active flag?");
@@ -300,14 +274,16 @@ void CodeGenFunction::initFullExprCleanupWithFlag(Address ActiveFlag) {
 void EHScopeStack::Cleanup::anchor() {}
 
 static void createStoreInstBefore(llvm::Value *value, Address addr,
-                                  llvm::Instruction *beforeInst) {
-  auto store = new llvm::StoreInst(value, addr.getPointer(), beforeInst);
+                                  llvm::Instruction *beforeInst,
+                                  CodeGenFunction &CGF) {
+  auto store = new llvm::StoreInst(value, addr.getRawPointer(CGF), beforeInst);
   store->setAlignment(addr.getAlignment().getAsAlign());
 }
 
 static llvm::LoadInst *createLoadInstBefore(Address addr, const Twine &name,
-                                            llvm::Instruction *beforeInst) {
-  return new llvm::LoadInst(addr.getElementType(), addr.getPointer(), name,
+                                            llvm::Instruction *beforeInst,
+                                            CodeGenFunction &CGF) {
+  return new llvm::LoadInst(addr.getElementType(), addr.getRawPointer(CGF), name,
                             false, addr.getAlignment().getAsAlign(),
                             beforeInst);
 }
@@ -335,8 +311,8 @@ static void ResolveAllBranchFixups(CodeGenFunction &CGF,
     // entry which we're currently popping.
     if (Fixup.OptimisticBranchBlock == nullptr) {
       createStoreInstBefore(CGF.Builder.getInt32(Fixup.DestinationIndex),
-                            CGF.getNormalCleanupDestSlot(),
-                            Fixup.InitialBranch);
+                            CGF.getNormalCleanupDestSlot(), Fixup.InitialBranch,
+                            CGF);
       Fixup.InitialBranch->setSuccessor(0, CleanupEntry);
     }
 
@@ -363,7 +339,7 @@ static llvm::SwitchInst *TransitionToCleanupSwitch(CodeGenFunction &CGF,
   if (llvm::BranchInst *Br = dyn_cast<llvm::BranchInst>(Term)) {
     assert(Br->isUnconditional());
     auto Load = createLoadInstBefore(CGF.getNormalCleanupDestSlot(),
-                                     "cleanup.dest", Term);
+                                     "cleanup.dest", Term, CGF);
     llvm::SwitchInst *Switch =
       llvm::SwitchInst::Create(Load, Br->getSuccessor(0), 4, Block);
     Br->eraseFromParent();
@@ -491,8 +467,8 @@ void CodeGenFunction::PopCleanupBlocks(
     I += Header.getSize();
 
     if (Header.isConditional()) {
-      Address ActiveFlag =
-          reinterpret_cast<Address &>(LifetimeExtendedCleanupStack[I]);
+      RawAddress ActiveFlag =
+          reinterpret_cast<RawAddress &>(LifetimeExtendedCleanupStack[I]);
       initFullExprCleanupWithFlag(ActiveFlag);
       I += sizeof(ActiveFlag);
     }
@@ -862,7 +838,7 @@ void CodeGenFunction::PopCleanupBlock(bool FallthroughIsBranchThrough) {
 
         llvm::LoadInst *Load =
           createLoadInstBefore(getNormalCleanupDestSlot(), "cleanup.dest",
-                               nullptr);
+                               nullptr, *this);
         llvm::SwitchInst *Switch =
           llvm::SwitchInst::Create(Load, Default, SwitchCapacity);
 
@@ -909,8 +885,8 @@ void CodeGenFunction::PopCleanupBlock(bool FallthroughIsBranchThrough) {
         if (!Fixup.Destination) continue;
         if (!Fixup.OptimisticBranchBlock) {
           createStoreInstBefore(Builder.getInt32(Fixup.DestinationIndex),
-                                getNormalCleanupDestSlot(),
-                                Fixup.InitialBranch);
+                                getNormalCleanupDestSlot(), Fixup.InitialBranch,
+                                *this);
           Fixup.InitialBranch->setSuccessor(0, NormalEntry);
         }
         Fixup.OptimisticBranchBlock = NormalExit;
@@ -1082,7 +1058,7 @@ void CodeGenFunction::EmitBranchThroughCleanup(JumpDest Dest) {
 
   // Store the index at the start.
   llvm::ConstantInt *Index = Builder.getInt32(Dest.getDestIndex());
-  createStoreInstBefore(Index, getNormalCleanupDestSlot(), BI);
+  createStoreInstBefore(Index, getNormalCleanupDestSlot(), BI, *this);
 
   // Adjust BI to point to the first cleanup block.
   {
@@ -1216,9 +1192,9 @@ static void SetupCleanupBlockActivation(CodeGenFunction &CGF,
     // If we're in a conditional block, ignore the dominating IP and
     // use the outermost conditional branch.
     if (CGF.isInConditionalBranch()) {
-      CGF.setBeforeOutermostConditional(value, var);
+      CGF.setBeforeOutermostConditional(value, var, CGF);
     } else {
-      createStoreInstBefore(value, var, dominatingIP);
+      createStoreInstBefore(value, var, dominatingIP, CGF);
     }
   }
 
@@ -1262,7 +1238,7 @@ void CodeGenFunction::DeactivateCleanupBlock(EHScopeStack::stable_iterator C,
   Scope.setActive(false);
 }
 
-Address CodeGenFunction::getNormalCleanupDestSlot() {
+RawAddress CodeGenFunction::getNormalCleanupDestSlot() {
   if (!NormalCleanupDest.isValid())
     NormalCleanupDest =
       CreateDefaultAlignTempAlloca(Builder.getInt32Ty(), "cleanup.dest.slot");

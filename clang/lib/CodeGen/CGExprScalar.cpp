@@ -1900,6 +1900,58 @@ Value *ScalarExprEmitter::VisitInitListExpr(InitListExpr *E) {
   return V;
 }
 
+static bool isDeclRefKnownNonNull(CodeGenFunction &CGF, const ValueDecl *D) {
+  return !D->isWeak();
+}
+
+static bool isLValueKnownNonNull(CodeGenFunction &CGF, const Expr *E) {
+  E = E->IgnoreParens();
+
+  if (auto UO = dyn_cast<UnaryOperator>(E)) {
+    if (UO->getOpcode() == UO_Deref) {
+      return CGF.isPointerKnownNonNull(UO->getSubExpr());
+    }
+  }
+
+  if (auto DRE = dyn_cast<DeclRefExpr>(E)) {
+    return isDeclRefKnownNonNull(CGF, DRE->getDecl());
+  } else if (auto ME = dyn_cast<MemberExpr>(E)) {
+    if (isa<FieldDecl>(ME->getMemberDecl()))
+      return true;
+    return isDeclRefKnownNonNull(CGF, ME->getMemberDecl());
+  }
+
+  // Array subscripts?  Anything else?
+
+  return false;
+}
+
+bool CodeGenFunction::isPointerKnownNonNull(const Expr *E) {
+  assert(E->getType()->isSignableValue(getContext()));
+
+  E = E->IgnoreParens();
+
+  if (isa<CXXThisExpr>(E))
+    return true;
+
+  if (auto UO = dyn_cast<UnaryOperator>(E)) {
+    if (UO->getOpcode() == UO_AddrOf) {
+      return isLValueKnownNonNull(*this, UO->getSubExpr());
+    }
+  }
+
+  if (auto CE = dyn_cast<CastExpr>(E)) {
+    if (CE->getCastKind() == CK_FunctionToPointerDecay ||
+        CE->getCastKind() == CK_ArrayToPointerDecay) {
+      return isLValueKnownNonNull(*this, CE->getSubExpr());
+    }
+  }
+
+  // Maybe honor __nonnull?
+
+  return false;
+}
+
 bool CodeGenFunction::ShouldNullCheckClassCastValue(const CastExpr *CE) {
   const Expr *E = CE->getSubExpr();
 
@@ -2066,7 +2118,8 @@ Value *ScalarExprEmitter::VisitCastExpr(CastExpr *CE) {
       return EmitLoadOfLValue(DestLV, CE->getExprLoc());
     }
 
-    return Builder.CreateBitCast(Src, DstTy);
+    llvm::Value *Result = Builder.CreateBitCast(Src, DstTy);
+    return CGF.AuthPointerToPointerCast(Result, E->getType(), DestTy);
   }
   case CK_AddressSpaceConversion: {
     Expr::EvalResult Result;
@@ -2106,21 +2159,23 @@ Value *ScalarExprEmitter::VisitCastExpr(CastExpr *CE) {
     // performed and the object is not of the derived type.
     if (CGF.sanitizePerformTypeCheck())
       CGF.EmitTypeCheck(CodeGenFunction::TCK_DowncastPointer, CE->getExprLoc(),
-                        Derived.getPointer(), DestTy->getPointeeType());
+                        Derived, DestTy->getPointeeType());
 
     if (CGF.SanOpts.has(SanitizerKind::CFIDerivedCast))
       CGF.EmitVTablePtrCheckForCast(
-          DestTy->getPointeeType(), Derived.getPointer(),
+          DestTy->getPointeeType(),
+          CGF.getAsNaturalPointerTo(Derived, DestTy->getPointeeType()),
           /*MayBeNull=*/true, CodeGenFunction::CFITCK_DerivedCast,
           CE->getBeginLoc());
 
-    return Derived.getPointer();
+    return CGF.getAsNaturalPointerTo(Derived, CE->getType()->getPointeeType());
   }
   case CK_UncheckedDerivedToBase:
   case CK_DerivedToBase: {
     // The EmitPointerWithAlignment path does this fine; just discard
     // the alignment.
-    return CGF.EmitPointerWithAlignment(CE).getPointer();
+    return CGF.getAsNaturalPointerTo(CGF.EmitPointerWithAlignment(CE),
+                                     CE->getType()->getPointeeType());
   }
 
   case CK_Dynamic: {
@@ -2130,7 +2185,8 @@ Value *ScalarExprEmitter::VisitCastExpr(CastExpr *CE) {
   }
 
   case CK_ArrayToPointerDecay:
-    return CGF.EmitArrayToPointerDecay(E).getPointer();
+    return CGF.getAsNaturalPointerTo(CGF.EmitArrayToPointerDecay(E),
+                                     CE->getType()->getPointeeType());
   case CK_FunctionToPointerDecay:
     return EmitLValue(E).getPointer(CGF);
 
@@ -2209,6 +2265,8 @@ Value *ScalarExprEmitter::VisitCastExpr(CastExpr *CE) {
       if (DestTy.mayBeDynamicClass())
         IntToPtr = Builder.CreateLaunderInvariantGroup(IntToPtr);
     }
+
+    IntToPtr = CGF.AuthPointerToPointerCast(IntToPtr, E->getType(), DestTy);
     return IntToPtr;
   }
   case CK_PointerToIntegral: {
@@ -2224,6 +2282,7 @@ Value *ScalarExprEmitter::VisitCastExpr(CastExpr *CE) {
         PtrExpr = Builder.CreateStripInvariantGroup(PtrExpr);
     }
 
+    PtrExpr = CGF.AuthPointerToPointerCast(PtrExpr, E->getType(), DestTy);
     return Builder.CreatePtrToInt(PtrExpr, ConvertType(DestTy));
   }
   case CK_ToVoid: {
@@ -2462,10 +2521,11 @@ ScalarExprEmitter::EmitScalarPrePostIncDec(const UnaryOperator *E, LValue LV,
     Builder.SetInsertPoint(opBB);
     atomicPHI = Builder.CreatePHI(value->getType(), 2);
     atomicPHI->addIncoming(value, startBB);
-    value = atomicPHI;
+    value = CGF.EmitPointerAuthAuth(type->getPointeeType(), atomicPHI);
   } else {
     value = EmitLoadOfLValue(LV, E->getExprLoc());
     input = value;
+    value = CGF.EmitPointerAuthAuth(type->getPointeeType(), value);
   }
 
   // Special case of integer increment that we have to check first: bool++.
@@ -2688,6 +2748,7 @@ ScalarExprEmitter::EmitScalarPrePostIncDec(const UnaryOperator *E, LValue LV,
   if (atomicPHI) {
     llvm::BasicBlock *curBlock = Builder.GetInsertBlock();
     llvm::BasicBlock *contBB = CGF.createBasicBlock("atomic_cont", CGF.CurFn);
+    value = CGF.EmitPointerAuthSign(type->getPointeeType(), value);
     auto Pair = CGF.EmitAtomicCompareExchange(
         LV, RValue::get(atomicPHI), RValue::get(value), E->getExprLoc());
     llvm::Value *old = CGF.EmitToMemory(Pair.first.getScalarVal(), type);
@@ -2699,6 +2760,7 @@ ScalarExprEmitter::EmitScalarPrePostIncDec(const UnaryOperator *E, LValue LV,
   }
 
   // Store the updated result through the lvalue.
+  value = CGF.EmitPointerAuthSign(type->getPointeeType(), value);
   if (LV.isBitField())
     CGF.EmitStoreThroughBitfieldLValue(RValue::get(value), LV, &value);
   else
@@ -3309,6 +3371,27 @@ Value *ScalarExprEmitter::EmitOverflowCheckedBinOp(const BinOpInfo &Ops) {
   return phi;
 }
 
+static Value *createGEPForPointerArithmetic(Value *pointer, Value *index,
+                                            QualType ptrTy, bool isSigned,
+                                            bool isSubtraction,
+                                            SourceLocation loc,
+                                            CodeGenFunction &CGF) {
+  CGPointerAuthInfo info = CGF.CGM.getPointerAuthInfoForType(ptrTy);
+  if (info)
+    pointer = CGF.EmitPointerAuthAuth(info, pointer);
+
+  if (CGF.getLangOpts().isSignedOverflowDefined())
+    pointer = CGF.Builder.CreateGEP(pointer, index, "add.ptr");
+  else
+    pointer = CGF.EmitCheckedInBoundsGEP(pointer, index, isSigned,
+                                         isSubtraction, loc, "add.ptr");
+
+  if (info)
+    pointer = CGF.EmitPointerAuthSign(info, pointer);
+
+  return pointer;
+}
+
 /// Emit pointer + index arithmetic.
 static Value *emitPointerArithmetic(CodeGenFunction &CGF,
                                     const BinOpInfo &op,
@@ -3398,16 +3481,13 @@ static Value *emitPointerArithmetic(CodeGenFunction &CGF,
     // GEP indexes are signed, and scaling an index isn't permitted to
     // signed-overflow, so we use the same semantics for our explicit
     // multiply.  We suppress this if overflow is not undefined behavior.
-    if (CGF.getLangOpts().isSignedOverflowDefined()) {
+    if (CGF.getLangOpts().isSignedOverflowDefined())
       index = CGF.Builder.CreateMul(index, numElements, "vla.index");
-      pointer = CGF.Builder.CreateGEP(pointer, index, "add.ptr");
-    } else {
+    else
       index = CGF.Builder.CreateNSWMul(index, numElements, "vla.index");
-      pointer =
-          CGF.EmitCheckedInBoundsGEP(pointer, index, isSigned, isSubtraction,
-                                     op.E->getExprLoc(), "add.ptr");
-    }
-    return pointer;
+    return createGEPForPointerArithmetic(pointer, index, op.Ty, isSigned,
+                                         isSubtraction, op.E->getExprLoc(),
+                                         CGF);
   }
 
   // Explicitly handle GNU void* and function pointer arithmetic extensions. The
@@ -3419,11 +3499,8 @@ static Value *emitPointerArithmetic(CodeGenFunction &CGF,
     return CGF.Builder.CreateBitCast(result, pointer->getType());
   }
 
-  if (CGF.getLangOpts().isSignedOverflowDefined())
-    return CGF.Builder.CreateGEP(pointer, index, "add.ptr");
-
-  return CGF.EmitCheckedInBoundsGEP(pointer, index, isSigned, isSubtraction,
-                                    op.E->getExprLoc(), "add.ptr");
+  return createGEPForPointerArithmetic(pointer, index, op.Ty, isSigned,
+                                       isSubtraction, op.E->getExprLoc(), CGF);
 }
 
 // Construct an fmuladd intrinsic to represent a fused mul-add of MulOp and
@@ -4127,6 +4204,20 @@ Value *ScalarExprEmitter::VisitBinAssign(const BinaryOperator *E) {
 
   Value *RHS;
   LValue LHS;
+
+  if (auto ptrauth = E->getLHS()->getType().getPointerAuth()) {
+    LValue LV = CGF.EmitCheckedLValue(E->getLHS(), CodeGenFunction::TCK_Store);
+    LV.getQuals().removePtrAuth();
+    llvm::Value *RV = CGF.EmitPointerAuthQualify(ptrauth, E->getRHS(),
+                                                 LV.getAddress(CGF));
+    CGF.EmitNullabilityCheck(LV, RV, E->getExprLoc());
+    CGF.EmitStoreThroughLValue(RValue::get(RV), LV);
+
+    if (Ignore) return nullptr;
+    RV = CGF.EmitPointerAuthUnqualify(ptrauth, RV, LV.getType(),
+                                      LV.getAddress(CGF), /*nonnull*/ false);
+    return RV;
+  }
 
   switch (E->getLHS()->getType().getObjCLifetime()) {
   case Qualifiers::OCL_Strong:
@@ -5061,4 +5152,17 @@ CodeGenFunction::EmitCheckedInBoundsGEP(Value *Ptr, ArrayRef<Value *> IdxList,
   EmitCheck(Checks, SanitizerHandler::PointerOverflow, StaticArgs, DynamicArgs);
 
   return GEPVal;
+}
+
+Address
+CodeGenFunction::EmitCheckedInBoundsGEP(Address Addr, ArrayRef<Value *> IdxList,
+                                        bool SignedIndices, bool IsSubtraction,
+                                        SourceLocation Loc, CharUnits Align,
+                                        const Twine &Name) {
+  if (!SanOpts.has(SanitizerKind::PointerOverflow))
+    return Builder.CreateInBoundsGEP(Addr, IdxList, Align, Name);
+
+  return {EmitCheckedInBoundsGEP(Addr.getRawPointer(*this), IdxList,
+                                 SignedIndices, IsSubtraction, Loc, Name),
+          Align};
 }

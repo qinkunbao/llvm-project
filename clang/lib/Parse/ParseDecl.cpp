@@ -280,6 +280,18 @@ static bool attributeIsTypeArgAttr(const IdentifierInfo &II) {
 #undef CLANG_ATTR_TYPE_ARG_LIST
 }
 
+/// Determine whether the given attribute takes an identifier argument at a
+/// specific index
+static bool attributeHasStrictIdentifierArgAtIndex(const IdentifierInfo &II,
+                                                   size_t argIndex) {
+#define CLANG_ATTR_STRICT_IDENTIFIER_ARG_AT_INDEX_LIST
+  return (llvm::StringSwitch<uint64_t>(normalizeAttrName(II.getName()))
+#include "clang/Parse/AttrParserStringSwitches.inc"
+              .Default(0)) &
+         (1ull << argIndex);
+#undef CLANG_ATTR_STRICT_IDENTIFIER_ARG_AT_INDEX_LIST
+}
+
 /// Determine whether the given attribute requires parsing its arguments
 /// in an unevaluated context or not.
 static bool attributeParsedArgsUnevaluated(const IdentifierInfo &II) {
@@ -373,6 +385,12 @@ unsigned Parser::ParseAttributeArgsCommon(
       // Interpret "kw_this" as an identifier if the attributed requests it.
       if (ChangeKWThisToIdent && Tok.is(tok::kw_this))
         Tok.setKind(tok::identifier);
+
+      if (Tok.is(tok::identifier) &&
+          attributeHasStrictIdentifierArgAtIndex(*AttrName, ArgExprs.size())) {
+        ArgExprs.push_back(ParseIdentifierLoc());
+        continue;
+      }
 
       ExprResult ArgExpr;
       if (AttributeIsTypeArgAttr) {
@@ -2813,6 +2831,40 @@ void Parser::ParseAlignmentSpecifier(ParsedAttributes &Attrs,
                ParsedAttr::AS_Keyword, EllipsisLoc);
 }
 
+/// type-qualifier:
+///    ('__ptrauth' | '__ptrauth_restricted_intptr') '(' constant-expression
+///                    (',' constant-expression)[opt]
+///                    (',' constant-expression)[opt] ')'
+void Parser::ParsePtrauthQualifier(ParsedAttributes &attrs) {
+  assert(Tok.is(tok::kw___ptrauth) ||
+         Tok.is(tok::kw___ptrauth_restricted_intptr));
+
+  IdentifierInfo *kwName = Tok.getIdentifierInfo();
+  SourceLocation kwLoc = ConsumeToken();
+
+  BalancedDelimiterTracker T(*this, tok::l_paren);
+  if (T.expectAndConsume())
+    return;
+
+  ArgsVector argExprs;
+  do {
+    ExprResult expr = ParseAssignmentExpression();
+    if (expr.isInvalid()) {
+      T.skipToEnd();
+      return;
+    }
+    argExprs.push_back(expr.get());
+  } while (TryConsumeToken(tok::comma));
+
+  T.consumeClose();
+  SourceLocation endLoc = T.getCloseLocation();
+
+  attrs.addNew(kwName, SourceRange(kwLoc, endLoc),
+               /*scope*/ nullptr, SourceLocation(),
+               argExprs.data(), argExprs.size(),
+               ParsedAttr::AS_Keyword);
+}
+
 ExprResult Parser::ParseExtIntegerArgument() {
   assert(Tok.is(tok::kw__ExtInt) && "Not an extended int type");
   ConsumeToken();
@@ -3509,6 +3561,12 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
       isInvalid = DS.SetTypeQual(DeclSpec::TQ_unaligned, Loc, PrevSpec, DiagID,
                                  getLangOpts());
       break;
+
+    // __ptrauth qualifier.
+    case tok::kw___ptrauth:
+    case tok::kw___ptrauth_restricted_intptr:
+      ParsePtrauthQualifier(DS.getAttributes());
+      continue;
 
     case tok::kw___sptr:
     case tok::kw___uptr:
@@ -5022,6 +5080,8 @@ bool Parser::isTypeSpecifierQualifier() {
   case tok::kw___ptr32:
   case tok::kw___pascal:
   case tok::kw___unaligned:
+  case tok::kw___ptrauth:
+  case tok::kw___ptrauth_restricted_intptr:
 
   case tok::kw__Nonnull:
   case tok::kw__Nullable:
@@ -5250,6 +5310,8 @@ bool Parser::isDeclarationSpecifier(bool DisambiguatingWithExpression) {
   case tok::kw___forceinline:
   case tok::kw___pascal:
   case tok::kw___unaligned:
+  case tok::kw___ptrauth:
+  case tok::kw___ptrauth_restricted_intptr:
 
   case tok::kw__Nonnull:
   case tok::kw__Nullable:
@@ -5490,6 +5552,13 @@ void Parser::ParseTypeQualifierListOpt(
     case tok::kw___read_write:
       ParseOpenCLQualifiers(DS.getAttributes());
       break;
+
+    // __ptrauth qualifier.
+    case tok::kw___ptrauth:
+    case tok::kw___ptrauth_restricted_intptr:
+      ParsePtrauthQualifier(DS.getAttributes());
+      EndLoc = PrevTokLocation;
+      continue;
 
     case tok::kw___unaligned:
       isInvalid = DS.SetTypeQual(DeclSpec::TQ_unaligned, Loc, PrevSpec, DiagID,

@@ -365,6 +365,11 @@ static void addDataFlowSanitizerPass(const PassManagerBuilder &Builder,
       createDataFlowSanitizerLegacyPassPass(LangOpts.SanitizerBlacklistFiles));
 }
 
+static void addSoftPointerAuthPass(const PassManagerBuilder &Builder,
+                                   legacy::PassManagerBase &PM) {
+  PM.add(createSoftPointerAuthPass());
+}
+
 static TargetLibraryInfoImpl *createTLII(llvm::Triple &TargetTriple,
                                          const CodeGenOptions &CodeGenOpts) {
   TargetLibraryInfoImpl *TLII = new TargetLibraryInfoImpl(TargetTriple);
@@ -777,6 +782,13 @@ void EmitAssemblyHelper::CreatePasses(legacy::PassManager &MPM,
                            addDataFlowSanitizerPass);
     PMBuilder.addExtension(PassManagerBuilder::EP_EnabledOnOptLevel0,
                            addDataFlowSanitizerPass);
+  }
+
+  if (LangOpts.SoftPointerAuth) {
+    PMBuilder.addExtension(PassManagerBuilder::EP_OptimizerLast,
+                           addSoftPointerAuthPass);
+    PMBuilder.addExtension(PassManagerBuilder::EP_EnabledOnOptLevel0,
+                           addSoftPointerAuthPass);
   }
 
   // Set up the per-function pass manager.

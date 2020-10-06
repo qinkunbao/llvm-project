@@ -2823,6 +2823,20 @@ static void diagnoseMissingConstinit(Sema &S, const VarDecl *InitDecl,
   }
 }
 
+static void checkPtrAuthStructAttr(const NamedDecl *New, const Decl *Prev,
+                                   Sema &S) {
+  if (auto *NewRD = dyn_cast<RecordDecl>(New))
+    if (auto *PrevRD = dyn_cast<RecordDecl>(Prev))
+      if (!S.Context.recordsHaveSamePointerAuthKeyAndDiscriminator(NewRD,
+                                                                   PrevRD)) {
+        S.Diag(NewRD->getLocation(), diag::err_ptrauth_struct_signing_mismatch)
+            << NewRD->getDeclName();
+        S.Diag(PrevRD->getLocation(),
+               diag::note_previous_ptrauth_struct_declaration)
+            << NewRD->getDeclName();
+      }
+}
+
 /// mergeDeclAttributes - Copy attributes from the Old decl to the New one.
 void Sema::mergeDeclAttributes(NamedDecl *New, Decl *Old,
                                AvailabilityMergeKind AMK) {
@@ -2964,6 +2978,8 @@ void Sema::mergeDeclAttributes(NamedDecl *New, Decl *Old,
     foundAny = true;
 
   if (!foundAny) New->dropAttrs();
+
+  checkPtrAuthStructAttr(New, Old, *this);
 }
 
 /// mergeParamDeclAttributes - Copy attributes from the old parameter
@@ -11941,6 +11957,12 @@ struct DiagNonTrivalCUnionCopyVisitor
         asDerived().visit(FD->getType(), FD, InNonTrivialUnion);
   }
 
+  void visitPtrAuth(QualType QT, const FieldDecl *FD, bool InNonTrivialUnion) {
+    if (InNonTrivialUnion)
+      S.Diag(FD->getLocation(), diag::note_non_trivial_c_union)
+          << 1 << 2 << QT << FD->getName();
+  }
+
   void preVisit(QualType::PrimitiveCopyKind PCK, QualType QT,
                 const FieldDecl *FD, bool InNonTrivialUnion) {}
   void visitTrivial(QualType QT, const FieldDecl *FD, bool InNonTrivialUnion) {}
@@ -13752,6 +13774,13 @@ ParmVarDecl *Sema::CheckParameter(DeclContext *DC, SourceLocation StartLoc,
       << FixItHint::CreateInsertion(TypeEndLoc, "*");
     T = Context.getObjCObjectPointerType(T);
     New->setType(T);
+  }
+
+  // __ptrauth is forbidden on parameters.
+  if (T.getPointerAuth()) {
+    Diag(NameLoc, diag::err_ptrauth_qualifier_param)
+        << T << (int)!T->isSignablePointerType();
+    New->setInvalidDecl();
   }
 
   // ISO/IEC TR 18037 S6.7.3: "The type of an object with automatic storage
@@ -17293,8 +17322,12 @@ void Sema::ActOnFields(Scope *S, SourceLocation RecLoc, Decl *EnclosingDecl,
         if (RT->getDecl()->getArgPassingRestrictions() ==
             RecordDecl::APK_CanNeverPassInRegs)
           Record->setArgPassingRestrictions(RecordDecl::APK_CanNeverPassInRegs);
-      } else if (FT.getQualifiers().getObjCLifetime() == Qualifiers::OCL_Weak)
+      } else if (FT.getQualifiers().getObjCLifetime() == Qualifiers::OCL_Weak) {
         Record->setArgPassingRestrictions(RecordDecl::APK_CanNeverPassInRegs);
+      } else if (PointerAuthQualifier Q = FT.getPointerAuth()) {
+        if (Q.isAddressDiscriminated())
+          Record->setArgPassingRestrictions(RecordDecl::APK_CanNeverPassInRegs);
+      }
     }
 
     if (Record && FD->getType().isVolatileQualified())

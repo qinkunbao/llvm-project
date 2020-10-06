@@ -540,6 +540,10 @@ class Attr {
   //   match rules.
   // - It has GNU/CXX11 spelling and doesn't require delayed parsing.
   bit PragmaAttributeSupport;
+  // To support multiple enum parameters to an attribute without breaking
+  // our existing general parsing we need to have a separate flag that
+  // opts an attribute into strict parsing of attribute parameters
+  bit StrictEnumParameters = 0;
   // Lists language options, one of which is required to be true for the
   // attribute to be applicable. If empty, no language options are required.
   list<LangOpt> LangOpts = [];
@@ -2625,6 +2629,22 @@ def ObjCRequiresPropertyDefs : InheritableAttr {
   let SimpleHandler = 1;
 }
 
+def PointerAuth : TypeAttr {
+  let Spellings = [Keyword<"__ptrauth">, Keyword<"__ptrauth_restricted_intptr">];
+  let Args = [IntArgument<"Key">,
+              BoolArgument<"AddressDiscriminated", 1>,
+              IntArgument<"ExtraDiscriminator", 1>,
+              StringArgument<"AuthenticationMode", 1>];
+  let Documentation = [PtrAuthDocs];
+}
+
+def PointerAuthStruct : InheritableAttr {
+  let Spellings = [Clang<"ptrauth_struct">];
+  let Args = [IntArgument<"Key">, IntArgument<"Discriminator">];
+  let Subjects = SubjectList<[Record]>;
+  let Documentation = [PointerAuthStructDocs];
+}
+
 def Unused : InheritableAttr {
   let Spellings = [CXX11<"", "maybe_unused", 201603>, GCC<"unused">,
                    C2x<"", "maybe_unused", 201904>];
@@ -3683,4 +3703,15 @@ def EnforceTCBLeaf : InheritableAttr {
   let Args = [StringArgument<"TCBName">];
   let Documentation = [EnforceTCBLeafDocs];
   bit InheritEvenIfAlreadyPresent = 1;
+}
+
+def VTablePointerAuthentication : InheritableAttr {
+  let Spellings = [Clang<"ptrauth_vtable_pointer">];
+  let Subjects = SubjectList<[CXXRecord]>;
+  let Documentation = [Undocumented];
+  let StrictEnumParameters = 1;
+  let Args = [EnumArgument<"Key", "VPtrAuthKeyType", ["default_key", "no_authentication", "process_dependent", "process_independent"], ["DefaultKey", "NoKey", "ProcessDependent", "ProcessIndependent"]>,
+              EnumArgument<"AddressDiscrimination", "AddressDiscriminationMode", ["default_address_discrimination", "no_address_discrimination", "address_discrimination"], ["DefaultAddressDiscrimination", "NoAddressDiscrimination", "AddressDiscrimination"]>,
+              EnumArgument<"ExtraDiscrimination", "ExtraDiscrimination", ["default_extra_discrimination", "no_extra_discrimination", "type_discrimination", "custom_discrimination"], ["DefaultExtraDiscrimination", "NoExtraDiscrimination", "TypeDiscrimination", "CustomDiscrimination"]>,
+              IntArgument<"CustomDiscriminationValue", 1>];
 }

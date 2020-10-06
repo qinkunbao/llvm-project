@@ -1007,14 +1007,9 @@ static void forConstantArrayExpansion(CodeGenFunction &CGF,
                                       ConstantArrayExpansion *CAE,
                                       Address BaseAddr,
                                       llvm::function_ref<void(Address)> Fn) {
-  CharUnits EltSize = CGF.getContext().getTypeSizeInChars(CAE->EltTy);
-  CharUnits EltAlign =
-    BaseAddr.getAlignment().alignmentOfArrayElement(EltSize);
-
   for (int i = 0, n = CAE->NumElts; i < n; i++) {
-    llvm::Value *EltAddr =
-      CGF.Builder.CreateConstGEP2_32(nullptr, BaseAddr.getPointer(), 0, i);
-    Fn(Address(EltAddr, EltAlign));
+    Address EltAddr = CGF.Builder.CreateConstGEP2_32(BaseAddr, 0, i);
+    Fn(EltAddr);
   }
 }
 
@@ -1284,8 +1279,8 @@ static llvm::Value *CreateCoercedLoad(Address Src, llvm::Type *Ty,
   Address Tmp =
       CreateTempAllocaForCoercion(CGF, Ty, Src.getAlignment(), Src.getName());
   CGF.Builder.CreateMemCpy(
-      Tmp.getPointer(), Tmp.getAlignment().getAsAlign(), Src.getPointer(),
-      Src.getAlignment().getAsAlign(),
+      Tmp.getRawPointer(CGF), Tmp.getAlignment().getAsAlign(),
+      Src.getRawPointer(CGF), Src.getAlignment().getAsAlign(),
       llvm::ConstantInt::get(CGF.IntPtrTy, SrcSize.getKnownMinSize()));
   return CGF.Builder.CreateLoad(Tmp);
 }
@@ -1372,8 +1367,8 @@ static void CreateCoercedStore(llvm::Value *Src,
     Address Tmp = CreateTempAllocaForCoercion(CGF, SrcTy, Dst.getAlignment());
     CGF.Builder.CreateStore(Src, Tmp);
     CGF.Builder.CreateMemCpy(
-        Dst.getPointer(), Dst.getAlignment().getAsAlign(), Tmp.getPointer(),
-        Tmp.getAlignment().getAsAlign(),
+        Dst.getRawPointer(CGF), Dst.getAlignment().getAsAlign(),
+        Tmp.getRawPointer(CGF), Tmp.getAlignment().getAsAlign(),
         llvm::ConstantInt::get(CGF.IntPtrTy, DstSize.getFixedSize()));
   }
 }
@@ -2535,15 +2530,14 @@ void CodeGenFunction::EmitFunctionProlog(const CGFunctionInfo &FI,
     case ABIArgInfo::Indirect:
     case ABIArgInfo::IndirectAliased: {
       assert(NumIRArgs == 1);
-      Address ParamAddr =
-          Address(Fn->getArg(FirstIRArg), ArgI.getIndirectAlign());
+      Address ParamAddr = makeNaturalAddressForPointer(Fn->getArg(FirstIRArg), Ty,
+                                                       ArgI.getIndirectAlign());
 
       if (!hasScalarEvaluationKind(Ty)) {
         // Aggregates and complex variables are accessed by reference. All we
         // need to do is realign the value, if requested. Also, if the address
         // may be aliased, copy it to ensure that the parameter variable is
         // mutable and has a unique adress, as C requires.
-        Address V = ParamAddr;
         if (ArgI.getIndirectRealign() || ArgI.isIndirectAliased()) {
           Address AlignedTemp = CreateMemTemp(Ty, "coerce");
 
@@ -2554,12 +2548,12 @@ void CodeGenFunction::EmitFunctionProlog(const CGFunctionInfo &FI,
           // copy.
           CharUnits Size = getContext().getTypeSizeInChars(Ty);
           Builder.CreateMemCpy(
-              AlignedTemp.getPointer(), AlignedTemp.getAlignment().getAsAlign(),
-              ParamAddr.getPointer(), ParamAddr.getAlignment().getAsAlign(),
+              AlignedTemp.getRawPointer(*this), AlignedTemp.getAlignment().getAsAlign(),
+              ParamAddr.getRawPointer(*this), ParamAddr.getAlignment().getAsAlign(),
               llvm::ConstantInt::get(IntPtrTy, Size.getQuantity()));
-          V = AlignedTemp;
+          ParamAddr = AlignedTemp;
         }
-        ArgVals.push_back(ParamValue::forIndirect(V));
+        ArgVals.push_back(ParamValue::forIndirect(ParamAddr));
       } else {
         // Load scalar value from indirect argument.
         llvm::Value *V =
@@ -2673,9 +2667,10 @@ void CodeGenFunction::EmitFunctionProlog(const CGFunctionInfo &FI,
               == ParameterABI::SwiftErrorResult) {
           QualType pointeeTy = Ty->getPointeeType();
           assert(pointeeTy->isPointerType());
-          Address temp =
+          RawAddress temp =
             CreateMemTemp(pointeeTy, getPointerAlign(), "swifterror.temp");
-          Address arg = Address(V, getContext().getTypeAlignInChars(pointeeTy));
+          Address arg = makeNaturalAddressForPointer(
+              V, pointeeTy, getContext().getTypeAlignInChars(pointeeTy));
           llvm::Value *incomingErrorValue = Builder.CreateLoad(arg);
           Builder.CreateStore(incomingErrorValue, temp);
           V = temp.getPointer();
@@ -2965,7 +2960,8 @@ static llvm::Value *tryRemoveRetainOfSelf(CodeGenFunction &CGF,
   llvm::LoadInst *load =
     dyn_cast<llvm::LoadInst>(retainedValue->stripPointerCasts());
   if (!load || load->isAtomic() || load->isVolatile() ||
-      load->getPointerOperand() != CGF.GetAddrOfLocalVar(self).getPointer())
+      load->getPointerOperand() !=
+          CGF.GetAddrOfLocalVar(self).getPointerIfNotSigned())
     return nullptr;
 
   // Okay!  Burn it all down.  This relies for correctness on the
@@ -3002,12 +2998,15 @@ static llvm::Value *emitAutoreleaseOfResult(CodeGenFunction &CGF,
 
 /// Heuristically search for a dominating store to the return-value slot.
 static llvm::StoreInst *findDominatingStoreToReturnValue(CodeGenFunction &CGF) {
+  // This function shouldn't be called when ReturnValue is signed.
+  llvm::Value *ReturnValuePtr = CGF.ReturnValue.getUnsignedPointer();
+
   // Check if a User is a store which pointerOperand is the ReturnValue.
   // We are looking for stores to the ReturnValue, not for stores of the
   // ReturnValue to some other location.
-  auto GetStoreIfValid = [&CGF](llvm::User *U) -> llvm::StoreInst * {
+  auto GetStoreIfValid = [ReturnValuePtr](llvm::User *U) -> llvm::StoreInst * {
     auto *SI = dyn_cast<llvm::StoreInst>(U);
-    if (!SI || SI->getPointerOperand() != CGF.ReturnValue.getPointer())
+    if (!SI || SI->getPointerOperand() != ReturnValuePtr)
       return nullptr;
     // These aren't actually possible for non-coerced returns, and we
     // only care about non-coerced returns on this code path.
@@ -3018,7 +3017,7 @@ static llvm::StoreInst *findDominatingStoreToReturnValue(CodeGenFunction &CGF) {
   // for something immediately preceding the IP.  Sometimes this can
   // happen with how we generate implicit-returns; it can also happen
   // with noreturn cleanups.
-  if (!CGF.ReturnValue.getPointer()->hasOneUse()) {
+  if (!ReturnValuePtr->hasOneUse()) {
     llvm::BasicBlock *IP = CGF.Builder.GetInsertBlock();
     if (IP->empty()) return nullptr;
     llvm::Instruction *I = &IP->back();
@@ -3045,8 +3044,7 @@ static llvm::StoreInst *findDominatingStoreToReturnValue(CodeGenFunction &CGF) {
     return GetStoreIfValid(I);
   }
 
-  llvm::StoreInst *store =
-      GetStoreIfValid(CGF.ReturnValue.getPointer()->user_back());
+  llvm::StoreInst *store = GetStoreIfValid(ReturnValuePtr->user_back());
   if (!store) return nullptr;
 
   // Now do a first-and-dirty dominance check: just walk up the
@@ -3584,7 +3582,12 @@ void CodeGenFunction::EmitDelegateCallArg(CallArgList &args,
 }
 
 static bool isProvablyNull(llvm::Value *addr) {
-  return isa<llvm::ConstantPointerNull>(addr);
+  return llvm::isa_and_nonnull<llvm::ConstantPointerNull>(addr);
+}
+
+static bool isProvablyNonNull(Address Addr, CodeGenFunction &CGF) {
+  return !Addr.isSigned() && llvm::isKnownNonZero(Addr.getUnsignedPointer(),
+                                                  CGF.CGM.getDataLayout());
 }
 
 /// Emit the actual writing-back of a writeback.
@@ -3592,21 +3595,20 @@ static void emitWriteback(CodeGenFunction &CGF,
                           const CallArgList::Writeback &writeback) {
   const LValue &srcLV = writeback.Source;
   Address srcAddr = srcLV.getAddress(CGF);
-  assert(!isProvablyNull(srcAddr.getPointer()) &&
+  assert(!isProvablyNull(srcAddr.getPointerIfNotSigned()) &&
          "shouldn't have writeback for provably null argument");
 
   llvm::BasicBlock *contBB = nullptr;
 
   // If the argument wasn't provably non-null, we need to null check
   // before doing the store.
-  bool provablyNonNull = llvm::isKnownNonZero(srcAddr.getPointer(),
-                                              CGF.CGM.getDataLayout());
+  bool provablyNonNull = isProvablyNonNull(srcAddr, CGF);
+
   if (!provablyNonNull) {
     llvm::BasicBlock *writebackBB = CGF.createBasicBlock("icr.writeback");
     contBB = CGF.createBasicBlock("icr.done");
 
-    llvm::Value *isNull =
-      CGF.Builder.CreateIsNull(srcAddr.getPointer(), "icr.isnull");
+    llvm::Value *isNull = CGF.Builder.CreateIsNull(srcAddr, "icr.isnull");
     CGF.Builder.CreateCondBr(isNull, contBB, writebackBB);
     CGF.EmitBlock(writebackBB);
   }
@@ -3708,7 +3710,7 @@ static void emitWritebackArg(CodeGenFunction &CGF, CallArgList &args,
     cast<llvm::PointerType>(CGF.ConvertType(CRE->getType()));
 
   // If the address is a constant null, just pass the appropriate null.
-  if (isProvablyNull(srcAddr.getPointer())) {
+  if (isProvablyNull(srcAddr.getPointerIfNotSigned())) {
     args.add(RValue::get(llvm::ConstantPointerNull::get(destType)),
              CRE->getType());
     return;
@@ -3739,17 +3741,16 @@ static void emitWritebackArg(CodeGenFunction &CGF, CallArgList &args,
   // If the address is *not* known to be non-null, we need to switch.
   llvm::Value *finalArgument;
 
-  bool provablyNonNull = llvm::isKnownNonZero(srcAddr.getPointer(),
-                                              CGF.CGM.getDataLayout());
-  if (provablyNonNull) {
-    finalArgument = temp.getPointer();
-  } else {
-    llvm::Value *isNull =
-      CGF.Builder.CreateIsNull(srcAddr.getPointer(), "icr.isnull");
+  bool provablyNonNull = isProvablyNonNull(srcAddr, CGF);
 
-    finalArgument = CGF.Builder.CreateSelect(isNull,
-                                   llvm::ConstantPointerNull::get(destType),
-                                             temp.getPointer(), "icr.argument");
+  if (provablyNonNull) {
+    finalArgument = temp.getRawPointer(CGF);
+  } else {
+    llvm::Value *isNull = CGF.Builder.CreateIsNull(srcAddr, "icr.isnull");
+
+    finalArgument = CGF.Builder.CreateSelect(
+        isNull, llvm::ConstantPointerNull::get(destType),
+        temp.getRawPointer(CGF), "icr.argument");
 
     // If we need to copy, then the load has to be conditional, which
     // means we need control flow.
@@ -3874,6 +3875,16 @@ void CodeGenFunction::EmitNonNullArgCheck(RValue RV, QualType ArgType,
       llvm::ConstantInt::get(Int32Ty, ArgNo + 1),
   };
   EmitCheck(std::make_pair(Cond, CheckKind), Handler, StaticData, None);
+}
+
+void CodeGenFunction::EmitNonNullArgCheck(Address Addr, QualType ArgType,
+                                          SourceLocation ArgLoc,
+                                          AbstractCallee AC, unsigned ParmNum) {
+  if (!AC.getDecl() || !(SanOpts.has(SanitizerKind::NonnullAttribute) ||
+                         SanOpts.has(SanitizerKind::NullabilityArg)))
+    return;
+
+  EmitNonNullArgCheck(RValue::get(Addr, *this), ArgType, ArgLoc, AC, ParmNum);
 }
 
 // Check if the call is going to use the inalloca convention. This needs to
@@ -4178,7 +4189,8 @@ void CodeGenFunction::EmitCallArg(CallArgList &args, const Expr *E,
   }
 
   if (HasAggregateEvalKind && isa<ImplicitCastExpr>(E) &&
-      cast<CastExpr>(E)->getCastKind() == CK_LValueToRValue) {
+      cast<CastExpr>(E)->getCastKind() == CK_LValueToRValue &&
+      !type.isNonTrivialToPrimitiveCopy()) {
     LValue L = EmitLValue(cast<CastExpr>(E)->getSubExpr());
     assert(L.isSimple());
     args.addUncopiedAggregate(L, type);
@@ -4220,10 +4232,20 @@ CodeGenFunction::AddObjCARCExceptionMetadata(llvm::Instruction *Inst) {
 llvm::CallInst *
 CodeGenFunction::EmitNounwindRuntimeCall(llvm::FunctionCallee callee,
                                          const llvm::Twine &name) {
-  return EmitNounwindRuntimeCall(callee, None, name);
+  return EmitNounwindRuntimeCall(callee, ArrayRef<llvm::Value *>(None), name);
 }
 
 /// Emits a call to the given nounwind runtime function.
+llvm::CallInst *
+CodeGenFunction::EmitNounwindRuntimeCall(llvm::FunctionCallee callee,
+                                         ArrayRef<Address> args,
+                                         const llvm::Twine &name) {
+  SmallVector<llvm::Value *, 3> values;
+  for (auto arg : args)
+    values.push_back(arg.getRawPointer(*this));
+  return EmitNounwindRuntimeCall(callee, values, name);
+}
+
 llvm::CallInst *
 CodeGenFunction::EmitNounwindRuntimeCall(llvm::FunctionCallee callee,
                                          ArrayRef<llvm::Value *> args,
@@ -4450,7 +4472,8 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
                                  ReturnValueSlot ReturnValue,
                                  const CallArgList &CallArgs,
                                  llvm::CallBase **callOrInvoke,
-                                 SourceLocation Loc) {
+                                 SourceLocation Loc,
+                                 bool IsVirtualFunctionPointerThunk) {
   // FIXME: We no longer need the types from CallArgs; lift up and simplify.
 
   assert(Callee.isOrdinary() || Callee.isVirtual());
@@ -4503,7 +4526,7 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
 
   // If we're using inalloca, insert the allocation after the stack save.
   // FIXME: Do this earlier rather than hacking it in here!
-  Address ArgMemory = Address::invalid();
+  RawAddress ArgMemory = Address::invalid();
   if (llvm::StructType *ArgStruct = CallInfo.getArgStruct()) {
     const llvm::DataLayout &DL = CGM.getDataLayout();
     llvm::Instruction *IP = CallArgs.getStackBase();
@@ -4519,7 +4542,7 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
     AI->setAlignment(Align.getAsAlign());
     AI->setUsedWithInAlloca(true);
     assert(AI->isUsedWithInAlloca() && !AI->isStaticAlloca());
-    ArgMemory = Address(AI, Align);
+    ArgMemory = RawAddress(AI, Align);
   }
 
   ClangToLLVMArgMapping IRFunctionArgs(CGM.getContext(), CallInfo);
@@ -4528,11 +4551,15 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
   // If the call returns a temporary with struct return, create a temporary
   // alloca to hold the result, unless one is given to us.
   Address SRetPtr = Address::invalid();
-  Address SRetAlloca = Address::invalid();
+  RawAddress SRetAlloca = Address::invalid();
   llvm::Value *UnusedReturnSizePtr = nullptr;
   if (RetAI.isIndirect() || RetAI.isInAlloca() || RetAI.isCoerceAndExpand()) {
-    if (!ReturnValue.isNull()) {
-      SRetPtr = ReturnValue.getValue();
+    if (IsVirtualFunctionPointerThunk && RetAI.isIndirect()) {
+      SRetPtr = makeNaturalAddressForPointer(CurFn->arg_begin() +
+                                                 IRFunctionArgs.getSRetArgNo(),
+                                             RetTy, CharUnits::fromQuantity(1));
+    } else if (!ReturnValue.isNull()) {
+      SRetPtr = ReturnValue.getAddress();
     } else {
       SRetPtr = CreateMemTemp(RetTy, "tmp", &SRetAlloca);
       if (HaveInsertPoint() && ReturnValue.isUnused()) {
@@ -4542,15 +4569,16 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
       }
     }
     if (IRFunctionArgs.hasSRetArg()) {
-      IRCallArgs[IRFunctionArgs.getSRetArgNo()] = SRetPtr.getPointer();
+      IRCallArgs[IRFunctionArgs.getSRetArgNo()] =
+          getAsNaturalPointerTo(SRetPtr, RetTy);
     } else if (RetAI.isInAlloca()) {
       Address Addr =
           Builder.CreateStructGEP(ArgMemory, RetAI.getInAllocaFieldIndex());
-      Builder.CreateStore(SRetPtr.getPointer(), Addr);
+      Builder.CreateStore(getAsNaturalPointerTo(SRetPtr, RetTy), Addr);
     }
   }
 
-  Address swiftErrorTemp = Address::invalid();
+  RawAddress swiftErrorTemp = RawAddress::invalid();
   Address swiftErrorArg = Address::invalid();
 
   // When passing arguments using temporary allocas, we need to add the
@@ -4580,9 +4608,10 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
       assert(NumIRArgs == 0);
       assert(getTarget().getTriple().getArch() == llvm::Triple::x86);
       if (I->isAggregate()) {
-        Address Addr = I->hasLValue()
-                           ? I->getKnownLValue().getAddress(*this)
-                           : I->getKnownRValue().getAggregateAddress();
+        RawAddress Addr =
+            I->hasLValue()
+                ? I->getKnownLValue().getAddress(*this)
+                : I->getKnownRValue().getAggregateAddress();
         llvm::Instruction *Placeholder =
             cast<llvm::Instruction>(Addr.getPointer());
 
@@ -4606,7 +4635,7 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
       } else if (ArgInfo.getInAllocaIndirect()) {
         // Make a temporary alloca and store the address of it into the argument
         // struct.
-        Address Addr = CreateMemTempWithoutCast(
+        RawAddress Addr = CreateMemTempWithoutCast(
             I->Ty, getContext().getTypeAlignInChars(I->Ty),
             "indirect-arg-temp");
         I->copyInto(*this, Addr);
@@ -4634,9 +4663,9 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
       assert(NumIRArgs == 1);
       if (!I->isAggregate()) {
         // Make a temporary alloca to pass the argument.
-        Address Addr = CreateMemTempWithoutCast(
+        RawAddress Addr = CreateMemTempWithoutCast(
             I->Ty, ArgInfo.getIndirectAlign(), "indirect-arg-temp");
-        IRCallArgs[FirstIRArg] = Addr.getPointer();
+        IRCallArgs[FirstIRArg] = getAsNaturalPointerTo(Addr, I->Ty);
 
         I->copyInto(*this, Addr);
       } else {
@@ -4651,7 +4680,6 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
         Address Addr = I->hasLValue()
                            ? I->getKnownLValue().getAddress(*this)
                            : I->getKnownRValue().getAggregateAddress();
-        llvm::Value *V = Addr.getPointer();
         CharUnits Align = ArgInfo.getIndirectAlign();
         const llvm::DataLayout *TD = &CGM.getDataLayout();
 
@@ -4663,8 +4691,9 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
         bool NeedCopy = false;
 
         if (Addr.getAlignment() < Align &&
-            llvm::getOrEnforceKnownAlignment(V, Align.getAsAlign(), *TD) <
-                Align.getAsAlign()) {
+            llvm::getOrEnforceKnownAlignment(Addr.getRawPointer(*this),
+                                             Align.getAsAlign(),
+                                             *TD) < Align.getAsAlign()) {
           NeedCopy = true;
         } else if (I->hasLValue()) {
           auto LV = I->getKnownLValue();
@@ -4692,9 +4721,9 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
 
         if (NeedCopy) {
           // Create an aligned temporary, and copy to it.
-          Address AI = CreateMemTempWithoutCast(
+          RawAddress AI = CreateMemTempWithoutCast(
               I->Ty, ArgInfo.getIndirectAlign(), "byval-temp");
-          IRCallArgs[FirstIRArg] = AI.getPointer();
+          IRCallArgs[FirstIRArg] = getAsNaturalPointerTo(AI, I->Ty);
 
           // Emit lifetime markers for the temporary alloca.
           uint64_t ByvalTempElementSize =
@@ -4710,6 +4739,7 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
           I->copyInto(*this, AI);
         } else {
           // Skip the extra memcpy call.
+          llvm::Value *V = getAsNaturalPointerTo(Addr, I->Ty);
           auto *T = V->getType()->getPointerElementType()->getPointerTo(
               CGM.getDataLayout().getAllocaAddrSpace());
           IRCallArgs[FirstIRArg] = getTargetHooks().performAddrSpaceCast(
@@ -4745,8 +4775,8 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
           assert(!swiftErrorTemp.isValid() && "multiple swifterror args");
 
           QualType pointeeTy = I->Ty->getPointeeType();
-          swiftErrorArg =
-            Address(V, getContext().getTypeAlignInChars(pointeeTy));
+          swiftErrorArg = makeNaturalAddressForPointer(
+              V, pointeeTy, getContext().getTypeAlignInChars(pointeeTy));
 
           swiftErrorTemp =
             CreateMemTemp(pointeeTy, getPointerAlign(), "swifterror.temp");
@@ -4841,7 +4871,7 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
 
       llvm::Value *tempSize = nullptr;
       Address addr = Address::invalid();
-      Address AllocaAddr = Address::invalid();
+      RawAddress AllocaAddr = RawAddress::invalid();
       if (I->isAggregate()) {
         addr = I->hasLValue() ? I->getKnownLValue().getAddress(*this)
                               : I->getKnownRValue().getAggregateAddress();
@@ -5078,6 +5108,9 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
   SmallVector<llvm::OperandBundleDef, 1> BundleList =
       getBundlesForFunclet(CalleePtr);
 
+  // Add the pointer-authentication bundle.
+  EmitPointerAuthOperandBundle(ConcreteCallee.getPointerAuthInfo(), BundleList);
+
   if (const FunctionDecl *FD = dyn_cast_or_null<FunctionDecl>(CurFuncDecl))
     if (FD->hasAttr<StrictFPAttr>())
       // All calls within a strictfp function are marked strictfp
@@ -5213,7 +5246,14 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
   CallArgs.freeArgumentMemory(*this);
 
   // Extract the return value.
-  RValue Ret = [&] {
+  RValue Ret;
+
+  // If the current function is a virtual function pointer thunk, avoid copying
+  // the return value of the musttail call to a temporary.
+  if (IsVirtualFunctionPointerThunk)
+    Ret = RValue::get(CI);
+  else
+    Ret = [&] {
     switch (RetAI.getKind()) {
     case ABIArgInfo::CoerceAndExpand: {
       auto coercionType = RetAI.getCoerceAndExpandType();
@@ -5264,7 +5304,7 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
           return RValue::getComplex(std::make_pair(Real, Imag));
         }
         case TEK_Aggregate: {
-          Address DestPtr = ReturnValue.getValue();
+          Address DestPtr = ReturnValue.getAddress();
           bool DestIsVolatile = ReturnValue.isVolatile();
 
           if (!DestPtr.isValid()) {

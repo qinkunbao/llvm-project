@@ -759,7 +759,6 @@ def warn_fortify_source_overflow
 def warn_fortify_source_size_mismatch : Warning<
   "'%0' size argument is too large; destination buffer has size %1,"
   " but size argument is %2">, InGroup<FortifySource>;
-
 def warn_fortify_source_format_overflow : Warning<
   "'%0' will always overflow; destination buffer has size %1,"
   " but format string expands to at least %2">,
@@ -789,6 +788,64 @@ def warn_ptrauth_sign_null_pointer :
 def warn_ptrauth_auth_null_pointer :
   Warning<"authenticating a null pointer will almost certainly trap">,
   InGroup<PtrAuthNullPointers>;
+def err_ptrauth_string_not_literal : Error<
+  "argument must be a string literal%select{| of char type}0">;
+def note_ptrauth_virtual_function_pointer_incomplete_arg_ret :
+  Note<"cannot take an address of a virtual member function if its return or "
+       "argument types are incomplete">;
+def note_ptrauth_virtual_function_incomplete_arg_ret_type :
+  Note<"%0 is incomplete">;
+def err_ptrauth_type_disc_undiscriminated : Error<
+  "cannot pass undiscriminated type %0 to "
+  "'__builtin_ptrauth_type_discriminator'">;
+def err_ptrauth_struct_signing_mismatch : Error<
+  "%0 is signed differently from the previous declaration">;
+def note_previous_ptrauth_struct_declaration : Note<
+  "previous declaration of %0 is here">;
+def err_ptrauth_invalid_struct_attr_dynamic_class : Error<
+  "attribute ptrauth_struct cannot be used on class %0 because it is a "
+  "dynamic class">;
+def err_ptrauth_discriminator_mismatch_derived_class : Error<
+  "key or discriminator of class %0 doesn't match that of base class %1">;
+def err_ptrauth_non_string_authentication_option : Error<
+  "__ptrauth options must be a string of comma separated flags, found %0">;
+def err_ptrauth_unknown_authentication_option : Error<
+  "unknown __ptrauth authentication option %0">;
+def err_ptrauth_repeated_authentication_option : Error<
+  "repeated __ptrauth authentication %select{mode|option}0">;
+def note_ptrauth_previous_authentication_option : Note<
+  "previous __ptrauth authentication %select{mode|option}0">;
+def err_ptrauth_empty_authentication_option : Error<
+  "empty __ptrauth authentication option">;
+def err_ptrauth_invalid_option_character : Error<
+  "invalid character in __ptrauth options">;
+def err_ptrauth_invalid_option_missing_comma : Error<
+  "missing comma between __ptrauth options"
+>;
+
+// __ptrauth qualifier
+def err_ptrauth_qualifier_return : Error<
+  "return types may not be qualified with %select{__ptrauth|__ptrauth_restricted_intptr}1; type is %0">;
+def err_ptrauth_qualifier_param : Error<
+  "parameter types may not be qualified with %select{__ptrauth|__ptrauth_restricted_intptr}1; type is %0">;
+def err_ptrauth_qualifier_cast : Error<
+  "cast types may not be qualified with __ptrauth; type is %0">;
+def err_ptrauth_restricted_intptr_qualifier_pointer : Error<
+  "__ptrauth_restricted_intptr qualifier may only be applied to pointer sized integer types; type here is %0">;
+def err_ptrauth_qualifier_nonpointer : Error<
+  "__ptrauth qualifier may only be applied to pointer types; type here is %0">;
+def err_ptrauth_qualifier_redundant : Error<
+  "type %0 is already %1-qualified">;
+def err_ptrauth_qualifier_bad_arg_count : Error<
+  "%0 qualifier must take between 1 and 4 arguments">;
+def err_ptrauth_arg_not_ice : Error<
+  "argument to %select{__ptrauth|ptrauth_struct}0 must be an integer constant "
+  "expression">;
+def err_ptrauth_address_discrimination_invalid : Error<
+  "address discrimination flag for __ptrauth must be 0 or 1; value is %0">;
+def err_ptrauth_extra_discriminator_invalid : Error<
+  "extra discriminator for %select{__ptrauth|ptrauth_struct}2 must be between "
+  "0 and %1; value is %0">;
 
 /// main()
 // static main() is not an error in C, just in C++.
@@ -3405,7 +3462,8 @@ def note_cannot_use_trivial_abi_reason : Note<
   "its copy constructors and move constructors are all deleted|"
   "it is polymorphic|"
   "it has a base of a non-trivial class type|it has a virtual base|"
-  "it has a __weak field|it has a field of a non-trivial class type}1">;
+  "it has a __weak field|it has a field of a non-trivial class type|"
+  "it has an address-discriminated __ptrauth field}1">;
 
 // Availability attribute
 def warn_availability_unknown_platform : Warning<
@@ -4399,6 +4457,10 @@ def note_ovl_candidate_bad_ownership : Note<
     "%select{no|__unsafe_unretained|__strong|__weak|__autoreleasing}4 ownership,"
     " but parameter has %select{no|__unsafe_unretained|__strong|__weak|"
     "__autoreleasing}5 ownership">;
+def note_ovl_candidate_bad_ptrauth : Note<
+    "candidate %sub{select_ovl_candidate_kind}0,1,2 not viable: "
+    "%ordinal8 argument (%3) has %select{no ptrauth|%5}4 qualifier,"
+    " but parameter has %select{no ptrauth|%7}6 qualifier">;
 def note_ovl_candidate_bad_cvr_this : Note<
     "candidate %sub{select_ovl_candidate_kind}0,1,2 not viable: "
     "'this' argument has type %3, but method is not marked "
@@ -5413,7 +5475,7 @@ def note_deleted_special_member_class_subobject : Note<
   "%select{default|corresponding|default|default|default}4 constructor}0|"
   "destructor}5"
   "%select{||s||}4"
-  "|is an ObjC pointer}6">;
+  "|is an ObjC pointer|has an address-discriminated ptrauth qualifier}6">;
 def note_deleted_default_ctor_uninit_field : Note<
   "%select{default constructor of|constructor inherited by}0 "
   "%1 is implicitly deleted because field %2 of "
@@ -8063,6 +8125,19 @@ def err_typecheck_incompatible_ownership : Error<
   "sending to parameter of different type}0,1"
   "|%diff{casting $ to type $|casting between types}0,1}2"
   " changes retain/release properties of pointer">;
+def err_typecheck_incompatible_ptrauth : Error<
+  "%select{%diff{assigning $ to $|assigning to different types}1,0"
+  "|%diff{passing $ to parameter of type $|"
+  "passing to parameter of different type}0,1"
+  "|%diff{returning $ from a function with result type $|"
+  "returning from function with different return type}0,1"
+  "|%diff{converting $ to type $|converting between types}0,1"
+  "|%diff{initializing $ with an expression of type $|"
+  "initializing with expression of different type}0,1"
+  "|%diff{sending $ to parameter of type $|"
+  "sending to parameter of different type}0,1"
+  "|%diff{casting $ to type $|casting between types}0,1}2"
+  " changes pointer-authentication of pointee type">;
 def err_typecheck_comparison_of_distinct_blocks : Error<
   "comparison of distinct block types%diff{ ($ and $)|}0,1">;
 
@@ -8395,6 +8470,8 @@ def ext_typecheck_cond_pointer_integer_mismatch : ExtWarn<
   "pointer/integer type mismatch in conditional expression"
   "%diff{ ($ and $)|}0,1">,
   InGroup<DiagGroup<"conditional-type-mismatch">>;
+def err_typecheck_cond_incompatible_ptrauth : Error<
+  "__ptrauth qualification mismatch%diff{ ($ and $)|}0,1">;
 def err_typecheck_choose_expr_requires_constant : Error<
   "'__builtin_choose_expr' requires a constant expression">;
 def warn_unused_expr : Warning<"expression result unused">,
@@ -11110,6 +11187,7 @@ def err_bit_cast_non_trivially_copyable : Error<
 def err_bit_cast_type_size_mismatch : Error<
   "__builtin_bit_cast source size does not equal destination size (%0 vs %1)">;
 
+
 // SYCL-specific diagnostics
 def warn_sycl_kernel_num_of_template_params : Warning<
   "'sycl_kernel' attribute only applies to a function template with at least"
@@ -11123,6 +11201,30 @@ def warn_sycl_kernel_num_of_function_params : Warning<
 def warn_sycl_kernel_return_type : Warning<
   "function template with 'sycl_kernel' attribute must have a 'void' return type">,
   InGroup<IgnoredAttributes>;
+
+// VTable pointer authentication errors
+def err_non_polymorphic_vtable_pointer_auth : Error<
+  "cannot set vtable pointer authentication on monomorphic type %0">;
+def err_incomplete_type_vtable_pointer_auth : Error<
+  "cannot set vtable pointer authentication on an incomplete type %0">;
+def err_non_top_level_vtable_pointer_auth : Error<
+  "cannot set vtable pointer authentication on %0 which is a subclass of polymorphic type %1">;
+def err_duplicated_vtable_pointer_auth : Error<
+  "multiple vtable pointer authentication policies on %0">;
+def err_invalid_authentication_key : Error<
+  "invalid authentication key %0">;
+def err_invalid_address_discrimination : Error<
+  "invalid address discrimination mode %0">;
+def err_invalid_extra_discrimination : Error<
+  "invalid extra discrimination selection %0">;
+def err_invalid_custom_discrimination : Error<
+  "invalid custom discrimination">;
+def err_missing_custom_discrimination : Error<
+  "missing custom discrimination">;
+def err_no_default_vtable_pointer_auth : Error<
+  "cannot specify a default vtable pointer authentication "
+  "%select{key|address discrimination mode|discriminator}0 with no default set"
+>;
 
 def err_ext_int_bad_size : Error<"%select{signed|unsigned}0 _ExtInt must "
                                  "have a bit size of at least %select{2|1}0">;

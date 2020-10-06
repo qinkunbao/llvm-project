@@ -183,6 +183,16 @@ public:
                   std::vector<std::string> &Includes,
                   LangStandard::Kind LangStd = LangStandard::lang_unspecified);
 
+  /// Populate \p Opts with the default set of pointer authentication-related
+  /// options given \p LangOpts and \p Triple. Return true if defaults are
+  /// available.
+  ///
+  /// Note: This is intended to be used by tools which must be aware of
+  /// pointer authentication-related code generation, e.g. lldb.
+  static bool setDefaultPointerAuthOptions(PointerAuthOptions &Opts,
+                                           const LangOptions &LangOpts,
+                                           const llvm::Triple &Triple);
+
   /// Retrieve a module hash string that is suitable for uniquely
   /// identifying the conditions under which the module was built.
   std::string getModuleHash() const;

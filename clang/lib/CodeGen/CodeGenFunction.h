@@ -154,6 +154,9 @@ struct DominatingLLVMValue {
 
   /// Answer whether the given value needs extra work to be saved.
   static bool needsSaving(llvm::Value *value) {
+    if (!value)
+      return false;
+
     // If it's not an instruction, we don't need to save.
     if (!isa<llvm::Instruction>(value)) return false;
 
@@ -176,24 +179,51 @@ template <class T> struct DominatingPointer<T,true> : DominatingLLVMValue {
 };
 
 /// A specialization of DominatingValue for Address.
+/// A specialization of DominatingValue for Address.
 template <> struct DominatingValue<Address> {
   typedef Address type;
 
   struct saved_type {
-    DominatingLLVMValue::saved_type SavedValue;
+    DominatingLLVMValue::saved_type BasePtr;
     CharUnits Alignment;
+    unsigned PtrAuthKey : 30;
+    PointerAuthenticationMode PtrAuthMode : 2;
+    DominatingLLVMValue::saved_type PtrAuthDiscriminator;
+    DominatingLLVMValue::saved_type Offset;
+    llvm::PointerType *EffectiveType;
   };
 
   static bool needsSaving(type value) {
-    return DominatingLLVMValue::needsSaving(value.getPointer());
+    if (DominatingLLVMValue::needsSaving(value.getBasePointer()) ||
+        DominatingLLVMValue::needsSaving(value.getOffset()))
+      return true;
+    CGPointerAuthInfo info = value.getPointerAuthInfo();
+    if (info.isSigned() &&
+        DominatingLLVMValue::needsSaving(info.getDiscriminator()))
+      return true;
+    return false;
   }
   static saved_type save(CodeGenFunction &CGF, type value) {
-    return { DominatingLLVMValue::save(CGF, value.getPointer()),
-             value.getAlignment() };
+    bool isSigned = value.getPointerAuthInfo().isSigned();
+    return {DominatingLLVMValue::save(CGF, value.getBasePointer()),
+            value.getAlignment(),
+            isSigned ? value.getPointerAuthInfo().getKey() : 0,
+            value.getPointerAuthInfo().getAuthenticationMode(),
+            isSigned ? DominatingLLVMValue::save(
+                           CGF, value.getPointerAuthInfo().getDiscriminator())
+                     : DominatingLLVMValue::saved_type(),
+            DominatingLLVMValue::save(CGF, value.getOffset()),
+            value.getType()};
   }
   static type restore(CodeGenFunction &CGF, saved_type value) {
-    return Address(DominatingLLVMValue::restore(CGF, value.SavedValue),
-                   value.Alignment);
+    CGPointerAuthInfo info;
+    if (value.PtrAuthMode != PointerAuthenticationMode::None)
+      info = CGPointerAuthInfo{
+          value.PtrAuthKey, value.PtrAuthMode,
+          DominatingLLVMValue::restore(CGF, value.PtrAuthDiscriminator)};
+    return Address(
+        DominatingLLVMValue::restore(CGF, value.BasePtr), value.Alignment, info,
+        DominatingLLVMValue::restore(CGF, value.Offset), value.EffectiveType);
   }
 };
 
@@ -201,16 +231,44 @@ template <> struct DominatingValue<Address> {
 template <> struct DominatingValue<RValue> {
   typedef RValue type;
   class saved_type {
-    enum Kind { ScalarLiteral, ScalarAddress, AggregateLiteral,
-                AggregateAddress, ComplexAddress };
-
-    llvm::Value *Value;
+    enum Kind {
+      // FIXME: remove Literal enums?
+      ScalarLiteral,
+      ScalarAddress,
+      AggregateLiteral,
+      AggregateAddress,
+      ComplexAddress
+    };
+    union {
+      std::pair<DominatingLLVMValue::saved_type,
+                DominatingLLVMValue::saved_type>
+          Vals;
+      DominatingValue<Address>::saved_type AggregateAddr;
+    };
     unsigned K : 3;
-    unsigned Align : 29;
-    saved_type(llvm::Value *v, Kind k, unsigned a = 0)
-      : Value(v), K(k), Align(a) {}
+    unsigned IsVolatile : 1;
+
+    saved_type(DominatingLLVMValue::saved_type Val1, unsigned K)
+        : Vals(std::make_pair(Val1, DominatingLLVMValue::saved_type())), K(K) {}
+
+    saved_type(DominatingLLVMValue::saved_type Val1,
+               DominatingLLVMValue::saved_type Val2)
+        : Vals(std::make_pair(Val1, Val2)), K(ComplexAddress) {}
+
+    saved_type(DominatingValue<Address>::saved_type AggregateAddr,
+               bool IsVolatile, unsigned K)
+        : AggregateAddr(AggregateAddr), K(K) {}
 
   public:
+    saved_type &operator=(const saved_type &other) {
+      if (other.K == AggregateLiteral || other.K == AggregateAddress)
+        AggregateAddr = other.AggregateAddr;
+      else
+        Vals = other.Vals;
+      K = other.K;
+      IsVolatile = other.IsVolatile;
+      return *this;
+    }
     static bool needsSaving(RValue value);
     static saved_type save(CodeGenFunction &CGF, RValue value);
     RValue restore(CodeGenFunction &CGF);
@@ -543,7 +601,7 @@ public:
     llvm::Value *Size;
 
   public:
-    CallLifetimeEnd(Address addr, llvm::Value *size)
+    CallLifetimeEnd(RawAddress addr, llvm::Value *size)
         : Addr(addr.getPointer()), Size(size) {}
 
     void Emit(CodeGenFunction &CGF, Flags flags) override {
@@ -566,7 +624,7 @@ public:
   };
 
   /// i32s containing the indexes of the cleanup destinations.
-  Address NormalCleanupDest = Address::invalid();
+  RawAddress NormalCleanupDest = RawAddress::invalid();
 
   unsigned NextCleanupDestIndex = 1;
 
@@ -701,10 +759,10 @@ public:
   template <class T, class... As>
   void pushCleanupAfterFullExpr(CleanupKind Kind, As... A) {
     if (!isInConditionalBranch())
-      return pushCleanupAfterFullExprWithActiveFlag<T>(Kind, Address::invalid(),
-                                                       A...);
+      return pushCleanupAfterFullExprWithActiveFlag<T>(
+          Kind, RawAddress::invalid(), A...);
 
-    Address ActiveFlag = createCleanupActiveFlag();
+    RawAddress ActiveFlag = createCleanupActiveFlag();
     assert(!DominatingValue<Address>::needsSaving(ActiveFlag) &&
            "cleanup active flag should never need saving");
 
@@ -717,7 +775,7 @@ public:
 
   template <class T, class... As>
   void pushCleanupAfterFullExprWithActiveFlag(CleanupKind Kind,
-                                              Address ActiveFlag, As... A) {
+                                              RawAddress ActiveFlag, As... A) {
     LifetimeExtendedCleanupHeader Header = {sizeof(T), Kind,
                                             ActiveFlag.isValid()};
 
@@ -732,7 +790,7 @@ public:
     new (Buffer) LifetimeExtendedCleanupHeader(Header);
     new (Buffer + sizeof(Header)) T(A...);
     if (Header.IsConditional)
-      new (Buffer + sizeof(Header) + sizeof(T)) Address(ActiveFlag);
+      new (Buffer + sizeof(Header) + sizeof(T)) RawAddress(ActiveFlag);
   }
 
   /// Set up the last cleanup that was pushed as a conditional
@@ -741,8 +799,8 @@ public:
     initFullExprCleanupWithFlag(createCleanupActiveFlag());
   }
 
-  void initFullExprCleanupWithFlag(Address ActiveFlag);
-  Address createCleanupActiveFlag();
+  void initFullExprCleanupWithFlag(RawAddress ActiveFlag);
+  RawAddress createCleanupActiveFlag();
 
   /// PushDestructorCleanup - Push a cleanup to call the
   /// complete-object destructor of an object of the given type at the
@@ -930,7 +988,7 @@ public:
       QualType VarTy = LocalVD->getType();
       if (VarTy->isReferenceType()) {
         Address Temp = CGF.CreateMemTemp(VarTy);
-        CGF.Builder.CreateStore(TempAddr.getPointer(), Temp);
+        CGF.Builder.CreateStore(TempAddr.getRawPointer(CGF), Temp);
         TempAddr = Temp;
       }
       SavedTempAddresses.try_emplace(LocalVD, TempAddr);
@@ -1121,10 +1179,12 @@ public:
   /// one branch or the other of a conditional expression.
   bool isInConditionalBranch() const { return OutermostConditional != nullptr; }
 
-  void setBeforeOutermostConditional(llvm::Value *value, Address addr) {
+  void setBeforeOutermostConditional(llvm::Value *value, Address addr,
+                                     CodeGenFunction &CGF) {
     assert(isInConditionalBranch());
     llvm::BasicBlock *block = OutermostConditional->getStartingBlock();
-    auto store = new llvm::StoreInst(value, addr.getPointer(), &block->back());
+    auto store =
+        new llvm::StoreInst(value, addr.getRawPointer(CGF), &block->back());
     store->setAlignment(addr.getAlignment().getAsAlign());
   }
 
@@ -1540,7 +1600,7 @@ public:
         : CGF(CGF), OldCXXThisValue(CGF.CXXThisValue),
           OldCXXThisAlignment(CGF.CXXThisAlignment),
           SourceLocScope(E, CGF.CurSourceLocExprScope) {
-      CGF.CXXThisValue = CGF.CXXDefaultInitExprThis.getPointer();
+      CGF.CXXThisValue = CGF.CXXDefaultInitExprThis.getBasePointer();
       CGF.CXXThisAlignment = CGF.CXXDefaultInitExprThis.getAlignment();
     }
     ~CXXDefaultInitExprScope() {
@@ -1903,7 +1963,7 @@ public:
   llvm::Value *getExceptionFromSlot();
   llvm::Value *getSelectorFromSlot();
 
-  Address getNormalCleanupDestSlot();
+  RawAddress getNormalCleanupDestSlot();
 
   llvm::BasicBlock *getUnreachableBlock() {
     if (!UnreachableBlock) {
@@ -2185,10 +2245,16 @@ public:
 
   void InitializeVTablePointers(const CXXRecordDecl *ClassDecl);
 
+  // VTableTrapMode - whether we guarantee that loading the
+  // vtable is guaranteed to trap on authentication failure,
+  // even if the resulting vtable pointer is unused.
+  enum class VTableAuthMode { Authenticate, MustTrap };
   /// GetVTablePtr - Return the Value of the vtable pointer member pointed
   /// to by This.
-  llvm::Value *GetVTablePtr(Address This, llvm::Type *VTableTy,
-                            const CXXRecordDecl *VTableClass);
+  llvm::Value *
+  GetVTablePtr(Address This, llvm::Type *VTableTy,
+               const CXXRecordDecl *VTableClass,
+               VTableAuthMode authMode = VTableAuthMode::Authenticate);
 
   enum CFITypeCheckKind {
     CFITCK_VCall,
@@ -2383,10 +2449,27 @@ public:
   //                                  Helpers
   //===--------------------------------------------------------------------===//
 
+  Address mergeAddressesInConditionalExpr(Address LHS, Address RHS,
+                                          llvm::BasicBlock *LHSBlock,
+                                          llvm::BasicBlock *RHSBlock,
+                                          llvm::BasicBlock *MergeBlock,
+                                          QualType MergedType);
+
+  Address makeNaturalAddressForPointer(llvm::Value *Ptr, QualType T,
+                                       CharUnits Alignment = CharUnits::Zero(),
+                                       bool ForPointeeType = false,
+                                       LValueBaseInfo *BaseInfo = nullptr,
+                                       TBAAAccessInfo *TBAAInfo = nullptr) {
+    if (Alignment.isZero())
+      Alignment =
+          CGM.getNaturalTypeAlignment(T, BaseInfo, TBAAInfo, ForPointeeType);
+    return Address(Ptr, Alignment, CGM.getPointerAuthInfoForPointeeType(T));
+  }
+
   LValue MakeAddrLValue(Address Addr, QualType T,
                         AlignmentSource Source = AlignmentSource::Type) {
-    return LValue::MakeAddr(Addr, T, getContext(), LValueBaseInfo(Source),
-                            CGM.getTBAAAccessInfo(T));
+    return MakeAddrLValue(Addr, T, LValueBaseInfo(Source),
+                          CGM.getTBAAAccessInfo(T));
   }
 
   LValue MakeAddrLValue(Address Addr, QualType T, LValueBaseInfo BaseInfo,
@@ -2396,18 +2479,21 @@ public:
 
   LValue MakeAddrLValue(llvm::Value *V, QualType T, CharUnits Alignment,
                         AlignmentSource Source = AlignmentSource::Type) {
-    return LValue::MakeAddr(Address(V, Alignment), T, getContext(),
-                            LValueBaseInfo(Source), CGM.getTBAAAccessInfo(T));
+    return MakeAddrLValue(makeNaturalAddressForPointer(V, T, Alignment), T,
+                          LValueBaseInfo(Source), CGM.getTBAAAccessInfo(T));
   }
 
-  LValue MakeAddrLValue(llvm::Value *V, QualType T, CharUnits Alignment,
-                        LValueBaseInfo BaseInfo, TBAAAccessInfo TBAAInfo) {
-    return LValue::MakeAddr(Address(V, Alignment), T, getContext(),
-                            BaseInfo, TBAAInfo);
+  LValue MakeRawAddrLValue(llvm::Value *V, QualType T, CharUnits Alignment,
+                           AlignmentSource Source = AlignmentSource::Type) {
+    return MakeAddrLValue(Address(V, Alignment), T, LValueBaseInfo(Source),
+                          CGM.getTBAAAccessInfo(T));
   }
 
   LValue MakeNaturalAlignPointeeAddrLValue(llvm::Value *V, QualType T);
   LValue MakeNaturalAlignAddrLValue(llvm::Value *V, QualType T);
+  LValue MakeNaturalAlignPointeeRawAddrLValue(llvm::Value *V, QualType T);
+  LValue MakeNaturalAlignRawAddrLValue(llvm::Value *V, QualType T);
+
 
   Address EmitLoadOfReference(LValue RefLVal,
                               LValueBaseInfo *PointeeBaseInfo = nullptr,
@@ -2454,13 +2540,13 @@ public:
   /// more efficient if the caller knows that the address will not be exposed.
   llvm::AllocaInst *CreateTempAlloca(llvm::Type *Ty, const Twine &Name = "tmp",
                                      llvm::Value *ArraySize = nullptr);
-  Address CreateTempAlloca(llvm::Type *Ty, CharUnits align,
-                           const Twine &Name = "tmp",
-                           llvm::Value *ArraySize = nullptr,
-                           Address *Alloca = nullptr);
-  Address CreateTempAllocaWithoutCast(llvm::Type *Ty, CharUnits align,
-                                      const Twine &Name = "tmp",
-                                      llvm::Value *ArraySize = nullptr);
+  RawAddress CreateTempAlloca(llvm::Type *Ty, CharUnits align,
+                              const Twine &Name = "tmp",
+                              llvm::Value *ArraySize = nullptr,
+                              RawAddress *Alloca = nullptr);
+  RawAddress CreateTempAllocaWithoutCast(llvm::Type *Ty, CharUnits align,
+                                         const Twine &Name = "tmp",
+                                         llvm::Value *ArraySize = nullptr);
 
   /// CreateDefaultAlignedTempAlloca - This creates an alloca with the
   /// default ABI alignment of the given LLVM type.
@@ -2472,8 +2558,8 @@ public:
   /// not hand this address off to arbitrary IRGen routines, and especially
   /// do not pass it as an argument to a function that might expect a
   /// properly ABI-aligned value.
-  Address CreateDefaultAlignTempAlloca(llvm::Type *Ty,
-                                       const Twine &Name = "tmp");
+  RawAddress CreateDefaultAlignTempAlloca(llvm::Type *Ty,
+                                          const Twine &Name = "tmp");
 
   /// InitTempAlloca - Provide an initial value for the given alloca which
   /// will be observable at all locations in the function.
@@ -2482,7 +2568,7 @@ public:
   /// the CreateTempAlloca or CreateMemTemp routines, and the
   /// initializer must be valid in the entry block (i.e. it must
   /// either be a constant or an argument value).
-  void InitTempAlloca(Address Alloca, llvm::Value *Value);
+  void InitTempAlloca(RawAddress Alloca, llvm::Value *Value);
 
   /// CreateIRTemp - Create a temporary IR object of the given type, with
   /// appropriate alignment. This routine should only be used when an temporary
@@ -2492,36 +2578,37 @@ public:
   ///
   /// That is, this is exactly equivalent to CreateMemTemp, but calling
   /// ConvertType instead of ConvertTypeForMem.
-  Address CreateIRTemp(QualType T, const Twine &Name = "tmp");
+  RawAddress CreateIRTemp(QualType T, const Twine &Name = "tmp");
 
   /// CreateMemTemp - Create a temporary memory object of the given type, with
   /// appropriate alignmen and cast it to the default address space. Returns
   /// the original alloca instruction by \p Alloca if it is not nullptr.
-  Address CreateMemTemp(QualType T, const Twine &Name = "tmp",
-                        Address *Alloca = nullptr);
-  Address CreateMemTemp(QualType T, CharUnits Align, const Twine &Name = "tmp",
-                        Address *Alloca = nullptr);
+  RawAddress CreateMemTemp(QualType T, const Twine &Name = "tmp",
+                           RawAddress *Alloca = nullptr);
+  RawAddress CreateMemTemp(QualType T, CharUnits Align,
+                           const Twine &Name = "tmp",
+                           RawAddress *Alloca = nullptr);
 
   /// CreateMemTemp - Create a temporary memory object of the given type, with
   /// appropriate alignmen without casting it to the default address space.
-  Address CreateMemTempWithoutCast(QualType T, const Twine &Name = "tmp");
-  Address CreateMemTempWithoutCast(QualType T, CharUnits Align,
-                                   const Twine &Name = "tmp");
+  RawAddress CreateMemTempWithoutCast(QualType T, const Twine &Name = "tmp");
+  RawAddress CreateMemTempWithoutCast(QualType T, CharUnits Align,
+                                      const Twine &Name = "tmp");
 
   /// CreateAggTemp - Create a temporary memory object for the given
   /// aggregate type.
   AggValueSlot CreateAggTemp(QualType T, const Twine &Name = "tmp",
-                             Address *Alloca = nullptr) {
-    return AggValueSlot::forAddr(CreateMemTemp(T, Name, Alloca),
-                                 T.getQualifiers(),
-                                 AggValueSlot::IsNotDestructed,
-                                 AggValueSlot::DoesNotNeedGCBarriers,
-                                 AggValueSlot::IsNotAliased,
-                                 AggValueSlot::DoesNotOverlap);
+                             RawAddress *Alloca = nullptr) {
+    return AggValueSlot::forAddr(
+        CreateMemTemp(T, Name, Alloca), T.getQualifiers(),
+        AggValueSlot::IsNotDestructed, AggValueSlot::DoesNotNeedGCBarriers,
+        AggValueSlot::IsNotAliased, AggValueSlot::DoesNotOverlap);
   }
 
   /// Emit a cast to void* in the appropriate address space.
   llvm::Value *EmitCastToVoidPtr(llvm::Value *value);
+
+  llvm::Value *EmitCastToVoidPtr(Address Addr);
 
   /// EvaluateExprAsBool - Perform the usual unary conversions on the specified
   /// expression and compare the result against zero, returning an Int1Ty value.
@@ -2897,6 +2984,29 @@ public:
                      SanitizerSet SkippedChecks = SanitizerSet(),
                      llvm::Value *ArraySize = nullptr);
 
+  void EmitTypeCheck(TypeCheckKind TCK, SourceLocation Loc, LValue LV,
+                     QualType Type, SanitizerSet SkippedChecks = SanitizerSet(),
+                     llvm::Value *ArraySize = nullptr) {
+    // If type-checking sanitizers are disabled, return without authenticating
+    // the passed lvalue.
+    if (!sanitizePerformTypeCheck())
+      return;
+    EmitTypeCheck(TCK, Loc, LV.getRawPointer(*this), Type, LV.getAlignment(),
+                  SkippedChecks, ArraySize);
+  }
+
+  void EmitTypeCheck(TypeCheckKind TCK, SourceLocation Loc, Address Addr,
+                     QualType Type, CharUnits Alignment = CharUnits::Zero(),
+                     SanitizerSet SkippedChecks = SanitizerSet(),
+                     llvm::Value *ArraySize = nullptr) {
+    // If type-checking sanitizers are disabled, return without authenticating
+    // the passed lvalue.
+    if (!sanitizePerformTypeCheck())
+      return;
+    EmitTypeCheck(TCK, Loc, Addr.getRawPointer(*this), Type, Alignment,
+                  SkippedChecks, ArraySize);
+  }
+
   /// Emit a check that \p Base points into an array object, which
   /// we can access at index \p Index. \p Accessed should be \c false if we
   /// this expression is used as an lvalue, for instance in "&Arr[Idx]".
@@ -2970,17 +3080,17 @@ public:
 
     /// Address with original alloca instruction. Invalid if the variable was
     /// emitted as a global constant.
-    Address AllocaAddr;
+    RawAddress AllocaAddr;
 
     struct Invalid {};
     AutoVarEmission(Invalid)
         : Variable(nullptr), Addr(Address::invalid()),
-          AllocaAddr(Address::invalid()) {}
+          AllocaAddr(RawAddress::invalid()) {}
 
     AutoVarEmission(const VarDecl &variable)
         : Variable(&variable), Addr(Address::invalid()), NRVOFlag(nullptr),
           IsEscapingByRef(false), IsConstantAggregate(false),
-          SizeForLifetimeMarkers(nullptr), AllocaAddr(Address::invalid()) {}
+          SizeForLifetimeMarkers(nullptr), AllocaAddr(RawAddress::invalid()) {}
 
     bool wasEmittedAsGlobal() const { return !Addr.isValid(); }
 
@@ -3003,7 +3113,7 @@ public:
     }
 
     /// Returns the address for the original alloca instruction.
-    Address getOriginalAllocatedAddress() const { return AllocaAddr; }
+    RawAddress getOriginalAllocatedAddress() const { return AllocaAddr; }
 
     /// Returns the address of the object within this declaration.
     /// Note that this does not chase the forwarding pointer for
@@ -3033,20 +3143,32 @@ public:
                          llvm::GlobalValue::LinkageTypes Linkage);
 
   class ParamValue {
-    llvm::Value *Value;
-    unsigned Alignment;
-    ParamValue(llvm::Value *V, unsigned A) : Value(V), Alignment(A) {}
+    union {
+      Address Addr;
+      llvm::Value *Value;
+    };
+
+    bool IsIndirect;
+
+    ParamValue(llvm::Value *V) : Value(V), IsIndirect(false) {}
+    ParamValue(Address A) : Addr(A), IsIndirect(true) {}
+
   public:
     static ParamValue forDirect(llvm::Value *value) {
-      return ParamValue(value, 0);
+      return ParamValue(value);
     }
     static ParamValue forIndirect(Address addr) {
       assert(!addr.getAlignment().isZero());
-      return ParamValue(addr.getPointer(), addr.getAlignment().getQuantity());
+      return ParamValue(addr);
     }
 
-    bool isIndirect() const { return Alignment != 0; }
-    llvm::Value *getAnyValue() const { return Value; }
+    bool isIndirect() const { return IsIndirect; }
+    llvm::Value *getAnyValue() const {
+      if (!isIndirect())
+        return Value;
+      assert(!Addr.hasOffset() && "unexpected offset");
+      return Addr.getBasePointer();
+    }
 
     llvm::Value *getDirectValue() const {
       assert(!isIndirect());
@@ -3055,7 +3177,7 @@ public:
 
     Address getIndirectAddress() const {
       assert(isIndirect());
-      return Address(Value, CharUnits::fromQuantity(Alignment));
+      return Addr;
     }
   };
 
@@ -3874,7 +3996,8 @@ public:
   /// LLVM arguments and the types they were derived from.
   RValue EmitCall(const CGFunctionInfo &CallInfo, const CGCallee &Callee,
                   ReturnValueSlot ReturnValue, const CallArgList &Args,
-                  llvm::CallBase **callOrInvoke, SourceLocation Loc);
+                  llvm::CallBase **callOrInvoke, SourceLocation Loc,
+                  bool IsVirtualFunctionPointerThunk = false);
   RValue EmitCall(const CGFunctionInfo &CallInfo, const CGCallee &Callee,
                   ReturnValueSlot ReturnValue, const CallArgList &Args,
                   llvm::CallBase **callOrInvoke = nullptr) {
@@ -3897,6 +4020,9 @@ public:
                                   ArrayRef<llvm::Value *> args,
                                   const Twine &name = "");
   llvm::CallInst *EmitNounwindRuntimeCall(llvm::FunctionCallee callee,
+                                          const Twine &name = "");
+  llvm::CallInst *EmitNounwindRuntimeCall(llvm::FunctionCallee callee,
+                                          ArrayRef<Address> args,
                                           const Twine &name = "");
   llvm::CallInst *EmitNounwindRuntimeCall(llvm::FunctionCallee callee,
                                           ArrayRef<llvm::Value *> args,
@@ -3923,6 +4049,68 @@ public:
   CGCallee BuildAppleKextVirtualDestructorCall(const CXXDestructorDecl *DD,
                                                CXXDtorType Type,
                                                const CXXRecordDecl *RD);
+
+  /// Create the discriminator from the storage address and the entity hash.
+  llvm::Value *EmitPointerAuthBlendDiscriminator(llvm::Value *storageAddress,
+                                                 llvm::Value *discriminator);
+
+  CGPointerAuthInfo EmitPointerAuthInfo(const PointerAuthSchema &schema,
+                                        llvm::Value *storageAddress,
+                                        GlobalDecl calleeDecl,
+                                        QualType calleeType);
+  llvm::Value *EmitPointerAuthSign(QualType pointeeType, llvm::Value *pointer);
+  llvm::Value *EmitPointerAuthSign(const CGPointerAuthInfo &info,
+                                   llvm::Value *pointer);
+  llvm::Value *EmitPointerAuthAuth(QualType pointeeType, llvm::Value *pointer);
+  llvm::Value *EmitPointerAuthAuth(const CGPointerAuthInfo &info,
+                                   llvm::Value *pointer);
+  llvm::Value *EmitPointerAuthResign(llvm::Value *pointer,
+                                     QualType pointerType,
+                                     const CGPointerAuthInfo &curAuthInfo,
+                                     const CGPointerAuthInfo &newAuthInfo,
+                                     bool isKnownNonNull);
+  llvm::Value *EmitPointerAuthResignCall(llvm::Value *pointer,
+                                         const CGPointerAuthInfo &curInfo,
+                                         const CGPointerAuthInfo &newInfo);
+  void EmitPointerAuthOperandBundle(const CGPointerAuthInfo &info,
+                          SmallVectorImpl<llvm::OperandBundleDef> &bundles);
+
+  CGPointerAuthInfo EmitPointerAuthInfo(PointerAuthQualifier qualifier,
+                                        Address storageAddress);
+  llvm::Value *EmitPointerAuthQualify(PointerAuthQualifier qualifier,
+                                      llvm::Value *pointer,
+                                      QualType valueType,
+                                      Address storageAddress,
+                                      bool isKnownNonNull);
+  llvm::Value *EmitPointerAuthQualify(PointerAuthQualifier qualifier,
+                                      const Expr *pointerExpr,
+                                      Address storageAddress);
+  llvm::Value *EmitPointerAuthUnqualify(PointerAuthQualifier qualifier,
+                                        llvm::Value *pointer,
+                                        QualType pointerType,
+                                        Address storageAddress,
+                                        bool isKnownNonNull);
+  void EmitPointerAuthCopy(PointerAuthQualifier qualifier, QualType type,
+                           Address destField, Address srcField);
+
+  std::pair<llvm::Value *, CGPointerAuthInfo>
+  EmitOrigPointerRValue(const Expr *E);
+
+  llvm::Value *AuthPointerToPointerCast(llvm::Value *ResultPtr,
+                                        QualType SourceType, QualType DestType);
+  Address AuthPointerToPointerCast(Address Ptr,
+                                   QualType SourceType, QualType DestType);
+
+  Address EmitPointerAuthSign(Address Addr, QualType PointeeType);
+  Address EmitPointerAuthAuth(Address Addr, QualType PointeeType);
+
+  Address getAsNaturalAddressOf(Address Addr, QualType PointeeTy);
+
+  llvm::Value *getAsNaturalPointerTo(Address Addr, QualType PointeeType) {
+    return getAsNaturalAddressOf(Addr, PointeeType).getBasePointer();
+  }
+
+  bool isPointerKnownNonNull(const Expr *E);
 
   // Return the copy constructor name with the prefix "__copy_constructor_"
   // removed.
@@ -4289,7 +4477,7 @@ public:
   void EmitCXXGlobalVarDeclInit(const VarDecl &D, llvm::Constant *DeclPtr,
                                 bool PerformInit);
 
-  llvm::Function *createAtExitStub(const VarDecl &VD, llvm::FunctionCallee Dtor,
+  llvm::Constant *createAtExitStub(const VarDecl &VD, llvm::FunctionCallee Dtor,
                                    llvm::Constant *Addr);
 
   /// Call atexit() with a function that passes the given argument to
@@ -4438,6 +4626,11 @@ public:
                                       SourceLocation Loc,
                                       const Twine &Name = "");
 
+  Address EmitCheckedInBoundsGEP(Address Addr, ArrayRef<llvm::Value *> IdxList,
+                                 bool SignedIndices, bool IsSubtraction,
+                                 SourceLocation Loc, CharUnits Align,
+                                 const Twine &Name = "");
+
   /// Specifies which type of sanitizer check to apply when handling a
   /// particular builtin.
   enum BuiltinCheckKind {
@@ -4496,6 +4689,10 @@ public:
   /// declared as non-null.
   void EmitNonNullArgCheck(RValue RV, QualType ArgType, SourceLocation ArgLoc,
                            AbstractCallee AC, unsigned ParmNum);
+
+  void EmitNonNullArgCheck(Address Addr, QualType ArgType,
+                           SourceLocation ArgLoc, AbstractCallee AC,
+                           unsigned ParmNum);
 
   /// EmitCallArg - Emit a single call argument.
   void EmitCallArg(CallArgList &args, const Expr *E, QualType ArgType);
@@ -4753,7 +4950,7 @@ DominatingLLVMValue::save(CodeGenFunction &CGF, llvm::Value *value) {
     CGF.CreateTempAlloca(value->getType(), align, "cond-cleanup.save");
   CGF.Builder.CreateStore(value, alloca);
 
-  return saved_type(alloca.getPointer(), true);
+  return saved_type(alloca.getRawPointer(CGF), true);
 }
 
 inline llvm::Value *DominatingLLVMValue::restore(CodeGenFunction &CGF,

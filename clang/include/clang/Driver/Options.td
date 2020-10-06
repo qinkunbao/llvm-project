@@ -2597,8 +2597,33 @@ let Group = f_Group in {
   let Flags = [CC1Option] in {
     def fptrauth_intrinsics : Flag<["-"], "fptrauth-intrinsics">,
       HelpText<"Enable pointer-authentication intrinsics">;
+    def fptrauth_calls : Flag<["-"], "fptrauth-calls">,
+      HelpText<"Enable signing and authentication of all indirect calls">;
+    def fptrauth_returns : Flag<["-"], "fptrauth-returns">,
+      HelpText<"Enable signing and authentication of return addresses">;
+    def fptrauth_auth_traps : Flag<["-"], "fptrauth-auth-traps">,
+      HelpText<"Enable traps on authentication failures">;
+    def fptrauth_vtable_pointer_address_discrimination : Flag<["-"], "fptrauth-vtable-pointer-address-discrimination">,
+      HelpText<"Enable address discrimination of vtable pointers">;
+    def fptrauth_vtable_pointer_type_discrimination : Flag<["-"], "fptrauth-vtable-pointer-type-discrimination">,
+      HelpText<"Enable type discrimination of vtable pointers">;
+    def fptrauth_soft : Flag<["-"], "fptrauth-soft">,
+      HelpText<"Enable software lowering of pointer authentication">;
+    def fptrauth_block_descriptor_pointers : Flag<["-"], "fptrauth-block-descriptor-pointers">,
+      HelpText<"enable signing block descriptors">;
+    def fptrauth_function_pointer_type_discrimination : Flag<["-"], "fptrauth-function-pointer-type-discrimination">,
+      HelpText<"Enabling type discrimination on C function pointers">;
   }
   def fno_ptrauth_intrinsics : Flag<["-"], "fno-ptrauth-intrinsics">;
+  def fno_ptrauth_calls : Flag<["-"], "fno-ptrauth-calls">;
+  def fno_ptrauth_returns : Flag<["-"], "fno-ptrauth-returns">;
+  def fno_ptrauth_auth_traps : Flag<["-"], "fno-ptrauth-auth-traps">;
+  def fno_ptrauth_vtable_pointer_address_discrimination : Flag<["-"], "fno-ptrauth-vtable-pointer-address-discrimination">;
+  def fno_ptrauth_vtable_pointer_type_discrimination : Flag<["-"], "fno-ptrauth-vtable-pointer-type-discrimination">;
+  def fno_ptrauth_soft : Flag<["-"], "fno-ptrauth-soft">;
+  def fno_branch_target_identification : Flag<["-"], "fno-branch-target-identification">;
+  def fno_ptrauth_block_descriptor_pointers : Flag<["-"], "fno-ptrauth-block-descriptor-pointers">;
+  def fno_ptrauth_function_pointer_type_discrimination : Flag<["-"], "fno-ptrauth-function-pointer-type-discrimination">;
 }
 
 def fenable_matrix : Flag<["-"], "fenable-matrix">, Group<f_Group>,

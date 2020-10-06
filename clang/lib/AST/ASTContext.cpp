@@ -40,6 +40,7 @@
 #include "clang/AST/ParentMapContext.h"
 #include "clang/AST/RawCommentList.h"
 #include "clang/AST/RecordLayout.h"
+#include "clang/AST/StableHash.h"
 #include "clang/AST/Stmt.h"
 #include "clang/AST/TemplateBase.h"
 #include "clang/AST/TemplateName.h"
@@ -2954,6 +2955,293 @@ QualType ASTContext::removeAddrSpaceQualType(QualType T) const {
     return getExtQualType(TypeNode, Quals);
   else
     return QualType(TypeNode, Quals.getFastQualifiers());
+}
+
+/// Encode a function type for use in the discriminator of a function pointer
+/// type. We can't use the itanium scheme for this since C has quite permissive
+/// rules for type compatibility that we need to be compatible with.
+///
+/// Formally, this function associates every function pointer type T with an
+/// encoded string E(T). Let the equivalence relation T1 ~ T2 be defined as
+/// E(T1) == E(T2). E(T) is part of the ABI of values of type T. C type
+/// compatibility requires equivalent treatment under the ABI, so
+/// CCompatible(T1, T2) must imply E(T1) == E(T2), that is, CCompatible must be
+/// a subset of ~. Crucially, however, it must be a proper subset because
+/// CCompatible is not an equivalence relation: for example, int[] is compatible
+/// with both int[1] and int[2], but the latter are not compatible with each
+/// other. Therefore this encoding function must be careful to only distinguish
+/// types if there is no third type with which they are both required to be
+/// compatible.
+static void encodeTypeForFunctionPointerAuth(ASTContext &Ctx, raw_ostream &OS,
+                                             QualType QT) {
+  // FIXME: Consider address space qualifiers.
+  const Type *T = QT.getCanonicalType().getTypePtr();
+
+  // FIXME: Consider using the C++ type mangling when we encounter a construct
+  // that is incompatible with C.
+
+  switch (T->getTypeClass()) {
+#define NON_CANONICAL_TYPE(Class, Base) case Type::Class:
+#define DEPENDENT_TYPE(Class, Base) case Type::Class:
+#define NON_CANONICAL_UNLESS_DEPENDENT_TYPE(Class, Base) case Type::Class:
+#define ABSTRACT_TYPE(Class, Base)
+#define TYPE(Class, Base)
+#include "clang/AST/TypeNodes.inc"
+    llvm_unreachable("unexpected non-canonical or dependent type!");
+    return;
+
+  case Type::DeducedTemplateSpecialization:
+  case Type::Auto:
+    llvm_unreachable("deduced types should be canonicalized away!");
+
+  case Type::Atomic:
+    return encodeTypeForFunctionPointerAuth(
+        Ctx, OS, cast<AtomicType>(T)->getValueType());
+
+  case Type::LValueReference:
+    OS << "R";
+    encodeTypeForFunctionPointerAuth(
+        Ctx, OS, cast<ReferenceType>(T)->getPointeeType());
+    return;
+  case Type::RValueReference:
+    OS << "O";
+    encodeTypeForFunctionPointerAuth(
+        Ctx, OS, cast<ReferenceType>(T)->getPointeeType());
+    return;
+
+  case Type::Pointer:
+    // C11 6.7.6.1p2:
+    //   For two pointer types to be compatible, both shall be identically
+    //   qualified and both shall be pointers to compatible types.
+    // FIXME: we should also consider pointee types.
+    OS << "P";
+    return;
+
+  case Type::ObjCObjectPointer:
+  case Type::BlockPointer:
+    OS << "P";
+    return;
+
+  case Type::Complex:
+    OS << "C";
+    return encodeTypeForFunctionPointerAuth(
+        Ctx, OS, cast<ComplexType>(T)->getElementType());
+
+  case Type::VariableArray:
+  case Type::ConstantArray:
+  case Type::IncompleteArray:
+    // C11 6.7.6.2p6:
+    //   For two array types to be compatible, both shall have compatible
+    //   element types, and if both size specifiers are present, and are integer
+    //   constant expressions, then both size specifiers shall have the same
+    //   constant value [...]
+    //
+    // So since ElemType[N] has to be compatible ElemType[], we can't encode the
+    // width of the array.
+    OS << "A";
+    return encodeTypeForFunctionPointerAuth(
+        Ctx, OS, cast<ArrayType>(T)->getElementType());
+
+  case Type::ObjCInterface:
+  case Type::ObjCObject:
+    OS << "<objc_object>";
+    return;
+
+  case Type::Enum:
+    // C11 6.7.2.2p4:
+    //   Each enumerated type shall be compatible with char, a signed integer
+    //   type, or an unsigned integer type.
+    //
+    // So we have to treat enum types as integers.
+    OS << "i";
+    return;
+
+  case Type::FunctionNoProto:
+  case Type::FunctionProto: {
+    // C11 6.7.6.3p15:
+    //   For two function types to be compatible, both shall specify compatible
+    //   return types. Moreover, the parameter type lists, if both are present,
+    //   shall agree in the number of parameters and in the use of the ellipsis
+    //   terminator; corresponding parameters shall have compatible types.
+    //
+    // That paragraph goes on to describe how unprototyped functions are to be
+    // handled, which we ignore here. Unprototyped function pointers are hashed
+    // as though they were prototyped nullary functions since thats probably
+    // what the user meant. This behavior is non-conforming.
+    // FIXME: If we add a "custom discriminator" function type attribute we
+    // should encode functions as their discriminators.
+    OS << "F";
+    auto *FuncType = cast<FunctionType>(T);
+    encodeTypeForFunctionPointerAuth(Ctx, OS, FuncType->getReturnType());
+    if (auto *FPT = dyn_cast<FunctionProtoType>(FuncType)) {
+      for (QualType Param : FPT->param_types()) {
+        Param = Ctx.getSignatureParameterType(Param);
+        encodeTypeForFunctionPointerAuth(Ctx, OS, Param);
+      }
+      if (FPT->isVariadic())
+        OS << "z";
+    }
+    OS << "E";
+    return;
+  }
+
+  case Type::MemberPointer: {
+    OS << "M";
+    auto *MPT = T->getAs<MemberPointerType>();
+    encodeTypeForFunctionPointerAuth(Ctx, OS, QualType(MPT->getClass(), 0));
+    encodeTypeForFunctionPointerAuth(Ctx, OS, MPT->getPointeeType());
+    return;
+  }
+  case Type::ExtVector:
+  case Type::Vector:
+    OS << "Dv" << Ctx.getTypeSizeInChars(T).getQuantity();
+    break;
+
+  // Don't bother discriminating based on these types.
+  case Type::Pipe:
+  case Type::ExtInt:
+  case Type::ConstantMatrix:
+    OS << "?";
+    return;
+
+  case Type::Builtin: {
+    const BuiltinType *BTy = T->getAs<BuiltinType>();
+    switch (BTy->getKind()) {
+#define SIGNED_TYPE(Id, SingletonId)                                           \
+  case BuiltinType::Id:                                                        \
+    OS << "i";                                                                 \
+    return;
+#define UNSIGNED_TYPE(Id, SingletonId)                                         \
+  case BuiltinType::Id:                                                        \
+    OS << "i";                                                                 \
+    return;
+#define PLACEHOLDER_TYPE(Id, SingletonId)                                      \
+  case BuiltinType::Id:                                                        \
+    llvm_unreachable("placeholder types should not appear here.");
+#define BUILTIN_TYPE(Id, SingletonId)
+#include "clang/AST/BuiltinTypes.def"
+
+    case BuiltinType::Half:
+      OS << "Dh";
+      return;
+    case BuiltinType::Float:
+      OS << "f";
+      return;
+    case BuiltinType::Double:
+      OS << "d";
+      return;
+    case BuiltinType::LongDouble:
+      OS << "e";
+      return;
+    case BuiltinType::Float16:
+      OS << "DF16_";
+      return;
+    case BuiltinType::Float128:
+      OS << "g";
+      return;
+
+    case BuiltinType::Void:
+      OS << "v";
+      return;
+
+    case BuiltinType::ObjCId:
+    case BuiltinType::ObjCClass:
+    case BuiltinType::ObjCSel:
+    case BuiltinType::NullPtr:
+      OS << "P";
+      return;
+
+    // Don't bother discriminating based on OpenCL types.
+    case BuiltinType::OCLSampler:
+    case BuiltinType::OCLEvent:
+    case BuiltinType::OCLClkEvent:
+    case BuiltinType::OCLQueue:
+    case BuiltinType::OCLReserveID:
+    case BuiltinType::BFloat16:
+      OS << "?";
+      return;
+
+    case BuiltinType::Dependent:
+      llvm_unreachable("should never get here");
+
+    // Don't bother discriminating based on these seldom-used types.
+#define IMAGE_TYPE(ImgType, Id, SingletonId, Access, Suffix)  \
+      case BuiltinType::Id:                                   \
+        return;
+#include "clang/Basic/OpenCLImageTypes.def"
+#define EXT_OPAQUE_TYPE(ExtType, Id, Ext)       \
+      case BuiltinType::Id:                     \
+        return;
+#include "clang/Basic/OpenCLExtensionTypes.def"
+#define SVE_TYPE(Name, Id, SingletonId)         \
+      case BuiltinType::Id:                     \
+        return;
+#include "clang/Basic/AArch64SVEACLETypes.def"
+    }
+  }
+  case Type::Record: {
+    RecordDecl *RD = T->getAs<RecordType>()->getDecl();
+    IdentifierInfo *II = RD->getIdentifier();
+    if (!II)
+      if (const TypedefNameDecl *Typedef = RD->getTypedefNameForAnonDecl())
+        II = Typedef->getDeclName().getAsIdentifierInfo();
+
+    if (!II) {
+      OS << "<anonymous_record>";
+      return;
+    }
+    OS << II->getLength() << II->getName();
+    return;
+  }
+  }
+}
+
+uint16_t ASTContext::getPointerAuthTypeDiscriminator(QualType T) {
+  assert(!T->isDependentType() &&
+         "cannot compute type discriminator of a dependent type");
+
+  SmallString<256> Str;
+  llvm::raw_svector_ostream Out(Str);
+
+  if (T->isFunctionPointerType() || T->isFunctionReferenceType())
+    T = T->getPointeeType();
+
+  if (T->isFunctionType()) {
+    encodeTypeForFunctionPointerAuth(*this, Out, T);
+  } else {
+    T = T.getUnqualifiedType();
+    std::unique_ptr<MangleContext> MC(createMangleContext());
+    MC->mangleTypeName(T, Out);
+  }
+
+  return getPointerAuthStringDiscriminator(*this, Str.c_str());
+}
+
+uint16_t ASTContext::getPointerAuthVTablePointerDiscriminator(
+    const CXXRecordDecl *record) {
+  assert(record->isPolymorphic() &&
+         "Attempted to get vtable pointer discriminator on a monomorphic type");
+  std::unique_ptr<MangleContext> MC(createMangleContext());
+  SmallString<256> Str;
+  llvm::raw_svector_ostream Out(Str);
+  MC->mangleCXXVTable(record, Out);
+  return getPointerAuthStringDiscriminator(*this, Str.c_str());
+}
+
+std::tuple<bool, unsigned, unsigned>
+ASTContext::getRecordPointerAuthKeyAndDiscriminator(
+    const RecordDecl *RD) const {
+  if (auto *Attr = RD->getAttr<PointerAuthStructAttr>())
+    return std::make_tuple(true, Attr->getKey(), Attr->getDiscriminator());
+  return std::make_tuple(false, 0u, 0u);
+}
+
+bool ASTContext::recordsHaveSamePointerAuthKeyAndDiscriminator(
+    const RecordDecl *RD0, const RecordDecl *RD1) const {
+  if (RD0 == RD1)
+    return true;
+  return getRecordPointerAuthKeyAndDiscriminator(RD0) ==
+         getRecordPointerAuthKeyAndDiscriminator(RD1);
 }
 
 QualType ASTContext::getObjCGCQualType(QualType T,
@@ -6684,6 +6972,9 @@ bool ASTContext::BlockRequiresCopying(QualType Ty,
     return true;
   }
 
+  if (Ty.hasAddressDiscriminatedPointerAuth())
+    return true;
+
   // The block needs copy/destroy helpers if Ty is non-trivial to destructively
   // move or destroy.
   if (Ty.isNonTrivialToPrimitiveDestructiveMove() || Ty.isDestructedType())
@@ -9538,6 +9829,7 @@ QualType ASTContext::mergeTypes(QualType LHS, QualType RHS,
     if (LQuals.getCVRQualifiers() != RQuals.getCVRQualifiers() ||
         LQuals.getAddressSpace() != RQuals.getAddressSpace() ||
         LQuals.getObjCLifetime() != RQuals.getObjCLifetime() ||
+        LQuals.getPointerAuth() != RQuals.getPointerAuth() ||
         LQuals.hasUnaligned() != RQuals.hasUnaligned())
       return {};
 
@@ -11447,4 +11739,78 @@ bool ASTContext::mayExternalizeStaticVar(const Decl *D) const {
 bool ASTContext::shouldExternalizeStaticVar(const Decl *D) const {
   return mayExternalizeStaticVar(D) &&
          CUDAStaticDeviceVarReferencedByHost.count(cast<VarDecl>(D));
+}
+
+const CXXRecordDecl *
+ASTContext::baseForVTableAuthentication(const CXXRecordDecl *thisClass) {
+  assert(thisClass);
+  assert(thisClass->isPolymorphic());
+  const CXXRecordDecl *primaryBase = thisClass;
+  while (1) {
+    assert(primaryBase);
+    assert(primaryBase->isPolymorphic());
+    auto &layout = getASTRecordLayout(primaryBase);
+    auto base = layout.getPrimaryBase();
+    if (!base || base == primaryBase || !base->isPolymorphic())
+      break;
+    primaryBase = base;
+  }
+  return primaryBase;
+}
+
+bool ASTContext::useAbbreviatedThunkName(GlobalDecl virtualMethodDecl,
+                                         StringRef mangledName) {
+  auto method = cast<CXXMethodDecl>(virtualMethodDecl.getDecl());
+  assert(method->isVirtual());
+  bool defaultIncludesPointerAuth =
+      LangOpts.PointerAuthCalls || LangOpts.PointerAuthIntrinsics;
+
+  if (!defaultIncludesPointerAuth)
+    return true;
+
+  auto existing = thunksToBeAbbreviated.find(virtualMethodDecl);
+  if (existing != thunksToBeAbbreviated.end())
+    return existing->second.contains(mangledName.str());
+
+  std::unique_ptr<MangleContext> mangler(createMangleContext());
+  llvm::StringMap<llvm::SmallVector<std::string, 2>> thunks;
+  auto vtableContext = getVTableContext();
+  if (const auto *thunkInfos = vtableContext->getThunkInfo(virtualMethodDecl)) {
+    auto destructor = dyn_cast<CXXDestructorDecl>(method);
+    for (const auto &thunk : *thunkInfos) {
+      SmallString<256> elidedName;
+      llvm::raw_svector_ostream elidedNameStream(elidedName);
+      if (destructor) {
+        mangler->mangleCXXDtorThunk(destructor, virtualMethodDecl.getDtorType(),
+                                    thunk, /* elideOverrideInfo */ true,
+                                    elidedNameStream);
+      } else {
+        mangler->mangleThunk(method, thunk, /* elideOverrideInfo */ true,
+                             elidedNameStream);
+      }
+      SmallString<256> mangledName;
+      llvm::raw_svector_ostream mangledNameStream(mangledName);
+      if (destructor) {
+        mangler->mangleCXXDtorThunk(destructor, virtualMethodDecl.getDtorType(),
+                                    thunk, /* elideOverrideInfo */ false,
+                                    mangledNameStream);
+      } else {
+        mangler->mangleThunk(method, thunk, /* elideOverrideInfo */ false,
+                             mangledNameStream);
+      }
+
+      if (thunks.find(elidedName) == thunks.end()) {
+        thunks[elidedName] = {};
+      }
+      thunks[elidedName].push_back(std::string(mangledName));
+    }
+  }
+  llvm::StringSet<> simplifiedThunkNames;
+  for (auto &thunkList : thunks) {
+    llvm::sort(thunkList.second);
+    simplifiedThunkNames.insert(thunkList.second[0]);
+  }
+  bool result = simplifiedThunkNames.contains(mangledName);
+  thunksToBeAbbreviated[virtualMethodDecl] = std::move(simplifiedThunkNames);
+  return result;
 }

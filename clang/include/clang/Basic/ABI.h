@@ -184,20 +184,27 @@ struct ThunkInfo {
 
   /// Holds a pointer to the overridden method this thunk is for,
   /// if needed by the ABI to distinguish different thunks with equal
-  /// adjustments. Otherwise, null.
+  /// adjustments.
+  /// In the Itanium ABI, this field can hold the method that created the
+  /// vtable entry for this thunk.
+  /// Otherwise, null.
   /// CAUTION: In the unlikely event you need to sort ThunkInfos, consider using
   /// an ABI-specific comparator.
   const CXXMethodDecl *Method;
+  const Type *ThisType { nullptr };
 
   ThunkInfo() : Method(nullptr) { }
 
   ThunkInfo(const ThisAdjustment &This, const ReturnAdjustment &Return,
+            const Type *thisType,
             const CXXMethodDecl *Method = nullptr)
-      : This(This), Return(Return), Method(Method) {}
+      : This(This), Return(Return), Method(Method),
+        ThisType(thisType) {}
 
   friend bool operator==(const ThunkInfo &LHS, const ThunkInfo &RHS) {
     return LHS.This == RHS.This && LHS.Return == RHS.Return &&
-           LHS.Method == RHS.Method;
+           LHS.Method == RHS.Method &&
+           LHS.ThisType == RHS.ThisType;
   }
 
   bool isEmpty() const {

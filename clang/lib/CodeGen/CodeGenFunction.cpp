@@ -194,25 +194,46 @@ CodeGenFunction::CGFPOptionsRAII::~CGFPOptionsRAII() {
   CGF.Builder.setDefaultConstrainedRounding(OldRounding);
 }
 
-LValue CodeGenFunction::MakeNaturalAlignAddrLValue(llvm::Value *V, QualType T) {
+static LValue MakeNaturalAlignAddrLValue(llvm::Value *V, QualType T,
+                                         bool ForPointeeType,
+                                         bool MightBeSigned,
+                                         CodeGenFunction &CGF) {
   LValueBaseInfo BaseInfo;
   TBAAAccessInfo TBAAInfo;
-  CharUnits Alignment = CGM.getNaturalTypeAlignment(T, &BaseInfo, &TBAAInfo);
-  return LValue::MakeAddr(Address(V, Alignment), T, getContext(), BaseInfo,
-                          TBAAInfo);
+  CharUnits Alignment =
+      CGF.CGM.getNaturalTypeAlignment(T, &BaseInfo, &TBAAInfo, ForPointeeType);
+  Address Addr = MightBeSigned
+                     ? CGF.makeNaturalAddressForPointer(V, T, Alignment)
+                     : Address(V, Alignment);
+  return CGF.MakeAddrLValue(Addr, T, BaseInfo, TBAAInfo);
+}
+
+LValue CodeGenFunction::MakeNaturalAlignAddrLValue(llvm::Value *V, QualType T) {
+  return ::MakeNaturalAlignAddrLValue(V, T, /*ForPointeeType*/ false,
+                                      /*IsSigned*/ true, *this);
 }
 
 /// Given a value of type T* that may not be to a complete object,
 /// construct an l-value with the natural pointee alignment of T.
-LValue
-CodeGenFunction::MakeNaturalAlignPointeeAddrLValue(llvm::Value *V, QualType T) {
-  LValueBaseInfo BaseInfo;
-  TBAAAccessInfo TBAAInfo;
-  CharUnits Align = CGM.getNaturalTypeAlignment(T, &BaseInfo, &TBAAInfo,
-                                                /* forPointeeType= */ true);
-  return MakeAddrLValue(Address(V, Align), T, BaseInfo, TBAAInfo);
+LValue CodeGenFunction::MakeNaturalAlignPointeeAddrLValue(llvm::Value *V,
+                                                          QualType T) {
+  return ::MakeNaturalAlignAddrLValue(V, T, /*ForPointeeType*/ true,
+                                      /*IsSigned*/ true, *this);
 }
 
+LValue CodeGenFunction::MakeNaturalAlignRawAddrLValue(llvm::Value *V,
+                                                      QualType T) {
+  return ::MakeNaturalAlignAddrLValue(V, T, /*ForPointeeType*/ false,
+                                      /*IsSigned*/ false, *this);
+}
+
+/// Given a value of type T* that may not be to a complete object,
+/// construct an l-value with the natural pointee alignment of T.
+LValue CodeGenFunction::MakeNaturalAlignPointeeRawAddrLValue(llvm::Value *V,
+                                                             QualType T) {
+  return ::MakeNaturalAlignAddrLValue(V, T, /*ForPointeeType*/ true,
+                                      /*IsSigned*/ false, *this);
+}
 
 llvm::Type *CodeGenFunction::ConvertTypeForMem(QualType T) {
   return CGM.getTypes().ConvertTypeForMem(T);
@@ -501,7 +522,11 @@ void CodeGenFunction::FinishFunction(SourceLocation EndLoc) {
     ReturnBlock.getBlock()->eraseFromParent();
   }
   if (ReturnValue.isValid()) {
-    auto *RetAlloca = dyn_cast<llvm::AllocaInst>(ReturnValue.getPointer());
+    // This only matters when ReturnValue isn't signed. ReturnValue is possibly
+    // signed only when the return is Indirect or InAlloca. In that case, a
+    // temporary alloca to store the return value isn't created.
+    auto *RetAlloca =
+        dyn_cast_or_null<llvm::AllocaInst>(ReturnValue.getPointerIfNotSigned());
     if (RetAlloca && RetAlloca->use_empty()) {
       RetAlloca->eraseFromParent();
       ReturnValue = Address::invalid();
@@ -791,6 +816,15 @@ void CodeGenFunction::StartFunction(GlobalDecl GD, QualType RetTy,
           FD->getBody()->getStmtClass() == Stmt::CoroutineBodyStmtClass)
         SanOpts.Mask &= ~SanitizerKind::Null;
 
+  // Add pointer authentication attributes.
+  const CodeGenOptions &CodeGenOpts = CGM.getCodeGenOpts();
+  if (CodeGenOpts.PointerAuth.ReturnAddresses)
+    Fn->addFnAttr("ptrauth-returns");
+  if (CodeGenOpts.PointerAuth.FunctionPointers)
+    Fn->addFnAttr("ptrauth-calls");
+  if (CodeGenOpts.PointerAuth.AuthTraps)
+    Fn->addFnAttr("ptrauth-auth-traps");
+
   // Apply xray attributes to the function (as a string, for now)
   bool AlwaysXRayAttr = false;
   if (const auto *XRayAttr = D ? D->getAttr<XRayInstrumentAttr>() : nullptr) {
@@ -1042,12 +1076,13 @@ void CodeGenFunction::StartFunction(GlobalDecl GD, QualType RetTy,
     auto AI = CurFn->arg_begin();
     if (CurFnInfo->getReturnInfo().isSRetAfterThis())
       ++AI;
-    ReturnValue = Address(&*AI, CurFnInfo->getReturnInfo().getIndirectAlign());
+    ReturnValue = makeNaturalAddressForPointer(
+        &*AI, RetTy, CurFnInfo->getReturnInfo().getIndirectAlign());
     if (!CurFnInfo->getReturnInfo().getIndirectByVal()) {
       ReturnValuePointer =
           CreateDefaultAlignTempAlloca(Int8PtrTy, "result.ptr");
       Builder.CreateStore(Builder.CreatePointerBitCastOrAddrSpaceCast(
-                              ReturnValue.getPointer(), Int8PtrTy),
+                              ReturnValue.getRawPointer(*this), Int8PtrTy),
                           ReturnValuePointer);
     }
   } else if (CurFnInfo->getReturnInfo().getKind() == ABIArgInfo::InAlloca &&
@@ -1059,7 +1094,7 @@ void CodeGenFunction::StartFunction(GlobalDecl GD, QualType RetTy,
     llvm::Value *Addr = Builder.CreateStructGEP(nullptr, &*EI, Idx);
     ReturnValuePointer = Address(Addr, getPointerAlign());
     Addr = Builder.CreateAlignedLoad(Addr, getPointerAlign(), "agg.result");
-    ReturnValue = Address(Addr, CGM.getNaturalTypeAlignment(RetTy));
+    ReturnValue = makeNaturalAddressForPointer(Addr, RetTy);
   } else {
     ReturnValue = CreateIRTemp(RetTy, "retval");
 
@@ -1099,8 +1134,9 @@ void CodeGenFunction::StartFunction(GlobalDecl GD, QualType RetTy,
         // or contains the address of the enclosing object).
         LValue ThisFieldLValue = EmitLValueForLambdaField(LambdaThisCaptureField);
         if (!LambdaThisCaptureField->getType()->isPointerType()) {
-          // If the enclosing object was captured by value, just use its address.
-          CXXThisValue = ThisFieldLValue.getAddress(*this).getPointer();
+          // If the enclosing object was captured by value, just use its
+          // address. Sign this pointer.
+          CXXThisValue = ThisFieldLValue.getPointer(*this);
         } else {
           // Load the lvalue pointed to by the field, since '*this' was captured
           // by reference.
@@ -1822,8 +1858,8 @@ static void emitNonZeroVLAInit(CodeGenFunction &CGF, QualType baseType,
 
   Address begin =
     Builder.CreateElementBitCast(dest, CGF.Int8Ty, "vla.begin");
-  llvm::Value *end =
-    Builder.CreateInBoundsGEP(begin.getPointer(), sizeInChars, "vla.end");
+  llvm::Value *end = Builder.CreateInBoundsGEP(begin.getRawPointer(CGF),
+                                               sizeInChars, "vla.end");
 
   llvm::BasicBlock *originBB = CGF.Builder.GetInsertBlock();
   llvm::BasicBlock *loopBB = CGF.createBasicBlock("vla-init.loop");
@@ -1834,7 +1870,7 @@ static void emitNonZeroVLAInit(CodeGenFunction &CGF, QualType baseType,
   CGF.EmitBlock(loopBB);
 
   llvm::PHINode *cur = Builder.CreatePHI(begin.getType(), 2, "vla.cur");
-  cur->addIncoming(begin.getPointer(), originBB);
+  cur->addIncoming(begin.getRawPointer(CGF), originBB);
 
   CharUnits curAlign =
     dest.getAlignment().alignmentOfArrayElement(baseSize);
@@ -2030,7 +2066,7 @@ llvm::Value *CodeGenFunction::emitArrayLength(const ArrayType *origArrayType,
     addr = Builder.CreateElementBitCast(addr, baseType, "array.begin");
   } else {
     // Create the actual GEP.
-    addr = Address(Builder.CreateInBoundsGEP(addr.getPointer(),
+    addr = Address(Builder.CreateInBoundsGEP(addr.getRawPointer(*this),
                                              gepIndices, "array.begin"),
                    addr.getAlignment());
   }
@@ -2366,7 +2402,7 @@ void CodeGenFunction::EmitVarAnnotations(const VarDecl *D, llvm::Value *V) {
 Address CodeGenFunction::EmitFieldAnnotations(const FieldDecl *D,
                                               Address Addr) {
   assert(D->hasAttr<AnnotateAttr>() && "no annotate attribute");
-  llvm::Value *V = Addr.getPointer();
+  llvm::Value *V = Addr.getRawPointer(*this);
   llvm::Type *VTy = V->getType();
   llvm::Function *F = CGM.getIntrinsic(llvm::Intrinsic::ptr_annotation,
                                     CGM.Int8PtrTy);
@@ -2669,4 +2705,135 @@ llvm::MDNode *CodeGenFunction::createProfileOrBranchWeightsForLoop(
     Weights = createBranchWeights(Stmt::getLikelihood(Body));
 
   return Weights;
+}
+
+void CodeGenFunction::EmitPointerAuthOperandBundle(
+                          const CGPointerAuthInfo &pointerAuth,
+                          SmallVectorImpl<llvm::OperandBundleDef> &bundles) {
+  if (!pointerAuth.isSigned()) return;
+
+  auto key = Builder.getInt32(pointerAuth.getKey());
+
+  llvm::Value *discriminator = pointerAuth.getDiscriminator();
+  if (!discriminator) {
+    discriminator = Builder.getSize(0);
+  }
+
+  llvm::Value *args[] = { key, discriminator };
+  bundles.emplace_back("ptrauth", args);
+}
+
+static llvm::Value *EmitPointerAuthCommon(CodeGenFunction &CGF,
+                                          const CGPointerAuthInfo &pointerAuth,
+                                          llvm::Value *pointer,
+                                          unsigned intrinsicID) {
+  if (!pointerAuth) return pointer;
+
+  auto key = CGF.Builder.getInt32(pointerAuth.getKey());
+
+  llvm::Value *discriminator = pointerAuth.getDiscriminator();
+  if (!discriminator) {
+    discriminator = CGF.Builder.getSize(0);
+  }
+
+  // Convert the pointer to intptr_t before signing it.
+  auto origType = pointer->getType();
+  pointer = CGF.Builder.CreatePtrToInt(pointer, CGF.IntPtrTy);
+
+  // call i64 @llvm.ptrauth.sign.i64(i64 %pointer, i32 %key, i64 %discriminator)
+  auto intrinsic = CGF.CGM.getIntrinsic(intrinsicID);
+  pointer = CGF.EmitRuntimeCall(intrinsic, { pointer, key, discriminator });
+
+  // Convert back to the original type.
+  pointer = CGF.Builder.CreateIntToPtr(pointer, origType);
+  return pointer;
+}
+
+llvm::Value *CodeGenFunction::EmitPointerAuthSign(QualType pointeeType,
+                                                  llvm::Value *pointer) {
+  CGPointerAuthInfo pointerAuth =
+      CGM.getPointerAuthInfoForPointeeType(pointeeType);
+  return EmitPointerAuthSign(pointerAuth, pointer);
+}
+
+llvm::Value *
+CodeGenFunction::EmitPointerAuthSign(const CGPointerAuthInfo &pointerAuth,
+                                     llvm::Value *pointer) {
+  if (!pointerAuth.shouldSign())
+    return pointer;
+  return EmitPointerAuthCommon(*this, pointerAuth, pointer,
+                               llvm::Intrinsic::ptrauth_sign);
+}
+
+llvm::Value *CodeGenFunction::EmitPointerAuthAuth(QualType pointeeType,
+                                                  llvm::Value *pointer) {
+  CGPointerAuthInfo pointerAuth =
+      CGM.getPointerAuthInfoForPointeeType(pointeeType);
+  return EmitPointerAuthAuth(pointerAuth, pointer);
+}
+
+static llvm::Value *EmitStrip(CodeGenFunction &CGF,
+                              const CGPointerAuthInfo &pointerAuth,
+                              llvm::Value *pointer) {
+  auto stripIntrinsic = CGF.CGM.getIntrinsic(llvm::Intrinsic::ptrauth_strip);
+
+  auto key = CGF.Builder.getInt32(pointerAuth.getKey());
+  // Convert the pointer to intptr_t before signing it.
+  auto origType = pointer->getType();
+  pointer = CGF.EmitRuntimeCall(
+      stripIntrinsic, {CGF.Builder.CreatePtrToInt(pointer, CGF.IntPtrTy), key});
+  return CGF.Builder.CreateIntToPtr(pointer, origType);
+}
+
+llvm::Value *
+CodeGenFunction::EmitPointerAuthAuth(const CGPointerAuthInfo &pointerAuth,
+                                     llvm::Value *pointer) {
+  if (pointerAuth.shouldStrip()) {
+    return EmitStrip(*this, pointerAuth, pointer);
+  }
+  if (!pointerAuth.shouldAuth()) {
+    return pointer;
+  }
+
+  return EmitPointerAuthCommon(*this, pointerAuth, pointer,
+                               llvm::Intrinsic::ptrauth_auth);
+}
+
+llvm::Value *
+CodeGenFunction::EmitPointerAuthResignCall(llvm::Value *value,
+                                           const CGPointerAuthInfo &curAuth,
+                                           const CGPointerAuthInfo &newAuth) {
+  assert(curAuth && newAuth);
+
+  if (curAuth.getAuthenticationMode() !=
+          PointerAuthenticationMode::SignAndAuth ||
+      newAuth.getAuthenticationMode() !=
+          PointerAuthenticationMode::SignAndAuth) {
+    auto authedValue = EmitPointerAuthAuth(curAuth, value);
+    return EmitPointerAuthSign(newAuth, authedValue);
+  }
+  // Convert the pointer to intptr_t before signing it.
+  auto origType = value->getType();
+  value = Builder.CreatePtrToInt(value, IntPtrTy);
+
+  auto curKey = Builder.getInt32(curAuth.getKey());
+  auto newKey = Builder.getInt32(newAuth.getKey());
+
+  llvm::Value *curDiscriminator = curAuth.getDiscriminator();
+  if (!curDiscriminator) curDiscriminator = Builder.getSize(0);
+
+  llvm::Value *newDiscriminator = newAuth.getDiscriminator();
+  if (!newDiscriminator) newDiscriminator = Builder.getSize(0);
+
+  // call i64 @llvm.ptrauth.resign(i64 %pointer,
+  //                               i32 %curKey, i64 %curDiscriminator,
+  //                               i32 %newKey, i64 %newDiscriminator)
+  auto intrinsic = CGM.getIntrinsic(llvm::Intrinsic::ptrauth_resign);
+  value = EmitRuntimeCall(intrinsic,
+                          { value, curKey, curDiscriminator,
+                            newKey, newDiscriminator });
+
+  // Convert back to the original type.
+  value = Builder.CreateIntToPtr(value, origType);
+  return value;
 }

@@ -264,10 +264,10 @@ void AggExprEmitter::withReturnValueSlot(
   // Otherwise, EmitCall will emit its own, notice that it's "unused", and end
   // its lifetime before we have the chance to emit a proper destructor call.
   bool UseTemp = Dest.isPotentiallyAliased() || Dest.requiresGCollection() ||
-                 (RequiresDestruction && !Dest.getAddress().isValid());
+                 (RequiresDestruction && Dest.isIgnored());
 
   Address RetAddr = Address::invalid();
-  Address RetAllocaAddr = Address::invalid();
+  RawAddress RetAllocaAddr = RawAddress::invalid();
 
   EHScopeStack::stable_iterator LifetimeEndBlock;
   llvm::Value *LifetimeSizePtr = nullptr;
@@ -299,7 +299,8 @@ void AggExprEmitter::withReturnValueSlot(
   if (!UseTemp)
     return;
 
-  assert(Dest.getPointer() != Src.getAggregatePointer());
+  assert(Dest.getAddress().isSigned() || Src.isSignedAggregate() ||
+         Dest.getRawPointer(CGF) != Src.getAggregatePointer(E->getType(), CGF));
   EmitFinalDestCopy(E->getType(), Src);
 
   if (!RequiresDestruction && LifetimeStartInst) {
@@ -417,8 +418,8 @@ AggExprEmitter::VisitCXXStdInitializerListExpr(CXXStdInitializerListExpr *E) {
   LValue Start = CGF.EmitLValueForFieldInitialization(DestLV, *Field);
   llvm::Value *Zero = llvm::ConstantInt::get(CGF.PtrDiffTy, 0);
   llvm::Value *IdxStart[] = { Zero, Zero };
-  llvm::Value *ArrayStart =
-      Builder.CreateInBoundsGEP(ArrayPtr.getPointer(), IdxStart, "arraystart");
+  llvm::Value *ArrayStart = Builder.CreateInBoundsGEP(
+      ArrayPtr.getRawPointer(CGF), IdxStart, "arraystart");
   CGF.EmitStoreThroughLValue(RValue::get(ArrayStart), Start);
   ++Field;
 
@@ -434,8 +435,8 @@ AggExprEmitter::VisitCXXStdInitializerListExpr(CXXStdInitializerListExpr *E) {
                       ArrayType->getElementType())) {
     // End pointer.
     llvm::Value *IdxEnd[] = { Zero, Size };
-    llvm::Value *ArrayEnd =
-        Builder.CreateInBoundsGEP(ArrayPtr.getPointer(), IdxEnd, "arrayend");
+    llvm::Value *ArrayEnd = Builder.CreateInBoundsGEP(
+        ArrayPtr.getRawPointer(CGF), IdxEnd, "arrayend");
     CGF.EmitStoreThroughLValue(RValue::get(ArrayEnd), EndOrLength);
   } else if (Ctx.hasSameType(Field->getType(), Ctx.getSizeType())) {
     // Length.
@@ -484,8 +485,8 @@ void AggExprEmitter::EmitArrayInit(Address DestPtr, llvm::ArrayType *AType,
   // down a level.
   llvm::Value *zero = llvm::ConstantInt::get(CGF.SizeTy, 0);
   llvm::Value *indices[] = { zero, zero };
-  llvm::Value *begin =
-    Builder.CreateInBoundsGEP(DestPtr.getPointer(), indices, "arrayinit.begin");
+  llvm::Value *begin = Builder.CreateInBoundsGEP(DestPtr.getRawPointer(CGF),
+                                                 indices, "arrayinit.begin");
 
   CharUnits elementSize = CGF.getContext().getTypeSizeInChars(elementType);
   CharUnits elementAlign =
@@ -1022,7 +1023,7 @@ void AggExprEmitter::VisitBinCmp(const BinaryOperator *E) {
     if (RV.isScalar())
       return {RV.getScalarVal(), nullptr};
     if (RV.isAggregate())
-      return {RV.getAggregatePointer(), nullptr};
+      return {RV.getAggregatePointer(E->getType(), CGF), nullptr};
     assert(RV.isComplex());
     return RV.getComplexVal();
   };
@@ -1746,7 +1747,7 @@ void AggExprEmitter::VisitInitListExpr(InitListExpr *E) {
     // else, clean it up for -O0 builds and general tidiness.
     if (!pushedCleanup && LV.isSimple())
       if (llvm::GetElementPtrInst *GEP =
-              dyn_cast<llvm::GetElementPtrInst>(LV.getPointer(CGF)))
+              dyn_cast<llvm::GetElementPtrInst>(LV.getRawPointer(CGF)))
         if (GEP->use_empty())
           GEP->eraseFromParent();
   }
@@ -1777,8 +1778,8 @@ void AggExprEmitter::VisitArrayInitLoopExpr(const ArrayInitLoopExpr *E,
   // destPtr is an array*. Construct an elementType* by drilling down a level.
   llvm::Value *zero = llvm::ConstantInt::get(CGF.SizeTy, 0);
   llvm::Value *indices[] = {zero, zero};
-  llvm::Value *begin = Builder.CreateInBoundsGEP(destPtr.getPointer(), indices,
-                                                 "arrayinit.begin");
+  llvm::Value *begin = Builder.CreateInBoundsGEP(destPtr.getRawPointer(CGF),
+                                                 indices, "arrayinit.begin");
 
   // Prepare to special-case multidimensional array initialization: we avoid
   // emitting multiple destructor loops in that case.

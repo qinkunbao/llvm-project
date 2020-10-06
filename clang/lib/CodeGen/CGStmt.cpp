@@ -2669,8 +2669,8 @@ CodeGenFunction::GenerateCapturedStmtFunction(const CapturedStmt &S) {
   CapturedStmtInfo->setContextValue(Builder.CreateLoad(DeclPtr));
 
   // Initialize variable-length arrays.
-  LValue Base = MakeNaturalAlignAddrLValue(CapturedStmtInfo->getContextValue(),
-                                           Ctx.getTagDeclType(RD));
+  LValue Base = MakeNaturalAlignRawAddrLValue(
+      CapturedStmtInfo->getContextValue(), Ctx.getTagDeclType(RD));
   for (auto *FD : RD->fields()) {
     if (FD->hasCapturedVLAType()) {
       auto *ExprArg =

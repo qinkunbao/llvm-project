@@ -180,7 +180,9 @@ CodeGenModule::CodeGenModule(ASTContext &C, const HeaderSearchOptions &HSO,
     CoverageMapping.reset(new CoverageMappingModuleGen(*this, *CoverageInfo));
 }
 
-CodeGenModule::~CodeGenModule() {}
+CodeGenModule::~CodeGenModule() {
+  destroyConstantSignedPointerCaches();
+}
 
 void CodeGenModule::createObjCRuntime() {
   // This is just isGNUFamily(), but we want to force implementors of
@@ -5989,7 +5991,7 @@ void CodeGenFunction::EmitDeclMetadata() {
 
   for (auto &I : LocalDeclMap) {
     const Decl *D = I.first;
-    llvm::Value *Addr = I.second.getPointer();
+    llvm::Value *Addr = I.second.getRawPointer(*this);
     if (auto *Alloca = dyn_cast<llvm::AllocaInst>(Addr)) {
       llvm::Value *DAddr = GetPointerConstant(getLLVMContext(), D);
       Alloca->setMetadata(

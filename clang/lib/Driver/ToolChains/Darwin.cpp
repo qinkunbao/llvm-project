@@ -1002,11 +1002,47 @@ void DarwinClang::addClangTargetOptions(
 
   Darwin::addClangTargetOptions(DriverArgs, CC1Args, DeviceOffloadKind);
 
-  // On arm64e, enable pointer authentication intrinsics.
+  // On arm64e, enable pointer authentication (for the return address and
+  // indirect calls), as well as usage of the intrinsics.
   if (getTriple().isArm64e()) {
+    if (!DriverArgs.hasArg(options::OPT_fptrauth_returns,
+                           options::OPT_fno_ptrauth_returns))
+      CC1Args.push_back("-fptrauth-returns");
+
     if (!DriverArgs.hasArg(options::OPT_fptrauth_intrinsics,
                            options::OPT_fno_ptrauth_intrinsics))
       CC1Args.push_back("-fptrauth-intrinsics");
+
+    if (!DriverArgs.hasArg(options::OPT_fptrauth_calls,
+                           options::OPT_fno_ptrauth_calls))
+      CC1Args.push_back("-fptrauth-calls");
+
+    if (!DriverArgs.hasArg(options::OPT_fptrauth_auth_traps,
+                           options::OPT_fno_ptrauth_auth_traps))
+      CC1Args.push_back("-fptrauth-auth-traps");
+
+    if (DriverArgs.hasArg(options::OPT_fapple_kext) ||
+        DriverArgs.hasArg(options::OPT_mkernel)) {
+      if (!DriverArgs.hasArg(
+              options::OPT_fptrauth_block_descriptor_pointers,
+              options::OPT_fno_ptrauth_block_descriptor_pointers))
+        CC1Args.push_back("-fptrauth-block-descriptor-pointers");
+
+      if (!DriverArgs.hasArg(
+          options::OPT_fptrauth_vtable_pointer_address_discrimination,
+          options::OPT_fno_ptrauth_vtable_pointer_address_discrimination))
+        CC1Args.push_back("-fptrauth-vtable-pointer-address-discrimination");
+
+      if (!DriverArgs.hasArg(
+          options::OPT_fptrauth_vtable_pointer_type_discrimination,
+          options::OPT_fno_ptrauth_vtable_pointer_type_discrimination))
+        CC1Args.push_back("-fptrauth-vtable-pointer-type-discrimination");
+
+      if (!DriverArgs.hasArg(
+          options::OPT_fptrauth_function_pointer_type_discrimination,
+          options::OPT_fno_ptrauth_function_pointer_type_discrimination))
+        CC1Args.push_back("-fptrauth-function-pointer-type-discrimination");
+    }
   }
 }
 

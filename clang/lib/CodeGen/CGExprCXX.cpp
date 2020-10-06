@@ -272,7 +272,8 @@ RValue CodeGenFunction::EmitCXXMemberOrOperatorMemberCallExpr(
     LValueBaseInfo BaseInfo;
     TBAAAccessInfo TBAAInfo;
     Address ThisValue = EmitPointerWithAlignment(Base, &BaseInfo, &TBAAInfo);
-    This = MakeAddrLValue(ThisValue, Base->getType(), BaseInfo, TBAAInfo);
+    This = MakeAddrLValue(ThisValue, Base->getType()->getPointeeType(),
+                          BaseInfo, TBAAInfo);
   } else {
     This = EmitLValue(Base);
   }
@@ -344,10 +345,8 @@ RValue CodeGenFunction::EmitCXXMemberOrOperatorMemberCallExpr(
     if (IsImplicitObjectCXXThis || isa<DeclRefExpr>(IOA))
       SkippedChecks.set(SanitizerKind::Null, true);
   }
-  EmitTypeCheck(CodeGenFunction::TCK_MemberCall, CallLoc,
-                This.getPointer(*this),
-                C.getRecordType(CalleeDecl->getParent()),
-                /*Alignment=*/CharUnits::Zero(), SkippedChecks);
+  EmitTypeCheck(CodeGenFunction::TCK_MemberCall, CallLoc, This,
+                C.getRecordType(CalleeDecl->getParent()), SkippedChecks);
 
   // C++ [class.virtual]p12:
   //   Explicit qualification with the scope operator (5.1) suppresses the
@@ -446,7 +445,7 @@ CodeGenFunction::EmitCXXMemberPointerCallExpr(const CXXMemberCallExpr *E,
   else
     This = EmitLValue(BaseExpr).getAddress(*this);
 
-  EmitTypeCheck(TCK_MemberCall, E->getExprLoc(), This.getPointer(),
+  EmitTypeCheck(TCK_MemberCall, E->getExprLoc(), This.getRawPointer(*this),
                 QualType(MPT->getClass(), 0));
 
   // Get the member function pointer.
@@ -1047,12 +1046,8 @@ void CodeGenFunction::EmitNewArrayInitializer(
       InitListElements =
           cast<ConstantArrayType>(ILE->getType()->getAsArrayTypeUnsafe())
               ->getSize().getZExtValue();
-      CurPtr =
-          Address(Builder.CreateInBoundsGEP(CurPtr.getPointer(),
-                                            Builder.getSize(InitListElements),
-                                            "string.init.end"),
-                  CurPtr.getAlignment().alignmentAtOffset(InitListElements *
-                                                          ElementSize));
+      CurPtr = Builder.CreateConstInBoundsGEP(CurPtr, InitListElements,
+                                              "string.init.end");
 
       // Zero out the rest, if any remain.
       llvm::ConstantInt *ConstNum = dyn_cast<llvm::ConstantInt>(NumElements);
@@ -1084,8 +1079,9 @@ void CodeGenFunction::EmitNewArrayInitializer(
       // alloca.
       EndOfInit = CreateTempAlloca(BeginPtr.getType(), getPointerAlign(),
                                    "array.init.end");
-      CleanupDominator = Builder.CreateStore(BeginPtr.getPointer(), EndOfInit);
-      pushIrregularPartialArrayCleanup(BeginPtr.getPointer(), EndOfInit,
+      CleanupDominator =
+          Builder.CreateStore(BeginPtr.getRawPointer(*this), EndOfInit);
+      pushIrregularPartialArrayCleanup(BeginPtr.getRawPointer(*this), EndOfInit,
                                        ElementType, ElementAlign,
                                        getDestroyer(DtorKind));
       Cleanup = EHStack.stable_begin();
@@ -1097,8 +1093,8 @@ void CodeGenFunction::EmitNewArrayInitializer(
       // element.  TODO: some of these stores can be trivially
       // observed to be unnecessary.
       if (EndOfInit.isValid()) {
-        auto FinishedPtr =
-          Builder.CreateBitCast(CurPtr.getPointer(), BeginPtr.getType());
+        auto FinishedPtr = Builder.CreateBitCast(CurPtr.getRawPointer(*this),
+                                                 BeginPtr.getType());
         Builder.CreateStore(FinishedPtr, EndOfInit);
       }
       // FIXME: If the last initializer is an incomplete initializer list for
@@ -1107,10 +1103,8 @@ void CodeGenFunction::EmitNewArrayInitializer(
       StoreAnyExprIntoOneUnit(*this, ILE->getInit(i),
                               ILE->getInit(i)->getType(), CurPtr,
                               AggValueSlot::DoesNotOverlap);
-      CurPtr = Address(Builder.CreateInBoundsGEP(CurPtr.getPointer(),
-                                                 Builder.getSize(1),
-                                                 "array.exp.next"),
-                       StartAlign.alignmentAtOffset((i + 1) * ElementSize));
+      CurPtr = Builder.CreateConstInBoundsGEP(CurPtr, 1, "array.exp.next");
+      CurPtr.setAlignment(StartAlign.alignmentAtOffset((i + 1) * ElementSize));
     }
 
     // The remaining elements are filled with the array filler expression.
@@ -1162,7 +1156,7 @@ void CodeGenFunction::EmitNewArrayInitializer(
     // FIXME: Share this cleanup with the constructor call emission rather than
     // having it create a cleanup of its own.
     if (EndOfInit.isValid())
-      Builder.CreateStore(CurPtr.getPointer(), EndOfInit);
+      Builder.CreateStore(CurPtr.getRawPointer(*this), EndOfInit);
 
     // Emit a constructor call loop to initialize the remaining elements.
     if (InitListElements)
@@ -1225,14 +1219,14 @@ void CodeGenFunction::EmitNewArrayInitializer(
   llvm::BasicBlock *ContBB = createBasicBlock("new.loop.end");
 
   // Find the end of the array, hoisted out of the loop.
-  llvm::Value *EndPtr =
-    Builder.CreateInBoundsGEP(BeginPtr.getPointer(), NumElements, "array.end");
+  llvm::Value *EndPtr = Builder.CreateInBoundsGEP(BeginPtr.getRawPointer(*this),
+                                                  NumElements, "array.end");
 
   // If the number of elements isn't constant, we have to now check if there is
   // anything left to initialize.
   if (!ConstNum) {
-    llvm::Value *IsEmpty =
-      Builder.CreateICmpEQ(CurPtr.getPointer(), EndPtr, "array.isempty");
+    llvm::Value *IsEmpty = Builder.CreateICmpEQ(CurPtr.getRawPointer(*this),
+                                                EndPtr, "array.isempty");
     Builder.CreateCondBr(IsEmpty, ContBB, LoopBB);
   }
 
@@ -1242,19 +1236,19 @@ void CodeGenFunction::EmitNewArrayInitializer(
   // Set up the current-element phi.
   llvm::PHINode *CurPtrPhi =
     Builder.CreatePHI(CurPtr.getType(), 2, "array.cur");
-  CurPtrPhi->addIncoming(CurPtr.getPointer(), EntryBB);
+  CurPtrPhi->addIncoming(CurPtr.getRawPointer(*this), EntryBB);
 
   CurPtr = Address(CurPtrPhi, ElementAlign);
 
   // Store the new Cleanup position for irregular Cleanups.
   if (EndOfInit.isValid())
-    Builder.CreateStore(CurPtr.getPointer(), EndOfInit);
+    Builder.CreateStore(CurPtr.getRawPointer(*this), EndOfInit);
 
   // Enter a partial-destruction Cleanup if necessary.
   if (!CleanupDominator && needsEHCleanup(DtorKind)) {
-    pushRegularPartialArrayCleanup(BeginPtr.getPointer(), CurPtr.getPointer(),
-                                   ElementType, ElementAlign,
-                                   getDestroyer(DtorKind));
+    pushRegularPartialArrayCleanup(BeginPtr.getRawPointer(*this),
+                                   CurPtr.getRawPointer(*this), ElementType,
+                                   ElementAlign, getDestroyer(DtorKind));
     Cleanup = EHStack.stable_begin();
     CleanupDominator = Builder.CreateUnreachable();
   }
@@ -1270,9 +1264,8 @@ void CodeGenFunction::EmitNewArrayInitializer(
   }
 
   // Advance to the next element by adjusting the pointer type as necessary.
-  llvm::Value *NextPtr =
-    Builder.CreateConstInBoundsGEP1_32(ElementTy, CurPtr.getPointer(), 1,
-                                       "array.next");
+  llvm::Value *NextPtr = Builder.CreateConstInBoundsGEP1_32(
+      ElementTy, CurPtr.getRawPointer(*this), 1, "array.next");
 
   // Check whether we've gotten to the end of the array and, if so,
   // exit the loop.
@@ -1395,6 +1388,11 @@ namespace {
     struct PlacementArg {
       RValueTy ArgValue;
       QualType ArgType;
+      PlacementArg &operator=(const PlacementArg &Other) {
+        ArgValue = Other.ArgValue;
+        ArgType = Other.ArgType;
+        return *this;
+      }
     };
 
     unsigned NumPlacementArgs : 31;
@@ -1498,14 +1496,9 @@ static void EnterNewDeleteCleanup(CodeGenFunction &CGF,
 
     typedef CallDeleteDuringNew<DirectCleanupTraits> DirectCleanup;
 
-    DirectCleanup *Cleanup = CGF.EHStack
-      .pushCleanupWithExtra<DirectCleanup>(EHCleanup,
-                                           E->getNumPlacementArgs(),
-                                           E->getOperatorDelete(),
-                                           NewPtr.getPointer(),
-                                           AllocSize,
-                                           E->passAlignment(),
-                                           AllocAlign);
+    DirectCleanup *Cleanup = CGF.EHStack.pushCleanupWithExtra<DirectCleanup>(
+        EHCleanup, E->getNumPlacementArgs(), E->getOperatorDelete(),
+        NewPtr.getRawPointer(CGF), AllocSize, E->passAlignment(), AllocAlign);
     for (unsigned I = 0, N = E->getNumPlacementArgs(); I != N; ++I) {
       auto &Arg = NewArgs[I + NumNonPlacementArgs];
       Cleanup->setPlacementArg(I, Arg.getRValue(CGF), Arg.Ty);
@@ -1516,7 +1509,7 @@ static void EnterNewDeleteCleanup(CodeGenFunction &CGF,
 
   // Otherwise, we need to save all this stuff.
   DominatingValue<RValue>::saved_type SavedNewPtr =
-    DominatingValue<RValue>::save(CGF, RValue::get(NewPtr.getPointer()));
+      DominatingValue<RValue>::save(CGF, RValue::get(NewPtr, CGF));
   DominatingValue<RValue>::saved_type SavedAllocSize =
     DominatingValue<RValue>::save(CGF, RValue::get(AllocSize));
 
@@ -1587,14 +1580,14 @@ llvm::Value *CodeGenFunction::EmitCXXNewExpr(const CXXNewExpr *E) {
     // In these cases, discard the computed alignment and use the
     // formal alignment of the allocated type.
     if (BaseInfo.getAlignmentSource() != AlignmentSource::Decl)
-      allocation = Address(allocation.getPointer(), allocAlign);
+      allocation.setAlignment(allocAlign);
 
     // Set up allocatorArgs for the call to operator delete if it's not
     // the reserved global operator.
     if (E->getOperatorDelete() &&
         !E->getOperatorDelete()->isReservedGlobalPlacementOperator()) {
       allocatorArgs.add(RValue::get(allocSize), getContext().getSizeType());
-      allocatorArgs.add(RValue::get(allocation.getPointer()), arg->getType());
+      allocatorArgs.add(RValue::get(allocation, *this), arg->getType());
     }
 
   } else {
@@ -1682,8 +1675,7 @@ llvm::Value *CodeGenFunction::EmitCXXNewExpr(const CXXNewExpr *E) {
     llvm::BasicBlock *notNullBB = createBasicBlock("new.notnull");
     contBB = createBasicBlock("new.cont");
 
-    llvm::Value *isNull =
-      Builder.CreateIsNull(allocation.getPointer(), "new.isnull");
+    llvm::Value *isNull = Builder.CreateIsNull(allocation, "new.isnull");
     Builder.CreateCondBr(isNull, contBB, notNullBB);
     EmitBlock(notNullBB);
   }
@@ -1718,8 +1710,7 @@ llvm::Value *CodeGenFunction::EmitCXXNewExpr(const CXXNewExpr *E) {
   // of optimization level.
   if (CGM.getCodeGenOpts().StrictVTablePointers &&
       allocator->isReservedGlobalPlacementOperator())
-    result = Address(Builder.CreateLaunderInvariantGroup(result.getPointer()),
-                     result.getAlignment());
+    result = Builder.CreateLaunderInvariantGroup(result);
 
   // Emit sanitizer checks for pointer value now, so that in the case of an
   // array it was checked only once and not at each constructor call. We may
@@ -1730,8 +1721,8 @@ llvm::Value *CodeGenFunction::EmitCXXNewExpr(const CXXNewExpr *E) {
   SkippedChecks.set(SanitizerKind::Null, nullCheck);
   EmitTypeCheck(CodeGenFunction::TCK_ConstructorCall,
                 E->getAllocatedTypeSourceInfo()->getTypeLoc().getBeginLoc(),
-                result.getPointer(), allocType, result.getAlignment(),
-                SkippedChecks, numElements);
+                result, allocType, result.getAlignment(), SkippedChecks,
+                numElements);
 
   EmitNewInitializer(*this, E, allocType, elementTy, result, numElements,
                      allocSizeWithoutCookie);
@@ -1751,7 +1742,7 @@ llvm::Value *CodeGenFunction::EmitCXXNewExpr(const CXXNewExpr *E) {
     cleanupDominator->eraseFromParent();
   }
 
-  llvm::Value *resultPtr = result.getPointer();
+  llvm::Value *resultPtr = result.getRawPointer(*this);
   if (nullCheck) {
     conditional.end(*this);
 
@@ -1878,7 +1869,8 @@ static void EmitDestroyingObjectDelete(CodeGenFunction &CGF,
     CGF.CGM.getCXXABI().emitVirtualObjectDelete(CGF, DE, Ptr, ElementType,
                                                 Dtor);
   else
-    CGF.EmitDeleteCall(DE->getOperatorDelete(), Ptr.getPointer(), ElementType);
+    CGF.EmitDeleteCall(DE->getOperatorDelete(), Ptr.getRawPointer(CGF),
+                       ElementType);
 }
 
 /// Emit the code for deleting a single object.
@@ -1894,8 +1886,7 @@ static bool EmitObjectDelete(CodeGenFunction &CGF,
   //   dynamic type, the static type shall be a base class of the dynamic type
   //   of the object to be deleted and the static type shall have a virtual
   //   destructor or the behavior is undefined.
-  CGF.EmitTypeCheck(CodeGenFunction::TCK_MemberCall,
-                    DE->getExprLoc(), Ptr.getPointer(),
+  CGF.EmitTypeCheck(CodeGenFunction::TCK_MemberCall, DE->getExprLoc(), Ptr,
                     ElementType);
 
   const FunctionDecl *OperatorDelete = DE->getOperatorDelete();
@@ -1944,9 +1935,8 @@ static bool EmitObjectDelete(CodeGenFunction &CGF,
   // Make sure that we call delete even if the dtor throws.
   // This doesn't have to a conditional cleanup because we're going
   // to pop it off in a second.
-  CGF.EHStack.pushCleanup<CallObjectDelete>(NormalAndEHCleanup,
-                                            Ptr.getPointer(),
-                                            OperatorDelete, ElementType);
+  CGF.EHStack.pushCleanup<CallObjectDelete>(
+      NormalAndEHCleanup, Ptr.getRawPointer(CGF), OperatorDelete, ElementType);
 
   if (Dtor)
     CGF.EmitCXXDestructorCall(Dtor, Dtor_Complete,
@@ -2033,7 +2023,7 @@ static void EmitArrayDelete(CodeGenFunction &CGF,
     CharUnits elementAlign =
       deletedPtr.getAlignment().alignmentOfArrayElement(elementSize);
 
-    llvm::Value *arrayBegin = deletedPtr.getPointer();
+    llvm::Value *arrayBegin = deletedPtr.getRawPointer(CGF);
     llvm::Value *arrayEnd =
       CGF.Builder.CreateInBoundsGEP(arrayBegin, numElements, "delete.end");
 
@@ -2064,7 +2054,7 @@ void CodeGenFunction::EmitCXXDeleteExpr(const CXXDeleteExpr *E) {
   llvm::BasicBlock *DeleteNotNull = createBasicBlock("delete.notnull");
   llvm::BasicBlock *DeleteEnd = createBasicBlock("delete.end");
 
-  llvm::Value *IsNull = Builder.CreateIsNull(Ptr.getPointer(), "isnull");
+  llvm::Value *IsNull = Builder.CreateIsNull(Ptr, "isnull");
 
   Builder.CreateCondBr(IsNull, DeleteEnd, DeleteNotNull);
   EmitBlock(DeleteNotNull);
@@ -2098,8 +2088,7 @@ void CodeGenFunction::EmitCXXDeleteExpr(const CXXDeleteExpr *E) {
       GEP.push_back(Zero);
     }
 
-    Ptr = Address(Builder.CreateInBoundsGEP(Ptr.getPointer(), GEP, "del.first"),
-                  Ptr.getAlignment());
+    Ptr = Builder.CreateInBoundsGEP(Ptr, GEP, Ptr.getAlignment(), "del.first");
   }
 
   assert(ConvertTypeForMem(DeleteTy) == Ptr.getElementType());
@@ -2157,7 +2146,7 @@ static llvm::Value *EmitTypeidFromVTable(CodeGenFunction &CGF, const Expr *E,
   //   destruction and the static type of the operand is neither the constructor
   //   or destructor’s class nor one of its bases, the behavior is undefined.
   CGF.EmitTypeCheck(CodeGenFunction::TCK_DynamicOperation, E->getExprLoc(),
-                    ThisPtr.getPointer(), SrcRecordTy);
+                    ThisPtr, SrcRecordTy);
 
   // C++ [expr.typeid]p2:
   //   If the glvalue expression is obtained by applying the unary * operator to
@@ -2173,7 +2162,7 @@ static llvm::Value *EmitTypeidFromVTable(CodeGenFunction &CGF, const Expr *E,
         CGF.createBasicBlock("typeid.bad_typeid");
     llvm::BasicBlock *EndBlock = CGF.createBasicBlock("typeid.end");
 
-    llvm::Value *IsNull = CGF.Builder.CreateIsNull(ThisPtr.getPointer());
+    llvm::Value *IsNull = CGF.Builder.CreateIsNull(ThisPtr);
     CGF.Builder.CreateCondBr(IsNull, BadTypeidBlock, EndBlock);
 
     CGF.EmitBlock(BadTypeidBlock);
@@ -2255,8 +2244,7 @@ llvm::Value *CodeGenFunction::EmitDynamicCast(Address ThisAddr,
   //   construction or destruction and the static type of the operand is not a
   //   pointer to or object of the constructor or destructor’s own class or one
   //   of its bases, the dynamic_cast results in undefined behavior.
-  EmitTypeCheck(TCK_DynamicOperation, DCE->getExprLoc(), ThisAddr.getPointer(),
-                SrcRecordTy);
+  EmitTypeCheck(TCK_DynamicOperation, DCE->getExprLoc(), ThisAddr, SrcRecordTy);
 
   if (DCE->isAlwaysNull())
     if (llvm::Value *T = EmitDynamicCastToNull(*this, DestTy))
@@ -2279,7 +2267,7 @@ llvm::Value *CodeGenFunction::EmitDynamicCast(Address ThisAddr,
     CastNull = createBasicBlock("dynamic_cast.null");
     CastNotNull = createBasicBlock("dynamic_cast.notnull");
 
-    llvm::Value *IsNull = Builder.CreateIsNull(ThisAddr.getPointer());
+    llvm::Value *IsNull = Builder.CreateIsNull(ThisAddr);
     Builder.CreateCondBr(IsNull, CastNull, CastNotNull);
     EmitBlock(CastNotNull);
   }

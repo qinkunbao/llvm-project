@@ -6026,6 +6026,42 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
                    options::OPT_fno_ptrauth_intrinsics, false))
     CmdArgs.push_back("-fptrauth-intrinsics");
 
+  if (Args.hasFlag(options::OPT_fptrauth_calls,
+                   options::OPT_fno_ptrauth_calls, false))
+    CmdArgs.push_back("-fptrauth-calls");
+
+  if (Args.hasFlag(options::OPT_fptrauth_returns,
+                   options::OPT_fno_ptrauth_returns, false))
+    CmdArgs.push_back("-fptrauth-returns");
+
+  if (Args.hasFlag(options::OPT_fptrauth_auth_traps,
+                   options::OPT_fno_ptrauth_auth_traps, false))
+    CmdArgs.push_back("-fptrauth-auth-traps");
+
+  if (Args.hasFlag(
+          options::OPT_fptrauth_vtable_pointer_address_discrimination,
+          options::OPT_fno_ptrauth_vtable_pointer_address_discrimination,
+          false))
+    CmdArgs.push_back("-fptrauth-vtable-pointer-address-discrimination");
+
+  if (Args.hasFlag(options::OPT_fptrauth_vtable_pointer_type_discrimination,
+                   options::OPT_fno_ptrauth_vtable_pointer_type_discrimination,
+                   false))
+    CmdArgs.push_back("-fptrauth-vtable-pointer-type-discrimination");
+
+  if (Args.hasFlag(options::OPT_fptrauth_soft,
+                   options::OPT_fno_ptrauth_soft, false))
+    CmdArgs.push_back("-fptrauth-soft");
+
+  if (Args.hasFlag(options::OPT_fptrauth_block_descriptor_pointers,
+                   options::OPT_fno_ptrauth_block_descriptor_pointers, false))
+    CmdArgs.push_back("-fptrauth-block-descriptor-pointers");
+
+  if (Args.hasFlag(
+          options::OPT_fptrauth_function_pointer_type_discrimination,
+          options::OPT_fno_ptrauth_function_pointer_type_discrimination, false))
+    CmdArgs.push_back("-fptrauth-function-pointer-type-discrimination");
+
 
   // -fsigned-bitfields is default, and clang doesn't yet support
   // -funsigned-bitfields.

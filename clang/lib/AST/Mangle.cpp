@@ -374,11 +374,12 @@ void MangleContext::mangleObjCMethodNameAsSourceName(const ObjCMethodDecl *MD,
 class ASTNameGenerator::Implementation {
   std::unique_ptr<MangleContext> MC;
   llvm::DataLayout DL;
+  ASTContext &Context;
 
 public:
   explicit Implementation(ASTContext &Ctx)
-      : MC(Ctx.createMangleContext()), DL(Ctx.getTargetInfo().getDataLayout()) {
-  }
+      : MC(Ctx.createMangleContext()), DL(Ctx.getTargetInfo().getDataLayout()),
+        Context(Ctx) {}
 
   bool writeName(const Decl *D, raw_ostream &OS) {
     // First apply frontend mangling.
@@ -492,10 +493,20 @@ public:
       }
     } else if (const auto *MD = dyn_cast_or_null<CXXMethodDecl>(ND)) {
       Manglings.emplace_back(getName(ND));
-      if (MD->isVirtual())
-        if (const auto *TIV = Ctx.getVTableContext()->getThunkInfo(MD))
-          for (const auto &T : *TIV)
-            Manglings.emplace_back(getMangledThunk(MD, T));
+      if (MD->isVirtual()) {
+        if (const auto *TIV = Ctx.getVTableContext()->getThunkInfo(MD)) {
+          for (const auto &T : *TIV) {
+            std::string thunkName;
+            std::string contextualizedName =
+                getMangledThunk(MD, T, /* elideOverrideInfo */ false);
+            if (Ctx.useAbbreviatedThunkName(MD, contextualizedName))
+              thunkName = getMangledThunk(MD, T, /* elideOverrideInfo */ true);
+            else
+              thunkName = contextualizedName;
+            Manglings.emplace_back(thunkName);
+          }
+        }
+      }
     }
 
     return Manglings;
@@ -548,11 +559,12 @@ private:
     return BOS.str();
   }
 
-  std::string getMangledThunk(const CXXMethodDecl *MD, const ThunkInfo &T) {
+  std::string getMangledThunk(const CXXMethodDecl *MD, const ThunkInfo &T,
+                              bool elideOverrideInfo) {
     std::string FrontendBuf;
     llvm::raw_string_ostream FOS(FrontendBuf);
 
-    MC->mangleThunk(MD, T, FOS);
+    MC->mangleThunk(MD, T, elideOverrideInfo, FOS);
 
     std::string BackendBuf;
     llvm::raw_string_ostream BOS(BackendBuf);
