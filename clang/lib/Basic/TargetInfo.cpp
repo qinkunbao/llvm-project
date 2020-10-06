@@ -124,6 +124,7 @@ TargetInfo::TargetInfo(const llvm::Triple &T) : TargetOpts(), Triple(T) {
   HasRISCVVTypes = false;
   AllowAMDGPUUnsafeFPAtomics = false;
   ARMCDECoprocMask = 0;
+  PointerAuthSupported = false;
 
   // Default to no types using fpret.
   RealTypeUsesObjCFPRet = 0;
@@ -785,6 +786,10 @@ bool TargetInfo::validateInputConstraint(
   }
 
   return true;
+}
+
+bool TargetInfo::validatePointerAuthKey(const llvm::APSInt &value) const {
+  return false;
 }
 
 void TargetInfo::CheckFixedPointBits() const {
