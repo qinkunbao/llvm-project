@@ -1899,6 +1899,11 @@ static void ParseHeaderSearchArgs(HeaderSearchOptions &Opts, ArgList &Args,
     Opts.AddVFSOverlayFile(A->getValue());
 }
 
+static void ParsePointerAuthArgs(LangOptions &Opts, ArgList &Args,
+                                 DiagnosticsEngine &Diags) {
+  Opts.PointerAuthIntrinsics = Args.hasArg(OPT_fptrauth_intrinsics);
+}
+
 void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,
                                          const llvm::Triple &T,
                                          std::vector<std::string> &Includes,
@@ -2919,6 +2924,9 @@ bool CompilerInvocation::CreateFromArgs(CompilerInvocation &Res,
   llvm::Triple T(Res.getTargetOpts().Triple);
   ParseHeaderSearchArgs(Res.getHeaderSearchOpts(), Args,
                         Res.getFileSystemOpts().WorkingDir);
+
+  ParsePointerAuthArgs(LangOpts, Args, Diags);
+
   if (DashX.getFormat() == InputKind::Precompiled ||
       DashX.getLanguage() == Language::LLVM_IR) {
     // ObjCAAutoRefCount and Sanitize LangOpts are used to setup the

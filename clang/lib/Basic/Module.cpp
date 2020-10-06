@@ -285,6 +285,10 @@ bool Module::directlyUses(const Module *Requested) const {
   // Anyone is allowed to use our builtin stddef.h and its accompanying module.
   if (!Requested->Parent && Requested->Name == "_Builtin_stddef_max_align_t")
     return true;
+  // Darwin is allowed is to use our builtin 'ptrauth.h' and its accompanying
+  // module.
+  if (!Requested->Parent && Requested->Name == "ptrauth")
+    return true;
 
   return false;
 }

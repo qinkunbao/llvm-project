@@ -23,6 +23,7 @@
 #include "clang/Basic/TargetOptions.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
+#include "llvm/ADT/APSInt.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/IntrusiveRefCntPtr.h"
 #include "llvm/ADT/Optional.h"
@@ -221,6 +222,8 @@ protected:
   unsigned AllowAMDGPUUnsafeFPAtomics : 1;
 
   unsigned ARMCDECoprocMask : 8;
+
+  unsigned PointerAuthSupported : 1;
 
   unsigned MaxOpenCLWorkGroupSize;
 
@@ -1300,6 +1303,14 @@ public:
     return TLSSupported;
   }
 
+  /// \brief Whether the target supports pointer authentication at all.
+  ///
+  /// Whether pointer authentication is actually being used is determined
+  /// by the language option.
+  bool isPointerAuthSupported() const {
+    return PointerAuthSupported;
+  }
+
   /// Return the maximum alignment (in bits) of a TLS variable
   ///
   /// Gets the maximum alignment (in bits) of a TLS variable on this target.
@@ -1340,6 +1351,11 @@ public:
   }
 
   const LangASMap &getAddressSpaceMap() const { return *AddrSpaceMap; }
+
+  /// Determine whether the given pointer-authentication key is valid.
+  ///
+  /// The value has been coerced to type 'int'.
+  virtual bool validatePointerAuthKey(const llvm::APSInt &value) const;
 
   /// Map from the address space field in builtin description strings to the
   /// language address space.
