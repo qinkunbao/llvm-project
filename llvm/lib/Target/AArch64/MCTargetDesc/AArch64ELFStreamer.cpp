@@ -184,6 +184,14 @@ public:
         MCELFStreamer::emitInstruction(MI1, STI);
         return;
       }
+      case AArch64::XPACLRI: {
+        MCInst MI1 = MCInstBuilder(AArch64::ANDXri)
+              .addReg(AArch64::LR)
+              .addReg(AArch64::LR)
+              .addImm(AArch64_AM::encodeLogicalImmediate(0x7fffffffff, 64));
+        MCELFStreamer::emitInstruction(MI1, STI);
+        return;
+      }
       case AArch64::PACIA:
       case AArch64::AUTIA:
       case AArch64::PACIB:
