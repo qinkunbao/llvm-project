@@ -38,7 +38,7 @@ exec '$treepath_dest'/bin.real/clang++ "$@" -w -Wno-invalid-partial-specializati
 echo '#!/bin/sh
 exit 0' > $treepath/bin/clang-tidy
 
-cp $builddir/bin/lld $treepath/bin/lld
+cp $builddir/bin/lld $treepath/bin/ld.lld
 cp $builddir/bin/llvm-ar $treepath/bin/llvm-ar
 cp $builddir/bin/llvm-objcopy $treepath/bin/llvm-objcopy
 
