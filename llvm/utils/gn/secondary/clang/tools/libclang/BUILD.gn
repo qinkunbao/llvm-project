@@ -10,14 +10,7 @@ import("//llvm/version.gni")
 #   in the CMake build), so libclang is always a static library on linux
 # - the GN build doesn't have LIBCLANG_BUILD_STATIC
 
-libclang_target_type = "shared_library"
-if (host_os != "win" && host_os != "mac") {
-  # ELF targets need -fPIC to build shared libs but they aren't on by default.
-  # For now, make libclang a static lib there.
-  libclang_target_type = "static_library"
-}
-
-target(libclang_target_type, "libclang") {
+shared_library("libclang") {
   configs += [ "//llvm/utils/gn/build:clang_code" ]
   deps = [
     "//clang/include/clang/Config",

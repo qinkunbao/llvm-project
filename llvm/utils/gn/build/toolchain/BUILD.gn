@@ -1,3 +1,4 @@
+import("//llvm/utils/gn/build/buildflags.gni")
 import("//llvm/utils/gn/build/toolchain/compiler.gni")
 
 declare_args() {
@@ -124,7 +125,14 @@ template("unix_toolchain") {
         command =
             "$ld {{ldflags}} -o $outfile {{inputs}} {{libs}} {{frameworks}}"
       } else {
-        command = "$ld {{ldflags}} -o $outfile -Wl,--start-group {{inputs}} -Wl,--end-group {{libs}}"
+        static_ldflags = ""
+        if (is_static_build) {
+          static_ldflags = "-static"
+          if (toolchain_args.current_os != "android") {
+            static_ldflags += " -Wl,--whole-archive -lpthread -Wl,--no-whole-archive"
+          }
+        }
+        command = "$ld {{ldflags}} $static_ldflags -o $outfile -Wl,--start-group {{inputs}} -Wl,--end-group {{libs}}"
       }
       description = "LINK $outfile"
       outputs = [ outfile ]

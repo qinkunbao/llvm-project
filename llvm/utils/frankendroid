@@ -12,7 +12,7 @@ cd $(dirname $0)/../..
 # Work around crbug.com/gn/96
 rm -f $builddir/stage2_*/**/*.o
 
-ninja -C $builddir hwasan compiler-rt llvm-objcopy
+ninja -C $builddir hwasan compiler-rt llvm-objcopy libclang
 
 treename=$(basename $(pwd))
 treepath=$androiddir/prebuilts/clang/host/linux-x86/${treename}.new
@@ -41,6 +41,8 @@ exit 0' > $treepath/bin/clang-tidy
 cp $builddir/bin/lld $treepath/bin/ld.lld
 cp $builddir/bin/llvm-ar $treepath/bin/llvm-ar
 cp $builddir/bin/llvm-objcopy $treepath/bin/llvm-objcopy
+
+cp $builddir/lib/libclang.so $treepath/lib64/libclang.so.${majorver}git
 
 rm -rf $treepath/lib64/clang/$shortver/include
 cp -r $builddir/lib/clang/$builddirver/include $treepath/lib64/clang/$shortver/
