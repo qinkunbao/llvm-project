@@ -365,6 +365,7 @@ config("llvm_code") {
     "//llvm/include",
     "$root_gen_dir/llvm/include",
   ]
+  cflags = [ "-fPIC" ]
 }
 
 config("lld_code") {
