@@ -135,6 +135,11 @@ void unmap(void *Addr, uptr Size, uptr Flags, MapPlatformData *Data) {
   }
 }
 
+void setMemoryPermission(UNUSED uptr Addr, UNUSED uptr Size, UNUSED uptr Flags,
+                         UNUSED MapPlatformData *Data) {
+  // TODO(kostyak): Implement.
+}
+
 void releasePagesToOS(UNUSED uptr BaseAddress, uptr Offset, uptr Size,
                       MapPlatformData *Data) {
   DCHECK(Data);

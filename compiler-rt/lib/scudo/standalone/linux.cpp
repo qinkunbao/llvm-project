@@ -83,6 +83,13 @@ void unmap(void *Addr, uptr Size, UNUSED uptr Flags,
     dieOnMapUnmapError();
 }
 
+void setMemoryPermission(uptr Addr, uptr Size, uptr Flags,
+                         UNUSED MapPlatformData *Data) {
+  int Prot = (Flags & MAP_NOACCESS) ? PROT_NONE : (PROT_READ | PROT_WRITE);
+  if (mprotect(reinterpret_cast<void *>(Addr), Size, Prot) != 0)
+    dieOnMapUnmapError();
+}
+
 void releasePagesToOS(uptr BaseAddress, uptr Offset, uptr Size,
                       UNUSED MapPlatformData *Data) {
   void *Addr = reinterpret_cast<void *>(BaseAddress + Offset);

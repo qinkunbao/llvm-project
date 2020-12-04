@@ -28,7 +28,8 @@ namespace LargeBlock {
 struct Header {
   LargeBlock::Header *Prev;
   LargeBlock::Header *Next;
-  uptr BlockEnd;
+  uptr CommitBase;
+  uptr CommitSize;
   uptr MapBase;
   uptr MapSize;
   [[no_unique_address]] MapPlatformData Data;
@@ -52,8 +53,8 @@ class MapAllocatorNoCache {
 public:
   void initLinkerInitialized(UNUSED s32 ReleaseToOsInterval) {}
   void init(UNUSED s32 ReleaseToOsInterval) {}
-  bool retrieve(UNUSED uptr Size, UNUSED LargeBlock::Header **H,
-                UNUSED bool *Zeroed) {
+  bool retrieve(UNUSED uptr Size, UNUSED uptr Alignment,
+                UNUSED LargeBlock::Header **H, UNUSED bool *Zeroed) {
     return false;
   }
   bool store(UNUSED LargeBlock::Header *H) { return false; }
@@ -94,8 +95,26 @@ public:
   bool store(LargeBlock::Header *H) {
     bool EntryCached = false;
     bool EmptyCache = false;
+    const s32 Interval = atomic_load_relaxed(&ReleaseToOsIntervalMs);
     const u64 Time = getMonotonicTime();
     const u32 MaxCount = atomic_load_relaxed(&MaxEntriesCount);
+    CachedBlock Entry;
+    Entry.CommitBase = H->CommitBase;
+    Entry.CommitSize = H->CommitSize;
+    Entry.MapBase = H->MapBase;
+    Entry.MapSize = H->MapSize;
+    Entry.Data = H->Data;
+    if (Interval == 0) {
+      // Release the memory and make it inaccessible at the same time by
+      // creating a new MAP_NOACCESS mapping on top of the existing mapping.
+      Entry.Time = 0;
+      map(reinterpret_cast<void *>(Entry.CommitBase), Entry.CommitSize,
+          "scudo:secondary", MAP_RESIZABLE | MAP_NOACCESS, &Entry.Data);
+    } else {
+      Entry.Time = Time;
+      setMemoryPermission(Entry.CommitBase, Entry.CommitSize, MAP_NOACCESS,
+                          &Entry.Data);
+    }
     {
       ScopedLock L(Mutex);
       if (EntriesCount >= MaxCount) {
@@ -103,55 +122,64 @@ public:
           EmptyCache = true;
       } else {
         for (u32 I = 0; I < MaxCount; I++) {
-          if (Entries[I].Block)
+          if (Entries[I].CommitBase)
             continue;
           if (I != 0)
             Entries[I] = Entries[0];
-          Entries[0].Block = reinterpret_cast<uptr>(H);
-          Entries[0].BlockEnd = H->BlockEnd;
-          Entries[0].MapBase = H->MapBase;
-          Entries[0].MapSize = H->MapSize;
-          Entries[0].Data = H->Data;
-          Entries[0].Time = Time;
+          Entries[0] = Entry;
           EntriesCount++;
           EntryCached = true;
           break;
         }
       }
     }
-    s32 Interval;
     if (EmptyCache)
       empty();
-    else if ((Interval = atomic_load_relaxed(&ReleaseToOsIntervalMs)) >= 0)
+    else if (Interval >= 0)
       releaseOlderThan(Time - static_cast<u64>(Interval) * 1000000);
     return EntryCached;
   }
 
-  bool retrieve(uptr Size, LargeBlock::Header **H, bool *Zeroed) {
+  bool retrieve(uptr Size, uptr Alignment, LargeBlock::Header **H,
+                bool *Zeroed) {
     const uptr PageSize = getPageSizeCached();
     const u32 MaxCount = atomic_load_relaxed(&MaxEntriesCount);
-    ScopedLock L(Mutex);
-    if (EntriesCount == 0)
-      return false;
-    for (u32 I = 0; I < MaxCount; I++) {
-      if (!Entries[I].Block)
-        continue;
-      const uptr BlockSize = Entries[I].BlockEnd - Entries[I].Block;
-      if (Size > BlockSize)
-        continue;
-      if (Size < BlockSize - PageSize * 4U)
-        continue;
-      *H = reinterpret_cast<LargeBlock::Header *>(Entries[I].Block);
-      *Zeroed = Entries[I].Time == 0;
-      Entries[I].Block = 0;
-      (*H)->BlockEnd = Entries[I].BlockEnd;
-      (*H)->MapBase = Entries[I].MapBase;
-      (*H)->MapSize = Entries[I].MapSize;
-      (*H)->Data = Entries[I].Data;
-      EntriesCount--;
-      return true;
+    bool Found = false;
+    CachedBlock Entry;
+    {
+      ScopedLock L(Mutex);
+      if (EntriesCount == 0)
+        return false;
+      for (u32 I = 0; I < MaxCount; I++) {
+        if (!Entries[I].CommitBase)
+          continue;
+        const uptr CommitSize = Entries[I].CommitSize;
+        if (Size > CommitSize)
+          continue;
+        if (Size < CommitSize - PageSize * 4U)
+          continue;
+        Found = true;
+        Entry = Entries[I];
+        Entries[I].CommitBase = 0;
+        break;
+      }
     }
-    return false;
+    if (Found) {
+      const uptr RightAlignedPtr =
+          roundDownTo(Entry.CommitBase + Entry.CommitSize - Size, Alignment) -
+          LargeBlock::getHeaderSize();
+      *H = reinterpret_cast<LargeBlock::Header *>(
+          Max(Entry.CommitBase, RightAlignedPtr));
+      *Zeroed = Entry.Time == 0;
+      setMemoryPermission(Entry.CommitBase, Entry.CommitSize, 0, &Entry.Data);
+      (*H)->CommitBase = Entry.CommitBase;
+      (*H)->CommitSize = Entry.CommitSize;
+      (*H)->MapBase = Entry.MapBase;
+      (*H)->MapSize = Entry.MapSize;
+      (*H)->Data = Entry.Data;
+      EntriesCount--;
+    }
+    return Found;
   }
 
   bool canCache(uptr Size) {
@@ -197,12 +225,12 @@ private:
     {
       ScopedLock L(Mutex);
       for (uptr I = 0; I < EntriesArraySize; I++) {
-        if (!Entries[I].Block)
+        if (!Entries[I].CommitBase)
           continue;
         MapInfo[N].MapBase = reinterpret_cast<void *>(Entries[I].MapBase);
         MapInfo[N].MapSize = Entries[I].MapSize;
         MapInfo[N].Data = Entries[I].Data;
-        Entries[I].Block = 0;
+        Entries[I].CommitBase = 0;
         N++;
       }
       EntriesCount = 0;
@@ -218,18 +246,17 @@ private:
     if (!EntriesCount)
       return;
     for (uptr I = 0; I < EntriesArraySize; I++) {
-      if (!Entries[I].Block || !Entries[I].Time || Entries[I].Time > Time)
+      if (!Entries[I].CommitBase || !Entries[I].Time || Entries[I].Time > Time)
         continue;
-      releasePagesToOS(Entries[I].Block, 0,
-                       Entries[I].BlockEnd - Entries[I].Block,
+      releasePagesToOS(Entries[I].CommitBase, 0, Entries[I].CommitSize,
                        &Entries[I].Data);
       Entries[I].Time = 0;
     }
   }
 
   struct CachedBlock {
-    uptr Block;
-    uptr BlockEnd;
+    uptr CommitBase;
+    uptr CommitSize;
     uptr MapBase;
     uptr MapSize;
     [[no_unique_address]] MapPlatformData Data;
@@ -265,7 +292,8 @@ public:
   void deallocate(void *Ptr);
 
   static uptr getBlockEnd(void *Ptr) {
-    return LargeBlock::getHeader(Ptr)->BlockEnd;
+    auto *B = LargeBlock::getHeader(Ptr);
+    return B->CommitBase + B->CommitSize;
   }
 
   static uptr getBlockSize(void *Ptr) {
@@ -321,9 +349,10 @@ private:
 // (pending rounding and headers).
 template <class CacheT>
 void *MapAllocator<CacheT>::allocate(uptr Size, uptr AlignmentHint,
-                                     uptr *BlockEnd,
+                                     uptr *BlockEndPtr,
                                      FillContentsMode FillContents) {
   DCHECK_GE(Size, AlignmentHint);
+  AlignmentHint = Max(AlignmentHint, 1UL << SCUDO_MIN_ALIGNMENT_LOG);
   const uptr PageSize = getPageSizeCached();
   const uptr RoundedSize =
       roundUpTo(Size + LargeBlock::getHeaderSize(), PageSize);
@@ -331,15 +360,16 @@ void *MapAllocator<CacheT>::allocate(uptr Size, uptr AlignmentHint,
   if (AlignmentHint < PageSize && Cache.canCache(RoundedSize)) {
     LargeBlock::Header *H;
     bool Zeroed;
-    if (Cache.retrieve(RoundedSize, &H, &Zeroed)) {
-      if (BlockEnd)
-        *BlockEnd = H->BlockEnd;
+    if (Cache.retrieve(RoundedSize, AlignmentHint, &H, &Zeroed)) {
+      const uptr BlockEnd = H->CommitBase + H->CommitSize;
+      if (BlockEndPtr)
+        *BlockEndPtr = BlockEnd;
       void *Ptr = reinterpret_cast<void *>(reinterpret_cast<uptr>(H) +
                                            LargeBlock::getHeaderSize());
       if (FillContents && !Zeroed)
         memset(Ptr, FillContents == ZeroFill ? 0 : PatternFillByte,
-               H->BlockEnd - reinterpret_cast<uptr>(Ptr));
-      const uptr BlockSize = H->BlockEnd - reinterpret_cast<uptr>(H);
+               BlockEnd - reinterpret_cast<uptr>(Ptr));
+      const uptr BlockSize = BlockEnd - reinterpret_cast<uptr>(H);
       {
         ScopedLock L(Mutex);
         InUseBlocks.push_back(H);
@@ -388,16 +418,21 @@ void *MapAllocator<CacheT>::allocate(uptr Size, uptr AlignmentHint,
   }
 
   const uptr CommitSize = MapEnd - PageSize - CommitBase;
-  const uptr Ptr = reinterpret_cast<uptr>(
+  uptr Ptr = reinterpret_cast<uptr>(
       map(reinterpret_cast<void *>(CommitBase), CommitSize, "scudo:secondary",
           MAP_RESIZABLE, &Data));
+  const uptr RightAlignedPtr =
+      roundDownTo(CommitBase + CommitSize - Size, AlignmentHint) -
+      LargeBlock::getHeaderSize();
+  Ptr = Max(Ptr, RightAlignedPtr);
   LargeBlock::Header *H = reinterpret_cast<LargeBlock::Header *>(Ptr);
   H->MapBase = MapBase;
   H->MapSize = MapEnd - MapBase;
-  H->BlockEnd = CommitBase + CommitSize;
+  H->CommitBase = CommitBase;
+  H->CommitSize = CommitSize;
   H->Data = Data;
-  if (BlockEnd)
-    *BlockEnd = CommitBase + CommitSize;
+  if (BlockEndPtr)
+    *BlockEndPtr = CommitBase + CommitSize;
   {
     ScopedLock L(Mutex);
     InUseBlocks.push_back(H);
@@ -413,8 +448,7 @@ void *MapAllocator<CacheT>::allocate(uptr Size, uptr AlignmentHint,
 
 template <class CacheT> void MapAllocator<CacheT>::deallocate(void *Ptr) {
   LargeBlock::Header *H = LargeBlock::getHeader(Ptr);
-  const uptr Block = reinterpret_cast<uptr>(H);
-  const uptr CommitSize = H->BlockEnd - Block;
+  const uptr CommitSize = H->CommitSize;
   {
     ScopedLock L(Mutex);
     InUseBlocks.remove(H);
@@ -423,11 +457,11 @@ template <class CacheT> void MapAllocator<CacheT>::deallocate(void *Ptr) {
     Stats.sub(StatAllocated, CommitSize);
     Stats.sub(StatMapped, H->MapSize);
   }
-  if (Cache.canCache(CommitSize) && Cache.store(H))
-    return;
   void *Addr = reinterpret_cast<void *>(H->MapBase);
   const uptr Size = H->MapSize;
   MapPlatformData Data = H->Data;
+  if (Cache.canCache(CommitSize) && Cache.store(H))
+    return;
   unmap(Addr, Size, UNMAP_ALL, &Data);
 }
 
