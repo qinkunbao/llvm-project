@@ -3256,9 +3256,11 @@ bool AArch64AuthSection::isNeeded() const {
     warned = true;
     for (const SymbolTableEntry &s : symTab->getSymbols())
       if (isa<Defined>(s.sym) && s.sym->type == STT_FUNC &&
-          s.sym->aarch64Auth == 0)
-        warn("auth not set for exported function symbol '" + s.sym->getName() +
-             "'");
+          s.sym->aarch64Auth == 0) {
+        StringRef name = s.sym->getName();
+        if (!name.contains("cxxbridge05$") && name != "rust_eh_personality")
+          warn("auth not set for exported function symbol '" + name + "'");
+      }
   }
   for (const SymbolTableEntry &s : symTab->getSymbols())
     if (s.sym->aarch64Auth)
