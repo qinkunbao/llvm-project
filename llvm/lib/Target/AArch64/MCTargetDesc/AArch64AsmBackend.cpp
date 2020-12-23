@@ -346,6 +346,7 @@ static uint64_t adjustFixupValue(const MCFixup &Fixup, const MCValue &Target,
   case FK_Data_4:
   case FK_SecRel_2:
   case FK_SecRel_4:
+  case AArch64::fixup_aarch64_tlsdesc_call:
     return Value;
   }
 }
