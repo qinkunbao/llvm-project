@@ -29,6 +29,7 @@ cp -r $origpath $treepath
 mkdir $treepath/bin.real
 cp $builddir/bin/clang $treepath/bin.real/clang
 cp $builddir/bin/clang $treepath/bin/clang-$majorver
+cp $builddir/bin/clang $treepath/bin/clang.real
 ln -sf clang $treepath/bin.real/clang++
 ln -sf ../bin/ld.lld $treepath/bin.real/ld.lld
 echo '#!/bin/sh
