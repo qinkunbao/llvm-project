@@ -1,7 +1,7 @@
-From dbe77fbe3be3d14e8017a70ae9474ebe994e121a Mon Sep 17 00:00:00 2001
+From 4d2fc78784c5db4192612c5b97f94fd38bc93480 Mon Sep 17 00:00:00 2001
 From: Peter Collingbourne <pcc@google.com>
 Date: Thu, 9 Jul 2020 16:33:03 -0700
-Subject: [PATCH 03/17] PAC
+Subject: [PATCH 03/36] PAC
 
 ---
  art/compiler/jni/quick/jni_compiler.cc        |  1 +
@@ -14,7 +14,8 @@ Subject: [PATCH 03/17] PAC
  .../arch/arm64/quick_entrypoints_arm64.S      | 26 ++++++++++
  art/runtime/entrypoints/entrypoint_utils.cc   | 11 ++++-
  .../interpreter/interpreter_mterp_impl.h      |  2 +-
- art/runtime/interpreter/mterp/arm64ng/main.S  | 12 +++++
+ art/runtime/interpreter/mterp/arm64ng/main.S  |  9 ++++
+ .../interpreter/mterp/arm64ng/object.S        |  3 ++
  bionic/libc/arch-arm64/bionic/setjmp.S        |  2 +
  bionic/libc/arch-arm64/bionic/syscall.S       |  2 +
  bionic/libc/arch-arm64/bionic/vfork.S         |  2 +
@@ -28,7 +29,6 @@ Subject: [PATCH 03/17] PAC
  bionic/libc/bionic/pthread_create.cpp         |  2 +-
  bionic/libc/bionic/vdso.cpp                   | 12 +++++
  bionic/libc/private/NetdClientDispatch.h      |  2 +-
- bionic/libc/private/bionic_asm_arm64.h        |  6 +++
  .../libc/private/bionic_call_ifunc_resolver.h |  1 +
  bionic/libc/tools/gensyscalls.py              |  4 ++
  bionic/libm/arm64/lrint.S                     |  2 +
@@ -86,14 +86,13 @@ Subject: [PATCH 03/17] PAC
  .../cpu_ref/rsCpuIntrinsics_advsimd_Resize.S  |  2 +-
  .../rsCpuIntrinsics_advsimd_YuvToRGB.S        |  2 +-
  libnativehelper/JniConstants.c                |  2 +-
+ .../StatsD/lib/libstatssocket/statsd_writer.c | 18 +++----
+ .../StatsD/lib/libstatssocket/statsd_writer.h |  6 +--
  system/bt/osi/src/alarm.cc                    |  4 +-
- system/core/libstats/socket/statsd_writer.c   | 18 +++----
- system/core/libstats/socket/statsd_writer.h   |  6 +--
- system/core/libunwindstack/RegsArm64.cpp      | 16 +------
  system/core/libutils/Threads.cpp              | 47 ++++++++-----------
  system/core/rootdir/init.zygote64_32.rc       |  2 +
  system/sepolicy/private/file_contexts         |  2 +
- 89 files changed, 580 insertions(+), 164 deletions(-)
+ 88 files changed, 573 insertions(+), 149 deletions(-)
 
 diff --git a/art/compiler/jni/quick/jni_compiler.cc b/art/compiler/jni/quick/jni_compiler.cc
 index e7dd6cf6be..b8a257862f 100644
@@ -108,10 +107,10 @@ index e7dd6cf6be..b8a257862f 100644
        ArtMethod::EntryPointFromJniOffset(InstructionSetPointerSize(instruction_set));
    if (UNLIKELY(is_critical_native)) {
 diff --git a/art/compiler/optimizing/code_generator_arm64.cc b/art/compiler/optimizing/code_generator_arm64.cc
-index 46c65aff4d..1bd6380a48 100644
+index 8f4979f03d..660f5f7164 100644
 --- a/art/compiler/optimizing/code_generator_arm64.cc
 +++ b/art/compiler/optimizing/code_generator_arm64.cc
-@@ -1177,6 +1177,9 @@ void CodeGeneratorARM64::MaybeIncrementHotness(bool is_frame_entry) {
+@@ -1195,6 +1195,9 @@ void CodeGeneratorARM64::MaybeIncrementHotness(bool is_frame_entry) {
        __ Ldr(lr, MemOperand(tr, entrypoint_offset));
        // Note: we don't record the call here (and therefore don't generate a stack
        // map), as the entrypoint should never be suspended.
@@ -121,7 +120,7 @@ index 46c65aff4d..1bd6380a48 100644
        __ Blr(lr);
        if (HasEmptyFrame()) {
          CHECK(is_frame_entry);
-@@ -1833,6 +1836,9 @@ void CodeGeneratorARM64::InvokeRuntime(QuickEntrypointEnum entrypoint,
+@@ -1851,6 +1854,9 @@ void CodeGeneratorARM64::InvokeRuntime(QuickEntrypointEnum entrypoint,
    // For JIT, thunk sharing is per-method, so the gains would be smaller or even negative.
    if (slow_path == nullptr || GetCompilerOptions().IsJitCompiler()) {
      __ Ldr(lr, MemOperand(tr, entrypoint_offset.Int32Value()));
@@ -131,7 +130,7 @@ index 46c65aff4d..1bd6380a48 100644
      // Ensure the pc position is recorded immediately after the `blr` instruction.
      ExactAssemblyScope eas(GetVIXLAssembler(), kInstructionSize, CodeBufferCheckScope::kExactSize);
      __ blr(lr);
-@@ -1854,6 +1860,9 @@ void CodeGeneratorARM64::InvokeRuntimeWithoutRecordingPcInfo(int32_t entry_point
+@@ -1872,6 +1878,9 @@ void CodeGeneratorARM64::InvokeRuntimeWithoutRecordingPcInfo(int32_t entry_point
                                                               SlowPathCode* slow_path) {
    ValidateInvokeRuntimeWithoutRecordingPcInfo(instruction, slow_path);
    __ Ldr(lr, MemOperand(tr, entry_point_offset));
@@ -141,23 +140,23 @@ index 46c65aff4d..1bd6380a48 100644
    __ Blr(lr);
  }
  
-@@ -4421,6 +4430,7 @@ void InstructionCodeGeneratorARM64::VisitInvokeInterface(HInvokeInterface* invok
-   __ Ldr(temp, MemOperand(temp, method_offset));
+@@ -4462,6 +4471,7 @@ void InstructionCodeGeneratorARM64::VisitInvokeInterface(HInvokeInterface* invok
+   }
    // lr = temp->GetEntryPoint();
    __ Ldr(lr, MemOperand(temp, entry_point.Int32Value()));
 +  __ Xpaclri();
  
    {
      // Ensure the pc position is recorded immediately after the `blr` instruction.
-@@ -4541,6 +4551,7 @@ void CodeGeneratorARM64::GenerateStaticOrDirectCall(
-   auto call_code_pointer_member = [&](MemberOffset offset) {
-     // LR = callee_method->member;
-     __ Ldr(lr, MemOperand(XRegisterFrom(callee_method), offset.Int32Value()));
+@@ -4615,6 +4625,7 @@ void CodeGeneratorARM64::GenerateStaticOrDirectCall(
+   }
+ 
+   auto call_lr = [&]() {
 +    __ Xpaclri();
-     {
-       // Use a scope to help guarantee that `RecordPcInfo()` records the correct pc.
-       ExactAssemblyScope eas(GetVIXLAssembler(),
-@@ -4643,6 +4654,7 @@ void CodeGeneratorARM64::GenerateVirtualCall(
+     // Use a scope to help guarantee that `RecordPcInfo()` records the correct pc.
+     ExactAssemblyScope eas(GetVIXLAssembler(),
+                            kInstructionSize,
+@@ -4728,6 +4739,7 @@ void CodeGeneratorARM64::GenerateVirtualCall(
    __ Ldr(temp, MemOperand(temp, method_offset));
    // lr = temp->GetEntryPoint();
    __ Ldr(lr, MemOperand(temp, entry_point.SizeValue()));
@@ -165,7 +164,7 @@ index 46c65aff4d..1bd6380a48 100644
    {
      // Use a scope to help guarantee that `RecordPcInfo()` records the correct pc.
      ExactAssemblyScope eas(GetVIXLAssembler(), kInstructionSize, CodeBufferCheckScope::kExactSize);
-@@ -6786,6 +6798,9 @@ static void LoadReadBarrierMarkIntrospectionEntrypoint(arm64::Arm64Assembler& as
+@@ -6913,6 +6925,9 @@ static void LoadReadBarrierMarkIntrospectionEntrypoint(arm64::Arm64Assembler& as
    const int32_t entry_point_offset =
        Thread::ReadBarrierMarkEntryPointsOffset<kArm64PointerSize>(ip0.GetCode());
    __ Ldr(entrypoint, MemOperand(tr, entry_point_offset));
@@ -175,7 +174,7 @@ index 46c65aff4d..1bd6380a48 100644
  }
  
  void CodeGeneratorARM64::CompileBakerReadBarrierThunk(Arm64Assembler& assembler,
-@@ -6841,7 +6856,7 @@ void CodeGeneratorARM64::CompileBakerReadBarrierThunk(Arm64Assembler& assembler,
+@@ -6968,7 +6983,7 @@ void CodeGeneratorARM64::CompileBakerReadBarrierThunk(Arm64Assembler& assembler,
          __ Ldar(ip0.W(), MemOperand(base_reg));
        }
        // Do not unpoison. With heap poisoning enabled, the entrypoint expects a poisoned reference.
@@ -184,7 +183,7 @@ index 46c65aff4d..1bd6380a48 100644
        break;
      }
      case BakerReadBarrierKind::kArray: {
-@@ -6866,7 +6881,7 @@ void CodeGeneratorARM64::CompileBakerReadBarrierThunk(Arm64Assembler& assembler,
+@@ -6993,7 +7008,7 @@ void CodeGeneratorARM64::CompileBakerReadBarrierThunk(Arm64Assembler& assembler,
        __ Bfi(ip1, ip0, 3, 6);               // Insert ip0 to the entrypoint address to create
                                              // a switch case target based on the index register.
        __ Mov(ip0, base_reg);                // Move the base register to ip0.
@@ -194,12 +193,12 @@ index 46c65aff4d..1bd6380a48 100644
      }
      case BakerReadBarrierKind::kGcRoot: {
 diff --git a/art/compiler/utils/arm64/assembler_arm64.cc b/art/compiler/utils/arm64/assembler_arm64.cc
-index d722e00646..a073f70e08 100644
+index 7ab767f4fe..a0cbc1f58b 100644
 --- a/art/compiler/utils/arm64/assembler_arm64.cc
 +++ b/art/compiler/utils/arm64/assembler_arm64.cc
-@@ -54,6 +54,9 @@ static void SetVIXLCPUFeaturesFromART(vixl::aarch64::MacroAssembler* vixl_masm_,
-   if (art_features->HasLSE()) {
-     features->Combine(vixl::CPUFeatures::kAtomics);
+@@ -57,6 +57,9 @@ static void SetVIXLCPUFeaturesFromART(vixl::aarch64::MacroAssembler* vixl_masm_,
+   if (art_features->HasSVE()) {
+     features->Combine(vixl::CPUFeatures::kSVE);
    }
 +  if (HasPAC()) {
 +    features->Combine(vixl::CPUFeatures::kPAuth);
@@ -207,7 +206,7 @@ index d722e00646..a073f70e08 100644
  }
  
  Arm64Assembler::Arm64Assembler(ArenaAllocator* allocator,
-@@ -101,6 +104,9 @@ void Arm64Assembler::JumpTo(ManagedRegister m_base, Offset offs, ManagedRegister
+@@ -104,6 +107,9 @@ void Arm64Assembler::JumpTo(ManagedRegister m_base, Offset offs, ManagedRegister
    UseScratchRegisterScope temps(&vixl_masm_);
    temps.Exclude(reg_x(base.AsXRegister()), reg_x(scratch.AsXRegister()));
    ___ Ldr(reg_x(scratch.AsXRegister()), MEM_OP(reg_x(base.AsXRegister()), offs.Int32Value()));
@@ -218,7 +217,7 @@ index d722e00646..a073f70e08 100644
  }
  
 diff --git a/art/compiler/utils/arm64/assembler_arm64.h b/art/compiler/utils/arm64/assembler_arm64.h
-index 232efd4917..bfca2227f9 100644
+index 5442b6a980..0a4f0a4817 100644
 --- a/art/compiler/utils/arm64/assembler_arm64.h
 +++ b/art/compiler/utils/arm64/assembler_arm64.h
 @@ -43,6 +43,17 @@ class Arm64InstructionSetFeatures;
@@ -358,7 +357,7 @@ index f72bc55e8e..9356d6db84 100644
      .cfi_restore_state
      .cfi_def_cfa sp, FRAME_SIZE_SAVE_REFS_AND_ARGS
 diff --git a/art/runtime/arch/arm64/quick_entrypoints_arm64.S b/art/runtime/arch/arm64/quick_entrypoints_arm64.S
-index 634c762040..86306ce341 100644
+index 2d152a053c..c01f61786b 100644
 --- a/art/runtime/arch/arm64/quick_entrypoints_arm64.S
 +++ b/art/runtime/arch/arm64/quick_entrypoints_arm64.S
 @@ -342,7 +342,13 @@ NO_ARG_RUNTIME_EXCEPTION art_quick_throw_stack_overflow, artThrowStackOverflowFr
@@ -396,9 +395,9 @@ index 634c762040..86306ce341 100644
      br  xIP1
  END art_quick_do_long_jump
  
-@@ -1744,6 +1757,9 @@ ENTRY art_quick_imt_conflict_trampoline
+@@ -1723,6 +1736,9 @@ ENTRY art_quick_imt_conflict_trampoline
      // and jump to it.
-     ldr x0, [xIP1, #__SIZEOF_POINTER__]
+     ldr x0, [xIP0, #__SIZEOF_POINTER__]
      ldr xIP0, [x0, #ART_METHOD_QUICK_CODE_OFFSET_64]
 +#ifdef ANDROID_EXPERIMENTAL_PAC
 +    xpaci xIP0
@@ -406,7 +405,7 @@ index 634c762040..86306ce341 100644
      br xIP0
  .Lconflict_trampoline:
      // Call the runtime stub to populate the ImtConflictTable and jump to the
-@@ -1800,6 +1816,9 @@ ENTRY art_quick_resolution_trampoline
+@@ -1741,6 +1757,9 @@ ENTRY art_quick_resolution_trampoline
      ldr x0, [sp, #0]        // artQuickResolutionTrampoline puts called method in *SP.
      RESTORE_SAVE_REFS_AND_ARGS_FRAME
      REFRESH_MARKING_REGISTER
@@ -416,7 +415,7 @@ index 634c762040..86306ce341 100644
      br xIP0
  1:
      RESTORE_SAVE_REFS_AND_ARGS_FRAME
-@@ -1916,6 +1935,10 @@ ENTRY art_quick_generic_jni_trampoline
+@@ -1857,6 +1876,10 @@ ENTRY art_quick_generic_jni_trampoline
      // Apply the new SP for out args, releasing unneeded reserved area.
      mov sp, xIP1
  
@@ -427,7 +426,7 @@ index 634c762040..86306ce341 100644
      blr xIP0        // native call.
  
      // result sign extension is handled in C code
-@@ -2607,6 +2630,9 @@ ENTRY ExecuteSwitchImplAsm
+@@ -2548,6 +2571,9 @@ ENTRY ExecuteSwitchImplAsm
      SAVE_TWO_REGS_INCREASE_FRAME x19, xLR, 16
      mov x19, x2                                   // x19 = DEX PC
      CFI_DEFINE_DEX_PC_WITH_OFFSET(0 /* x0 */, 19 /* x19 */, 0)
@@ -475,11 +474,11 @@ index 892790b118..03e6b6c74d 100644
  }  // namespace interpreter
  }  // namespace art
 diff --git a/art/runtime/interpreter/mterp/arm64ng/main.S b/art/runtime/interpreter/mterp/arm64ng/main.S
-index 51ebea164b..b1525e87bd 100644
+index 8223a1bcd0..9f0f5f7da5 100644
 --- a/art/runtime/interpreter/mterp/arm64ng/main.S
 +++ b/art/runtime/interpreter/mterp/arm64ng/main.S
-@@ -855,6 +855,9 @@ END \name
-       FETCH wip2, 1
+@@ -909,6 +909,9 @@ END \name
+       mov ip2, x0
        .endif
        ldr lr, [x0, #ART_METHOD_QUICK_CODE_OFFSET_64]
 +#ifdef ANDROID_EXPERIMENTAL_PAC
@@ -488,8 +487,8 @@ index 51ebea164b..b1525e87bd 100644
        blr lr
     .endif
     ldrb wip, [xINST]
-@@ -1104,6 +1107,9 @@ END \name
-       FETCH wip2, 1
+@@ -1160,6 +1163,9 @@ END \name
+       mov ip2, x0
        .endif
        ldr lr, [x0, #ART_METHOD_QUICK_CODE_OFFSET_64]
 +#ifdef ANDROID_EXPERIMENTAL_PAC
@@ -498,17 +497,7 @@ index 51ebea164b..b1525e87bd 100644
        blr lr
     .endif
     ldrb wip, [xINST]
-@@ -1633,6 +1639,9 @@ NterpNewInstance:
-    cbnz wMR, 3f
- 4:
-    ldr lr, [xSELF, #THREAD_ALLOC_OBJECT_ENTRYPOINT_OFFSET]
-+#ifdef ANDROID_EXPERIMENTAL_PAC
-+   xpaci lr
-+#endif
-    blr lr
- 1:
-    lsr w1, wINST, #8                    // w1 <- A
-@@ -1660,6 +1669,9 @@ NterpNewArray:
+@@ -1502,6 +1508,9 @@ NterpNewArray:
     lsr     w1, wINST, #12              // w1<- B
     GET_VREG w1, w1                     // w1<- vB (array length)
     ldr lr, [xSELF, #THREAD_ALLOC_ARRAY_ENTRYPOINT_OFFSET]
@@ -518,68 +507,82 @@ index 51ebea164b..b1525e87bd 100644
     blr lr
     ubfx    w1, wINST, #8, #4           // w1<- A
     SET_VREG_OBJECT w0, w1
+diff --git a/art/runtime/interpreter/mterp/arm64ng/object.S b/art/runtime/interpreter/mterp/arm64ng/object.S
+index ea882c2de8..f671e466ee 100644
+--- a/art/runtime/interpreter/mterp/arm64ng/object.S
++++ b/art/runtime/interpreter/mterp/arm64ng/object.S
+@@ -458,6 +458,9 @@
+    cbnz    wMR, 3f
+ 4:
+    ldr     lr, [xSELF, #THREAD_ALLOC_OBJECT_ENTRYPOINT_OFFSET]
++#ifdef ANDROID_EXPERIMENTAL_PAC
++   xpaci   lr
++#endif
+    blr     lr
+ 1:
+    lsr     w1, wINST, #8               // w1 <- A
 diff --git a/bionic/libc/arch-arm64/bionic/setjmp.S b/bionic/libc/arch-arm64/bionic/setjmp.S
-index a2b23702a4..e4025a4be2 100644
+index 07270c9da6..0fbf6873cf 100644
 --- a/bionic/libc/arch-arm64/bionic/setjmp.S
 +++ b/bionic/libc/arch-arm64/bionic/setjmp.S
-@@ -297,3 +297,5 @@ ALIAS_SYMBOL(longjmp, siglongjmp)
- __BIONIC_WEAK_ASM_FOR_NATIVE_BRIDGE(longjmp)
- ALIAS_SYMBOL(_longjmp, siglongjmp)
+@@ -307,3 +307,5 @@ ALIAS_SYMBOL(_longjmp, siglongjmp)
  __BIONIC_WEAK_ASM_FOR_NATIVE_BRIDGE(_longjmp)
+ 
+ NOTE_GNU_PROPERTY()
 +
 +#include "symauth.h"
 diff --git a/bionic/libc/arch-arm64/bionic/syscall.S b/bionic/libc/arch-arm64/bionic/syscall.S
-index 8389f98305..4fcb746d4c 100644
+index 9e6f68ac41..c11bdcdb3b 100644
 --- a/bionic/libc/arch-arm64/bionic/syscall.S
 +++ b/bionic/libc/arch-arm64/bionic/syscall.S
-@@ -47,3 +47,5 @@ ENTRY(syscall)
- 
-     ret
+@@ -49,3 +49,5 @@ ENTRY(syscall)
  END(syscall)
+ 
+ NOTE_GNU_PROPERTY()
 +
 +#include "symauth.h"
 diff --git a/bionic/libc/arch-arm64/bionic/vfork.S b/bionic/libc/arch-arm64/bionic/vfork.S
-index 5cfb8b0cc4..d5f1ca0603 100644
+index 81b84a3eaa..431811d960 100644
 --- a/bionic/libc/arch-arm64/bionic/vfork.S
 +++ b/bionic/libc/arch-arm64/bionic/vfork.S
-@@ -85,3 +85,5 @@ __BIONIC_WEAK_ASM_FOR_NATIVE_BRIDGE(vfork)
- .L_exit:
-     ret
+@@ -91,3 +91,5 @@ __BIONIC_WEAK_ASM_FOR_NATIVE_BRIDGE(vfork)
  END(vfork)
+ 
+ NOTE_GNU_PROPERTY()
 +
 +#include "symauth.h"
 diff --git a/bionic/libc/arch-arm64/generic/bionic/__memcpy_chk.S b/bionic/libc/arch-arm64/generic/bionic/__memcpy_chk.S
-index a6eeca4774..53bf315266 100644
+index a8e9e83d0b..08c78d81bd 100644
 --- a/bionic/libc/arch-arm64/generic/bionic/__memcpy_chk.S
 +++ b/bionic/libc/arch-arm64/generic/bionic/__memcpy_chk.S
-@@ -43,3 +43,5 @@ ENTRY(__memcpy_chk)
- 
-   bl __memcpy_chk_fail
+@@ -45,3 +45,5 @@ ENTRY(__memcpy_chk)
  END(__memcpy_chk)
+ 
+ NOTE_GNU_PROPERTY()
 +
 +#include "symauth.h"
 diff --git a/bionic/libc/arch-arm64/generic/bionic/memmove.S b/bionic/libc/arch-arm64/generic/bionic/memmove.S
-index 335b7d6ce5..75d40c7746 100644
+index 0f752ea4aa..0b4d8345a7 100644
 --- a/bionic/libc/arch-arm64/generic/bionic/memmove.S
 +++ b/bionic/libc/arch-arm64/generic/bionic/memmove.S
-@@ -153,3 +153,5 @@ END(memmove)
- 
- ALIAS_SYMBOL(memcpy, memmove)
+@@ -155,3 +155,5 @@ ALIAS_SYMBOL(memcpy, memmove)
  #endif
+ 
+ NOTE_GNU_PROPERTY()
 +
 +#include "symauth.h"
 diff --git a/bionic/libc/arch-arm64/generic/bionic/memset.S b/bionic/libc/arch-arm64/generic/bionic/memset.S
-index 12fc09db85..970a4f1a85 100644
+index 19d3510986..479f4b64ec 100644
 --- a/bionic/libc/arch-arm64/generic/bionic/memset.S
 +++ b/bionic/libc/arch-arm64/generic/bionic/memset.S
-@@ -249,3 +249,5 @@ L(zva_other):
- 	b	L(tail64)
- 
+@@ -251,3 +251,5 @@ L(zva_other):
  END(memset)
+ 
+ NOTE_GNU_PROPERTY()
 +
 +#include "symauth.h"
 diff --git a/bionic/libc/arch-common/bionic/crtbegin.c b/bionic/libc/arch-common/bionic/crtbegin.c
-index b7043dcae8..a67613d14f 100644
+index 29b02dc970..1321c92314 100644
 --- a/bionic/libc/arch-common/bionic/crtbegin.c
 +++ b/bionic/libc/arch-common/bionic/crtbegin.c
 @@ -45,7 +45,7 @@ __used static void _start_main(void* raw_args) {
@@ -656,19 +659,19 @@ index 437de78ce4..379ed20e26 100644
 +}
 +#endif
 diff --git a/bionic/libc/bionic/libc_init_static.cpp b/bionic/libc/bionic/libc_init_static.cpp
-index e3a447dbeb..06c901688d 100644
+index 4a73918f29..82dd6b4eca 100644
 --- a/bionic/libc/bionic/libc_init_static.cpp
 +++ b/bionic/libc/bionic/libc_init_static.cpp
 @@ -63,14 +63,30 @@ extern "C" int __cxa_atexit(void (*)(void *), void *, void *);
- static void call_array(void(**list)()) {
+ static void call_array(init_func_t** list, int argc, char* argv[], char* envp[]) {
    // First element is -1, list is null-terminated
    while (*++list) {
--    (*list)();
-+    void (*fptr)() = *list;
+-    (*list)(argc, argv, envp);
++    init_func_t *fptr = *list;
 +#ifdef ANDROID_EXPERIMENTAL_PAC
 +    fptr = __builtin_ptrauth_sign_unauthenticated(fptr, 0, 0);
 +#endif
-+    fptr();
++    fptr(argc, argv, envp);
    }
  }
  
@@ -704,10 +707,10 @@ index e3a447dbeb..06c901688d 100644
  
    // Several Linux ABIs don't pass the onexit pointer, and the ones that
 diff --git a/bionic/libc/bionic/pthread_create.cpp b/bionic/libc/bionic/pthread_create.cpp
-index c528105745..20c23ecacb 100644
+index 206d5fdebe..490bd958e7 100644
 --- a/bionic/libc/bionic/pthread_create.cpp
 +++ b/bionic/libc/bionic/pthread_create.cpp
-@@ -128,7 +128,7 @@ static void __init_shadow_call_stack(pthread_internal_t* thread __unused) {
+@@ -129,7 +129,7 @@ static void __init_shadow_call_stack(pthread_internal_t* thread __unused) {
    // deliberately the only place where the address is stored.
    char *scs = scs_aligned_guard_region + scs_offset;
    mprotect(scs, SCS_SIZE, PROT_READ | PROT_WRITE);
@@ -773,20 +776,6 @@ index 7ebbe0c025..0bb229ad0b 100644
  };
  
  extern __LIBC_HIDDEN__ struct NetdClientDispatch __netdClientDispatch;
-diff --git a/bionic/libc/private/bionic_asm_arm64.h b/bionic/libc/private/bionic_asm_arm64.h
-index 463ca312aa..0cbbdfdcf5 100644
---- a/bionic/libc/private/bionic_asm_arm64.h
-+++ b/bionic/libc/private/bionic_asm_arm64.h
-@@ -41,3 +41,9 @@
- 
- #undef __bionic_asm_function_type
- #define __bionic_asm_function_type %function
-+
-+/*
-+#ifdef ANDROID_EXPERIMENTAL_PAC
-+#define __bionic_asm_custom_end(f) .auth f, 0x80000000
-+#endif
-+*/
 diff --git a/bionic/libc/private/bionic_call_ifunc_resolver.h b/bionic/libc/private/bionic_call_ifunc_resolver.h
 index e0ea35bba5..b92de0620c 100644
 --- a/bionic/libc/private/bionic_call_ifunc_resolver.h
@@ -797,7 +786,7 @@ index e0ea35bba5..b92de0620c 100644
  __LIBC_HIDDEN__ ElfW(Addr) __bionic_call_ifunc_resolver(ElfW(Addr) resolver_addr);
 +__LIBC_HIDDEN__ ElfW(Addr) __bionic_pac_sign_ptr(ElfW(Addr) addr, ElfW(Addr)* place);
 diff --git a/bionic/libc/tools/gensyscalls.py b/bionic/libc/tools/gensyscalls.py
-index 0271a04c5c..c60383df7e 100755
+index 0e0e25f624..0213a9efc0 100755
 --- a/bionic/libc/tools/gensyscalls.py
 +++ b/bionic/libc/tools/gensyscalls.py
 @@ -458,6 +458,10 @@ def main(arch, syscall_file):
@@ -809,30 +798,30 @@ index 0271a04c5c..c60383df7e 100755
 +#include "symauth.h"
 +""")
  
- 
- if __name__ == "__main__":
+     if arch == 'arm64':
+         print('\nNOTE_GNU_PROPERTY()\n')
 diff --git a/bionic/libm/arm64/lrint.S b/bionic/libm/arm64/lrint.S
-index 5f95ae8170..4c37cae016 100644
+index e835d0835d..63ee55678e 100644
 --- a/bionic/libm/arm64/lrint.S
 +++ b/bionic/libm/arm64/lrint.S
-@@ -32,3 +32,5 @@ END(lrintf)
- ALIAS_SYMBOL(llrint, lrint);
- 
+@@ -34,3 +34,5 @@ ALIAS_SYMBOL(llrint, lrint);
  ALIAS_SYMBOL(llrintf, lrintf);
+ 
+ NOTE_GNU_PROPERTY()
 +
 +#include "symauth.h"
 diff --git a/bionic/libm/arm64/sqrt.S b/bionic/libm/arm64/sqrt.S
-index 3a58ef3642..46a9fb78df 100644
+index 0659b13a8d..667ad6893b 100644
 --- a/bionic/libm/arm64/sqrt.S
 +++ b/bionic/libm/arm64/sqrt.S
-@@ -25,3 +25,5 @@ ENTRY(sqrtf)
-   fsqrt s0, s0
-   ret
+@@ -27,3 +27,5 @@ ENTRY(sqrtf)
  END(sqrtf)
+ 
+ NOTE_GNU_PROPERTY()
 +
 +#include "symauth.h"
 diff --git a/bionic/linker/linker.cpp b/bionic/linker/linker.cpp
-index 302e4b3f99..99fdb369c4 100644
+index 2481be4e4a..3694e8723b 100644
 --- a/bionic/linker/linker.cpp
 +++ b/bionic/linker/linker.cpp
 @@ -2293,6 +2293,14 @@ bool do_dlsym(void* handle,
@@ -885,10 +874,10 @@ index 87b5d34853..228ea86a32 100644
    CHECK(*shadow_start == p);
    mprotect(shadow_start, PAGE_SIZE, PROT_READ);
 diff --git a/bionic/linker/linker_main.cpp b/bionic/linker/linker_main.cpp
-index 41bb4baee1..c68eae2db6 100644
+index aad8f6f6f5..2102926faa 100644
 --- a/bionic/linker/linker_main.cpp
 +++ b/bionic/linker/linker_main.cpp
-@@ -656,6 +656,19 @@ extern "C" ElfW(Addr) __linker_init(void* raw_args) {
+@@ -680,6 +680,19 @@ extern "C" ElfW(Addr) __linker_init(void* raw_args) {
    const ElfW(Addr) load_bias = get_elf_exec_load_bias(elf_hdr);
    call_ifunc_resolvers(load_bias);
  
@@ -908,7 +897,7 @@ index 41bb4baee1..c68eae2db6 100644
    soinfo tmp_linker_so(nullptr, nullptr, nullptr, 0, 0);
  
    tmp_linker_so.base = linker_addr;
-@@ -702,7 +715,11 @@ __linker_init_post_relocation(KernelArgumentBlock& args, soinfo& tmp_linker_so)
+@@ -726,7 +739,11 @@ __linker_init_post_relocation(KernelArgumentBlock& args, soinfo& tmp_linker_so)
    // as PT_INTERP, AT_ENTRY will refer to the loaded executable rather than the
    // linker's _start.
    const char* exe_to_load = nullptr;
@@ -1016,7 +1005,7 @@ index be008e68a2..1359247a23 100644
    ifeq (,$(LOCAL_NDK_STL_VARIANT))
      LOCAL_NDK_STL_VARIANT := system
 diff --git a/build/soong/android/env.go b/build/soong/android/env.go
-index c7c96d5cff..341fe5a66c 100644
+index c2a09aab8e..6782fe81ce 100644
 --- a/build/soong/android/env.go
 +++ b/build/soong/android/env.go
 @@ -36,6 +36,8 @@ var soongDelveListen string
@@ -1028,7 +1017,7 @@ index c7c96d5cff..341fe5a66c 100644
  func init() {
  	// Delve support needs to read this environment variable very early, before NewConfig has created a way to
  	// access originalEnv with dependencies.  Store the value where soong_build can find it, it will manually
-@@ -55,6 +57,8 @@ func init() {
+@@ -58,6 +60,8 @@ func init() {
  		}
  	}
  
@@ -1038,10 +1027,10 @@ index c7c96d5cff..341fe5a66c 100644
  	// variable values.  The environment is available through ctx.Config().Getenv, ctx.Config().IsEnvTrue, etc.
  	os.Clearenv()
 diff --git a/build/soong/cc/builder.go b/build/soong/cc/builder.go
-index ef653481dd..f5e3873c5c 100644
+index 9cd78d59a2..0ef7a72c24 100644
 --- a/build/soong/cc/builder.go
 +++ b/build/soong/cc/builder.go
-@@ -141,7 +141,7 @@ var (
+@@ -132,7 +132,7 @@ var (
  		blueprint.RuleParams{
  			Depfile:     "${out}.d",
  			Deps:        blueprint.DepsGCC,
@@ -1050,7 +1039,7 @@ index ef653481dd..f5e3873c5c 100644
  			CommandDeps: []string{"$stripPath", "$xzCmd"},
  			Pool:        darwinStripPool,
  		},
-@@ -214,7 +214,7 @@ var (
+@@ -230,7 +230,7 @@ var (
  	// -w has been added since header-abi-dumper does not need to produce any sort of diagnostic information.
  	sAbiDump, sAbiDumpRE = remoteexec.StaticRules(pctx, "sAbiDump",
  		blueprint.RuleParams{
@@ -1059,8 +1048,8 @@ index ef653481dd..f5e3873c5c 100644
  			CommandDeps: []string{"$sAbiDumper"},
  		}, &remoteexec.REParams{
  			Labels:       map[string]string{"type": "abi-dump", "tool": "header-abi-dumper"},
-@@ -931,7 +931,7 @@ func TransformObjsToObj(ctx android.ModuleContext, objFiles android.Paths,
- func TransformBinaryPrefixSymbols(ctx android.ModuleContext, prefix string, inputFile android.Path,
+@@ -973,7 +973,7 @@ func transformObjsToObj(ctx android.ModuleContext, objFiles android.Paths,
+ func transformBinaryPrefixSymbols(ctx android.ModuleContext, prefix string, inputFile android.Path,
  	flags builderFlags, outputFile android.WritablePath) {
  
 -	objcopyCmd := gccCmd(flags.toolchain, "objcopy")
@@ -1069,10 +1058,10 @@ index ef653481dd..f5e3873c5c 100644
  	ctx.Build(pctx, android.BuildParams{
  		Rule:        prefixSymbols,
 diff --git a/build/soong/cc/compiler.go b/build/soong/cc/compiler.go
-index f745820044..5514eb2924 100644
+index 2c058995ed..5c813c047a 100644
 --- a/build/soong/cc/compiler.go
 +++ b/build/soong/cc/compiler.go
-@@ -386,6 +386,24 @@ func (compiler *baseCompiler) compilerFlags(ctx ModuleContext, flags Flags, deps
+@@ -399,6 +399,24 @@ func (compiler *baseCompiler) compilerFlags(ctx ModuleContext, flags Flags, deps
  	flags.Local.ConlyFlags = config.ClangFilterUnknownCflags(flags.Local.ConlyFlags)
  	flags.Local.LdFlags = config.ClangFilterUnknownCflags(flags.Local.LdFlags)
  
@@ -1098,10 +1087,10 @@ index f745820044..5514eb2924 100644
  	if ctx.Os().Class == android.Device {
  		version := ctx.sdkVersion()
 diff --git a/build/soong/cc/config/arm64_device.go b/build/soong/cc/config/arm64_device.go
-index 62d8cc8fb7..ed16c0fe93 100644
+index e6024aa45c..982dbb226e 100644
 --- a/build/soong/cc/config/arm64_device.go
 +++ b/build/soong/cc/config/arm64_device.go
-@@ -207,6 +207,15 @@ func arm64ToolchainFactory(arch android.Arch) Toolchain {
+@@ -213,6 +213,15 @@ func arm64ToolchainFactory(arch android.Arch) Toolchain {
  	toolchainClangCflags = append(toolchainClangCflags,
  		variantOrDefault(arm64ClangCpuVariantCflagsVar, arch.CpuVariant))
  
@@ -1118,10 +1107,10 @@ index 62d8cc8fb7..ed16c0fe93 100644
  	switch arch.CpuVariant {
  	case "cortex-a53", "cortex-a72", "cortex-a73", "kryo", "exynos-m1", "exynos-m2":
 diff --git a/build/soong/cc/config/global.go b/build/soong/cc/config/global.go
-index 32f163d882..4e996a4b6a 100644
+index e5cb7eefda..63d399fc6a 100644
 --- a/build/soong/cc/config/global.go
 +++ b/build/soong/cc/config/global.go
-@@ -88,7 +88,6 @@ var (
+@@ -89,7 +89,6 @@ var (
  		"-Wl,--build-id=md5",
  		"-Wl,--warn-shared-textrel",
  		"-Wl,--fatal-warnings",
@@ -1130,10 +1119,10 @@ index 32f163d882..4e996a4b6a 100644
  		"-Wl,--exclude-libs,libgcc_stripped.a",
  		"-Wl,--exclude-libs,libunwind_llvm.a",
 diff --git a/build/soong/cc/linker.go b/build/soong/cc/linker.go
-index 58f8a294ea..a050f8211b 100644
+index ff07224aef..c91f552f56 100644
 --- a/build/soong/cc/linker.go
 +++ b/build/soong/cc/linker.go
-@@ -368,7 +368,7 @@ func (linker *baseLinker) linkerFlags(ctx ModuleContext, flags Flags) Flags {
+@@ -417,7 +417,7 @@ func (linker *baseLinker) linkerFlags(ctx ModuleContext, flags Flags) Flags {
  
  	if linker.useClangLld(ctx) {
  		flags.Global.LdFlags = append(flags.Global.LdFlags, fmt.Sprintf("${config.%sGlobalLldflags}", hod))
@@ -1142,9 +1131,9 @@ index 58f8a294ea..a050f8211b 100644
  			flags.Global.LdFlags = append(flags.Global.LdFlags, "-Wl,--pack-dyn-relocs=none")
  		} else if ctx.Device() {
  			// The SHT_RELR relocations is only supported by API level >= 28.
-@@ -544,8 +544,8 @@ var (
- 	_                      = pctx.SourcePathVariable("genSortedBssSymbolsPath", "build/soong/scripts/gen_sorted_bss_symbols.sh")
- 	gen_sorted_bss_symbols = pctx.AndroidStaticRule("gen_sorted_bss_symbols",
+@@ -597,8 +597,8 @@ var (
+ 	_                   = pctx.SourcePathVariable("genSortedBssSymbolsPath", "build/soong/scripts/gen_sorted_bss_symbols.sh")
+ 	genSortedBssSymbols = pctx.AndroidStaticRule("gen_sorted_bss_symbols",
  		blueprint.RuleParams{
 -			Command:     "CROSS_COMPILE=$crossCompile $genSortedBssSymbolsPath ${in} ${out}",
 -			CommandDeps: []string{"$genSortedBssSymbolsPath", "${crossCompile}nm"},
@@ -1154,22 +1143,22 @@ index 58f8a294ea..a050f8211b 100644
  		"crossCompile")
  )
 diff --git a/build/soong/cc/lto.go b/build/soong/cc/lto.go
-index 9868cdfb95..476b238a43 100644
+index a3b28d9a2d..145468426c 100644
 --- a/build/soong/cc/lto.go
 +++ b/build/soong/cc/lto.go
-@@ -87,15 +87,17 @@ func (lto *lto) flags(ctx BaseModuleContext, flags Flags) Flags {
+@@ -99,15 +99,17 @@ func (lto *lto) flags(ctx BaseModuleContext, flags Flags) Flags {
  	}
  
  	if lto.LTO() {
 -		var ltoFlag string
--		if Bool(lto.Properties.Lto.Thin) {
+-		if lto.ThinLTO() {
 -			ltoFlag = "-flto=thin -fsplit-lto-unit"
 -		} else {
 -			ltoFlag = "-flto"
 -		}
 +		if ctx.Config().Getenv("TARGET_EXPERIMENTAL_PAC") == "" {
 +			var ltoFlag string
-+			if Bool(lto.Properties.Lto.Thin) {
++			if lto.ThinLTO() {
 +				ltoFlag = "-flto=thin -fsplit-lto-unit"
 +			} else {
 +				ltoFlag = "-flto"
@@ -1181,10 +1170,10 @@ index 9868cdfb95..476b238a43 100644
 +			flags.Local.LdFlags = append(flags.Local.LdFlags, ltoFlag)
 +		}
  
- 		if ctx.Config().IsEnvTrue("USE_THINLTO_CACHE") && Bool(lto.Properties.Lto.Thin) && lto.useClangLld(ctx) {
- 			// Set appropriate ThinLTO cache policy
+ 		if Bool(lto.Properties.Whole_program_vtables) {
+ 			flags.Local.CFlags = append(flags.Local.CFlags, "-fwhole-program-vtables")
 diff --git a/build/soong/cc/ndk_prebuilt.go b/build/soong/cc/ndk_prebuilt.go
-index acdc581a2d..6dfb8256bc 100644
+index 793ab37fb2..afe98c3b77 100644
 --- a/build/soong/cc/ndk_prebuilt.go
 +++ b/build/soong/cc/ndk_prebuilt.go
 @@ -156,7 +156,11 @@ func NdkPrebuiltStaticStlFactory() android.Module {
@@ -1201,10 +1190,10 @@ index acdc581a2d..6dfb8256bc 100644
  
  func (ndk *ndkPrebuiltStlLinker) link(ctx ModuleContext, flags Flags,
 diff --git a/build/soong/cc/sanitize.go b/build/soong/cc/sanitize.go
-index 174dcfea5c..384aae4254 100644
+index 0e2d01a45d..46e5e8d959 100644
 --- a/build/soong/cc/sanitize.go
 +++ b/build/soong/cc/sanitize.go
-@@ -531,7 +531,7 @@ func (sanitize *sanitize) flags(ctx ModuleContext, flags Flags) Flags {
+@@ -547,7 +547,7 @@ func (sanitize *sanitize) flags(ctx ModuleContext, flags Flags) Flags {
  		flags.Local.LdFlags = append(flags.Local.LdFlags, `-Wl,-rpath,\$$ORIGIN`)
  	}
  
@@ -1213,7 +1202,7 @@ index 174dcfea5c..384aae4254 100644
  		if ctx.Arch().ArchType == android.Arm {
  			// __cfi_check needs to be built as Thumb (see the code in linker_cfi.cpp). LLVM is not set up
  			// to do this on a function basis, so force Thumb on the entire module.
-@@ -557,8 +557,18 @@ func (sanitize *sanitize) flags(ctx ModuleContext, flags Flags) Flags {
+@@ -576,8 +576,18 @@ func (sanitize *sanitize) flags(ctx ModuleContext, flags Flags) Flags {
  		flags.Local.CFlags = append(flags.Local.CFlags, intOverflowCflags...)
  	}
  
@@ -1235,10 +1224,10 @@ index 174dcfea5c..384aae4254 100644
  		flags.Local.CFlags = append(flags.Local.CFlags, sanitizeArg)
  		flags.Local.AsFlags = append(flags.Local.AsFlags, sanitizeArg)
 diff --git a/build/soong/dexpreopt/dexpreopt.go b/build/soong/dexpreopt/dexpreopt.go
-index 4dbda49b33..578f69db8a 100644
+index b0a684eed6..461d885b85 100644
 --- a/build/soong/dexpreopt/dexpreopt.go
 +++ b/build/soong/dexpreopt/dexpreopt.go
-@@ -411,9 +411,13 @@ func dexpreoptCommand(ctx android.PathContext, globalSoong *GlobalSoongConfig, g
+@@ -304,9 +304,13 @@ func dexpreoptCommand(ctx android.PathContext, globalSoong *GlobalSoongConfig, g
  		dexLocationArg = strings.TrimPrefix(dexLocationArg, "/system")
  	}
  
@@ -1256,10 +1245,10 @@ index 4dbda49b33..578f69db8a 100644
  		FlagWithOutput("--write-invocation-to=", invocationPath).ImplicitOutput(invocationPath).
  		Flag("--runtime-arg").FlagWithArg("-Xms", global.Dex2oatXms).
 diff --git a/build/soong/java/dexpreopt_bootjars.go b/build/soong/java/dexpreopt_bootjars.go
-index 3addc1a748..b675dff9d4 100644
+index 062005b5b6..e829b9045e 100644
 --- a/build/soong/java/dexpreopt_bootjars.go
 +++ b/build/soong/java/dexpreopt_bootjars.go
-@@ -402,6 +402,10 @@ func buildBootImageVariant(ctx android.SingletonContext, image *bootImageVariant
+@@ -609,6 +609,10 @@ func buildBootImageVariant(ctx android.SingletonContext, image *bootImageVariant
  		cmd.Text(`ANDROID_LOG_TAGS="*:v"`)
  	}
  
@@ -1333,18 +1322,18 @@ index 40f018425a..c27dc340fc 100755
    ${CLANG_BIN}/llvm-objcopy \
    ${CLANG_BIN}/llvm-readelf \
 diff --git a/build/soong/ui/build/soong.go b/build/soong/ui/build/soong.go
-index fb21430114..849327de40 100644
+index 6a93672593..832752c7fb 100644
 --- a/build/soong/ui/build/soong.go
 +++ b/build/soong/ui/build/soong.go
-@@ -38,7 +38,7 @@ func runSoong(ctx Context, config Config) {
- 		ctx.BeginTrace(metrics.RunSoong, "blueprint bootstrap")
- 		defer ctx.EndTrace()
+@@ -55,7 +55,7 @@ func runSoong(ctx Context, config Config) {
+ 		// Use validations to depend on tests.
+ 		args := []string{"-n"}
  
--		cmd := Command(ctx, config, "blueprint bootstrap", "build/blueprint/bootstrap.bash", "-t", "-n")
-+		cmd := Command(ctx, config, "blueprint bootstrap", "build/blueprint/bootstrap.bash", "-n")
- 		cmd.Environment.Set("BLUEPRINTDIR", "./build/blueprint")
- 		cmd.Environment.Set("BOOTSTRAP", "./build/blueprint/bootstrap.bash")
- 		cmd.Environment.Set("BUILDDIR", config.SoongOutDir())
+-		if !config.skipSoongTests {
++		if !config.skipSoongTests && false {
+ 			// Run tests.
+ 			args = append(args, "-t")
+ 		}
 diff --git a/external/arm-optimized-routines/string/aarch64/memcmp.S b/external/arm-optimized-routines/string/aarch64/memcmp.S
 index dac9147c57..78d9a4ff14 100644
 --- a/external/arm-optimized-routines/string/aarch64/memcmp.S
@@ -1373,10 +1362,10 @@ index 4852edca38..d8c6e17807 100644
  
 +#include "symauth.h"
 diff --git a/external/boringssl/src/crypto/fipsmodule/bcm.c b/external/boringssl/src/crypto/fipsmodule/bcm.c
-index 567a0cdfa7..f927cf7696 100644
+index 1d9a919254..1c09ce8605 100644
 --- a/external/boringssl/src/crypto/fipsmodule/bcm.c
 +++ b/external/boringssl/src/crypto/fipsmodule/bcm.c
-@@ -122,6 +122,10 @@ extern const uint8_t BORINGSSL_bcm_rodata_end[];
+@@ -123,6 +123,10 @@ extern const uint8_t BORINGSSL_bcm_rodata_end[];
  // aborts otherwise.
  static void assert_within(const void *start, const void *symbol,
                            const void *end) {
@@ -1480,7 +1469,7 @@ index c7902cb2bc..2486ff5679 100644
  
  std::shared_ptr<rr::Routine> SpirvShader::emitSamplerRoutine(ImageInstruction instruction, const Sampler &samplerState)
 diff --git a/external/swiftshader/src/Reactor/Coroutine.hpp b/external/swiftshader/src/Reactor/Coroutine.hpp
-index 05d9204ad2..0dd3933aa6 100644
+index 3375787eb0..33ef6de16a 100644
 --- a/external/swiftshader/src/Reactor/Coroutine.hpp
 +++ b/external/swiftshader/src/Reactor/Coroutine.hpp
 @@ -33,12 +33,18 @@ protected:
@@ -1556,7 +1545,7 @@ index de1ab7b909..b39e2e376a 100644
  			draw->setupState = setupState;
  
 diff --git a/external/vixl/src/aarch64/assembler-aarch64.cc b/external/vixl/src/aarch64/assembler-aarch64.cc
-index 9e73ffaa0c..136f787f9c 100644
+index e98de89b8a..47f304bd8a 100644
 --- a/external/vixl/src/aarch64/assembler-aarch64.cc
 +++ b/external/vixl/src/aarch64/assembler-aarch64.cc
 @@ -196,7 +196,7 @@ void Assembler::ret(const Register& xn) {
@@ -1579,7 +1568,7 @@ index 9e73ffaa0c..136f787f9c 100644
  }
 @@ -1046,25 +1046,21 @@ void Assembler::cls(const Register& rd, const Register& rn) {
  
- #define DEFINE_ASM_FUNCS(PRE, OP)                                  \
+ #define VIXL_DEFINE_ASM_FUNC(PRE, OP)                              \
    void Assembler::PRE##a(const Register& xd, const Register& xn) { \
 -    VIXL_ASSERT(CPUHas(CPUFeatures::kPAuth));                      \
      VIXL_ASSERT(xd.Is64Bits() && xn.Is64Bits());                   \
@@ -1629,7 +1618,7 @@ index 9e73ffaa0c..136f787f9c 100644
  }
  
  void Assembler::xpacd(const Register& xd) {
-@@ -2542,8 +2551,12 @@ void Assembler::mov(const Register& rd, const Register& rm) {
+@@ -2580,8 +2589,12 @@ void Assembler::mov(const Register& rd, const Register& rm) {
  }
  
  void Assembler::xpaclri() {
@@ -1645,10 +1634,10 @@ index 9e73ffaa0c..136f787f9c 100644
  
  void Assembler::pacia1716() {
 diff --git a/external/vixl/src/aarch64/constants-aarch64.h b/external/vixl/src/aarch64/constants-aarch64.h
-index 36f5568da4..bd843d0e27 100644
+index d17c88943c..a307f96f7e 100644
 --- a/external/vixl/src/aarch64/constants-aarch64.h
 +++ b/external/vixl/src/aarch64/constants-aarch64.h
-@@ -1298,16 +1298,16 @@ enum DataProcessing1SourceOp {
+@@ -1433,16 +1433,16 @@ enum DataProcessing1SourceOp {
    AUTIB  = DataProcessing1SourceFixed | 0x80011400,
    AUTDA  = DataProcessing1SourceFixed | 0x80011800,
    AUTDB  = DataProcessing1SourceFixed | 0x80011C00,
@@ -1676,10 +1665,10 @@ index 36f5568da4..bd843d0e27 100644
  
  // Data processing 2 source.
 diff --git a/frameworks/base/core/java/com/android/internal/os/ZygoteInit.java b/frameworks/base/core/java/com/android/internal/os/ZygoteInit.java
-index ef72cee906..e622ac2734 100644
+index 6335baa97e..f636dcad1b 100644
 --- a/frameworks/base/core/java/com/android/internal/os/ZygoteInit.java
 +++ b/frameworks/base/core/java/com/android/internal/os/ZygoteInit.java
-@@ -884,6 +884,9 @@ public class ZygoteInit {
+@@ -900,6 +900,9 @@ public class ZygoteInit {
                      abiList = argv[i].substring(ABI_LIST_ARG.length());
                  } else if (argv[i].startsWith(SOCKET_NAME_ARG)) {
                      zygoteSocketName = argv[i].substring(SOCKET_NAME_ARG.length());
@@ -1689,7 +1678,7 @@ index ef72cee906..e622ac2734 100644
                  } else {
                      throw new RuntimeException("Unknown command line argument: " + argv[i]);
                  }
-@@ -929,9 +932,9 @@ public class ZygoteInit {
+@@ -945,9 +948,9 @@ public class ZygoteInit {
  
              ZygoteHooks.stopZygoteNoThreadCreation();
  
@@ -1701,7 +1690,7 @@ index ef72cee906..e622ac2734 100644
                  Runnable r = forkSystemServer(abiList, zygoteSocketName, zygoteServer);
  
                  // {@code r == null} in the parent (zygote) process, and {@code r != null} in the
-@@ -942,6 +945,8 @@ public class ZygoteInit {
+@@ -958,6 +961,8 @@ public class ZygoteInit {
                  }
              }
  
@@ -1710,7 +1699,7 @@ index ef72cee906..e622ac2734 100644
              Log.i(TAG, "Accepting command socket connections");
  
              // The select loop returns early in the child process after a fork and
-@@ -963,6 +968,8 @@ public class ZygoteInit {
+@@ -979,6 +984,8 @@ public class ZygoteInit {
          }
      }
  
@@ -1756,10 +1745,10 @@ index 0dd8b599a1..0da911b8c2 100644
          mUsapPoolSupported = true;
          fetchUsapPoolPolicyProps();
 diff --git a/frameworks/base/core/jni/com_android_internal_os_Zygote.cpp b/frameworks/base/core/jni/com_android_internal_os_Zygote.cpp
-index dadf08f2cc..9f47b80d8f 100644
+index 6381cf5938..98697e48e2 100644
 --- a/frameworks/base/core/jni/com_android_internal_os_Zygote.cpp
 +++ b/frameworks/base/core/jni/com_android_internal_os_Zygote.cpp
-@@ -2333,16 +2333,17 @@ static void com_android_internal_os_Zygote_nativeInitNativeState(JNIEnv* env, jc
+@@ -2344,16 +2344,17 @@ static void com_android_internal_os_Zygote_nativeInitNativeState(JNIEnv* env, jc
     * Obtain file descriptors created by init from the environment.
     */
  
@@ -1825,11 +1814,11 @@ index a5152b6e68..6a6fef1bae 100644
  
  }  // anonymous namespace
 diff --git a/frameworks/base/core/jni/fd_utils.cpp b/frameworks/base/core/jni/fd_utils.cpp
-index 38981b0caa..6257ce767a 100644
+index c73aae58fe..da1145e0b0 100644
 --- a/frameworks/base/core/jni/fd_utils.cpp
 +++ b/frameworks/base/core/jni/fd_utils.cpp
-@@ -45,7 +45,9 @@ static const char* kPathWhitelist[] = {
-         "/apex/com.android.tethering/javalib/framework-tethering.jar",
+@@ -35,7 +35,9 @@
+ static const char* kPathWhitelist[] = {
          "/dev/null",
          "/dev/socket/zygote",
 +        "/dev/socket/zygote_arm64_v8a",
@@ -2070,32 +2059,10 @@ index 177298e1b8..d4b89f6885 100644
      // Initialize cached classes.
  #define JCLASS_INITIALIZE(cls, signature, androidOnly)                      \
      CLASS_NAME(cls) = FindClass(g_init_env, signature, androidOnly);
-diff --git a/system/bt/osi/src/alarm.cc b/system/bt/osi/src/alarm.cc
-index 1170880d63..c9264e3177 100644
---- a/system/bt/osi/src/alarm.cc
-+++ b/system/bt/osi/src/alarm.cc
-@@ -610,7 +610,7 @@ static void alarm_queue_ready(fixed_queue_t* queue, UNUSED_ATTR void* context) {
- }
- 
- // Callback function for wake alarms and our posix timer
--static void timer_callback(UNUSED_ATTR void* ptr) {
-+static void timer_callback(UNUSED_ATTR sigval_t sigval) {
-   semaphore_post(alarm_expired);
- }
- 
-@@ -678,7 +678,7 @@ static bool timer_create_internal(const clockid_t clock_id, timer_t* timer) {
- 
-   memset(&sigevent, 0, sizeof(sigevent));
-   sigevent.sigev_notify = SIGEV_THREAD;
--  sigevent.sigev_notify_function = (void (*)(union sigval))timer_callback;
-+  sigevent.sigev_notify_function = timer_callback;
-   sigevent.sigev_notify_attributes = &thread_attr;
-   if (timer_create(clock_id, &sigevent, timer) == -1) {
-     LOG_ERROR("%s unable to create timer with clock %d: %s", __func__, clock_id,
-diff --git a/system/core/libstats/socket/statsd_writer.c b/system/core/libstats/socket/statsd_writer.c
+diff --git a/packages/modules/StatsD/lib/libstatssocket/statsd_writer.c b/packages/modules/StatsD/lib/libstatssocket/statsd_writer.c
 index 73b7a7e714..9b7844a904 100644
---- a/system/core/libstats/socket/statsd_writer.c
-+++ b/system/core/libstats/socket/statsd_writer.c
+--- a/packages/modules/StatsD/lib/libstatssocket/statsd_writer.c
++++ b/packages/modules/StatsD/lib/libstatssocket/statsd_writer.c
 @@ -57,12 +57,12 @@ void statsd_writer_init_unlock() {
      pthread_mutex_unlock(&log_init_lock);
  }
@@ -2146,10 +2113,10 @@ index 73b7a7e714..9b7844a904 100644
      if (atomic_load(&statsdLoggerWrite.sock) < 0) {
          return 1;
      }
-diff --git a/system/core/libstats/socket/statsd_writer.h b/system/core/libstats/socket/statsd_writer.h
+diff --git a/packages/modules/StatsD/lib/libstatssocket/statsd_writer.h b/packages/modules/StatsD/lib/libstatssocket/statsd_writer.h
 index 562bda5df3..52032ac21e 100644
---- a/system/core/libstats/socket/statsd_writer.h
-+++ b/system/core/libstats/socket/statsd_writer.h
+--- a/packages/modules/StatsD/lib/libstatssocket/statsd_writer.h
++++ b/packages/modules/StatsD/lib/libstatssocket/statsd_writer.h
 @@ -33,9 +33,9 @@ void statsd_writer_init_unlock();
  struct android_log_transport_write {
      const char* name; /* human name to describe the transport */
@@ -2163,37 +2130,30 @@ index 562bda5df3..52032ac21e 100644
      /* write log to transport, returns number of bytes propagated, or -errno */
      int (*write)(struct timespec* ts, struct iovec* vec, size_t nr);
      /* note one log drop */
-diff --git a/system/core/libunwindstack/RegsArm64.cpp b/system/core/libunwindstack/RegsArm64.cpp
-index b496187cb1..f27e16ffff 100644
---- a/system/core/libunwindstack/RegsArm64.cpp
-+++ b/system/core/libunwindstack/RegsArm64.cpp
-@@ -48,23 +48,9 @@ uint64_t RegsArm64::sp() {
+diff --git a/system/bt/osi/src/alarm.cc b/system/bt/osi/src/alarm.cc
+index 0c8f57c3a3..3466590eee 100644
+--- a/system/bt/osi/src/alarm.cc
++++ b/system/bt/osi/src/alarm.cc
+@@ -611,7 +611,7 @@ static void alarm_queue_ready(fixed_queue_t* queue, UNUSED_ATTR void* context) {
  }
  
- void RegsArm64::set_pc(uint64_t pc) {
--  // If the target is aarch64 then the return address may have been
--  // signed using the Armv8.3-A Pointer Authentication extension. The
--  // original return address can be restored by stripping out the
--  // authentication code using a mask or xpaclri. xpaclri is a NOP on
--  // pre-Armv8.3-A architectures.
--  if ((0 != pc) && IsRASigned()) {
--    if (pac_mask_) {
--      pc &= ~pac_mask_;
- #if defined(__aarch64__)
--    } else {
--      register uint64_t x30 __asm("x30") = pc;
--      // This is XPACLRI.
--      asm("hint 0x7" : "+r"(x30));
--      pc = x30;
-+  pc &= 0x7fffffffff;
- #endif
--    }
--  }
-   regs_[ARM64_REG_PC] = pc;
+ // Callback function for wake alarms and our posix timer
+-static void timer_callback(UNUSED_ATTR void* ptr) {
++static void timer_callback(UNUSED_ATTR sigval_t sigval) {
+   semaphore_post(alarm_expired);
  }
  
+@@ -679,7 +679,7 @@ static bool timer_create_internal(const clockid_t clock_id, timer_t* timer) {
+ 
+   memset(&sigevent, 0, sizeof(sigevent));
+   sigevent.sigev_notify = SIGEV_THREAD;
+-  sigevent.sigev_notify_function = (void (*)(union sigval))timer_callback;
++  sigevent.sigev_notify_function = timer_callback;
+   sigevent.sigev_notify_attributes = &thread_attr;
+   if (timer_create(clock_id, &sigevent, timer) == -1) {
+     LOG_ERROR("%s unable to create timer with clock %d: %s", __func__, clock_id,
 diff --git a/system/core/libutils/Threads.cpp b/system/core/libutils/Threads.cpp
-index 55eadb07a6..2145629370 100644
+index 540dcf49db..88dd4f6e21 100644
 --- a/system/core/libutils/Threads.cpp
 +++ b/system/core/libutils/Threads.cpp
 @@ -65,23 +65,24 @@ using namespace android;
@@ -2285,7 +2245,7 @@ index 55eadb07a6..2145629370 100644
      if (result != 0) {
          ALOGE("androidCreateRawThreadEtc failed (entry=%p, res=%d, %s)\n"
 diff --git a/system/core/rootdir/init.zygote64_32.rc b/system/core/rootdir/init.zygote64_32.rc
-index fb9e99b691..ce7445ceba 100644
+index 3eee180ba0..b297a325ad 100644
 --- a/system/core/rootdir/init.zygote64_32.rc
 +++ b/system/core/rootdir/init.zygote64_32.rc
 @@ -5,6 +5,8 @@ service zygote /system/bin/app_process64 -Xzygote /system/bin --zygote --start-s
@@ -2298,10 +2258,10 @@ index fb9e99b691..ce7445ceba 100644
      onrestart write /sys/power/state on
      onrestart restart audioserver
 diff --git a/system/sepolicy/private/file_contexts b/system/sepolicy/private/file_contexts
-index 27bbb3d73b..80d8d717e9 100644
+index 98300cbaf4..dce0d11d4b 100644
 --- a/system/sepolicy/private/file_contexts
 +++ b/system/sepolicy/private/file_contexts
-@@ -163,8 +163,10 @@
+@@ -170,8 +170,10 @@
  /dev/socket/wpa_wlan[0-9] u:object_r:wpa_socket:s0
  /dev/socket/zygote	u:object_r:zygote_socket:s0
  /dev/socket/zygote_secondary	u:object_r:zygote_socket:s0
@@ -2313,5 +2273,5 @@ index 27bbb3d73b..80d8d717e9 100644
  /dev/tty		u:object_r:owntty_device:s0
  /dev/tty[0-9]*		u:object_r:tty_device:s0
 -- 
-2.28.0.681.g6f77f65b4e-goog
+2.29.2.729.g45daf8777d-goog
 

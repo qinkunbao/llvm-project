@@ -1,0 +1,66 @@
+From 0e1935edc284518f64b7dcdabda557735e03170b Mon Sep 17 00:00:00 2001
+From: Peter Collingbourne <pcc@google.com>
+Date: Tue, 22 Dec 2020 21:38:09 -0800
+Subject: [PATCH 20/36] Clear PAC bits from TLSDESC pointers
+
+---
+ bionic/libc/platform/bionic/pac.h | 5 +++++
+ bionic/linker/linker_relocate.cpp | 8 +++++---
+ 2 files changed, 10 insertions(+), 3 deletions(-)
+
+diff --git a/bionic/libc/platform/bionic/pac.h b/bionic/libc/platform/bionic/pac.h
+index 34efc48aea..73094f9d05 100644
+--- a/bionic/libc/platform/bionic/pac.h
++++ b/bionic/libc/platform/bionic/pac.h
+@@ -40,3 +40,8 @@ inline uintptr_t __bionic_clear_pac_bits(uintptr_t ptr) {
+   return ptr;
+ #endif
+ }
++
++template <typename T>
++T* __bionic_clear_pac_bits(T* ptr) {
++  return reinterpret_cast<T*>(__bionic_clear_pac_bits(reinterpret_cast<uintptr_t>(ptr)));
++}
+diff --git a/bionic/linker/linker_relocate.cpp b/bionic/linker/linker_relocate.cpp
+index 3a687075f8..a99ba72d50 100644
+--- a/bionic/linker/linker_relocate.cpp
++++ b/bionic/linker/linker_relocate.cpp
+@@ -45,6 +45,8 @@
+ #include "private/bionic_call_ifunc_resolver.h"
+ #include "private/bionic_globals.h"
+ 
++#include "platform/bionic/pac.h"
++
+ static bool is_tls_reloc(ElfW(Word) type) {
+   switch (type) {
+     case R_GENERIC_TLS_DTPMOD:
+@@ -431,7 +433,7 @@ static bool process_relocation_impl(Relocator& relocator, const rel_t& reloc) {
+         TlsDescriptor* desc = static_cast<TlsDescriptor*>(rel_target);
+         if (found_in == nullptr) {
+           // Unresolved weak relocation.
+-          desc->func = tlsdesc_resolver_unresolved_weak;
++          desc->func = __bionic_clear_pac_bits(tlsdesc_resolver_unresolved_weak);
+           desc->arg = addend;
+           trace_reloc("RELO TLSDESC %16p <- unresolved weak, addend 0x%zx %s",
+                       rel_target, static_cast<size_t>(addend), sym_name);
+@@ -440,7 +442,7 @@ static bool process_relocation_impl(Relocator& relocator, const rel_t& reloc) {
+           size_t module_id = found_in->get_tls()->module_id;
+           const TlsModule& mod = get_tls_module(module_id);
+           if (mod.static_offset != SIZE_MAX) {
+-            desc->func = tlsdesc_resolver_static;
++            desc->func = __bionic_clear_pac_bits(tlsdesc_resolver_static);
+             desc->arg = mod.static_offset - relocator.tls_tp_base + sym_addr + addend;
+             trace_reloc("RELO TLSDESC %16p <- static (0x%zx - 0x%zx + 0x%zx + 0x%zx) %s",
+                         rel_target, mod.static_offset, relocator.tls_tp_base,
+@@ -666,7 +668,7 @@ bool soinfo::relocate(const SymbolLookupList& lookup_list) {
+   // Bionic currently only implements TLSDESC for arm64.
+   for (const std::pair<TlsDescriptor*, size_t>& pair : relocator.deferred_tlsdesc_relocs) {
+     TlsDescriptor* desc = pair.first;
+-    desc->func = tlsdesc_resolver_dynamic;
++    desc->func = __bionic_clear_pac_bits(tlsdesc_resolver_dynamic);
+     desc->arg = reinterpret_cast<size_t>(&tlsdesc_args_[pair.second]);
+   }
+ #endif
+-- 
+2.29.2.729.g45daf8777d-goog
+

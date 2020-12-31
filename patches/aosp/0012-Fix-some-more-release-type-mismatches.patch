@@ -1,7 +1,7 @@
-From dfadbaf3568c260ec77588d6106c23e803a436f7 Mon Sep 17 00:00:00 2001
+From 42ea2e2200cff9f85136c47ef5752c86a3c57166 Mon Sep 17 00:00:00 2001
 From: Peter Collingbourne <pcc@google.com>
 Date: Fri, 10 Jul 2020 20:52:36 -0700
-Subject: [PATCH 10/17] Fix some more release type mismatches
+Subject: [PATCH 12/36] Fix some more release type mismatches
 
 ---
  frameworks/base/libs/hwui/jni/FontFamily.cpp       | 12 ++++--------
@@ -92,5 +92,5 @@ index df619d9f14..2799109df9 100644
  
  // Regular JNI
 -- 
-2.28.0.681.g6f77f65b4e-goog
+2.29.2.729.g45daf8777d-goog
 

@@ -1,14 +1,14 @@
-From a7e873cf38b60347d48e3e06513c8a90572de95f Mon Sep 17 00:00:00 2001
+From e5ae9d32bd208fbe3c6e1c2a57066d5126ee42e6 Mon Sep 17 00:00:00 2001
 From: Peter Collingbourne <pcc@google.com>
 Date: Tue, 22 Sep 2020 19:00:45 -0700
-Subject: [PATCH 16/17] Use correct function types in pthread tests
+Subject: [PATCH 16/36] Use correct function types in pthread tests
 
 ---
  bionic/tests/pthread_test.cpp | 108 +++++++++++++++++++++++++---------
  1 file changed, 79 insertions(+), 29 deletions(-)
 
 diff --git a/bionic/tests/pthread_test.cpp b/bionic/tests/pthread_test.cpp
-index 851b86f508..ad0fa3a472 100644
+index d9ad3ccb42..ad202a8624 100644
 --- a/bionic/tests/pthread_test.cpp
 +++ b/bionic/tests/pthread_test.cpp
 @@ -942,6 +942,11 @@ static void pthread_rwlock_wakeup_helper(RwlockWakeupHelperArg* arg) {
@@ -230,5 +230,5 @@ index 851b86f508..ad0fa3a472 100644
    for (size_t i = 0; i < THREAD_COUNT; ++i) {
      ASSERT_EQ(0, pthread_join(threads[i], nullptr));
 -- 
-2.28.0.681.g6f77f65b4e-goog
+2.29.2.729.g45daf8777d-goog
 

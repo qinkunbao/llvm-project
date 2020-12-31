@@ -1,0 +1,148 @@
+From aa68fb5774a2645d32b3bc64a28988fced7bb9a8 Mon Sep 17 00:00:00 2001
+From: Peter Collingbourne <pcc@google.com>
+Date: Wed, 23 Dec 2020 18:12:19 -0800
+Subject: [PATCH 29/36] Don't fail openZygoteSocketIfNeeded() if we don't have
+ a secondary zygote
+
+---
+ .../core/java/android/os/ZygoteProcess.java   | 90 +++++++++----------
+ 1 file changed, 45 insertions(+), 45 deletions(-)
+
+diff --git a/frameworks/base/core/java/android/os/ZygoteProcess.java b/frameworks/base/core/java/android/os/ZygoteProcess.java
+index 0a63d2937d..eefd32d07a 100644
+--- a/frameworks/base/core/java/android/os/ZygoteProcess.java
++++ b/frameworks/base/core/java/android/os/ZygoteProcess.java
+@@ -1085,26 +1085,34 @@ public class ZygoteProcess {
+      * Creates a ZygoteState for the secondary zygote if it doesn't exist or has been disconnected.
+      */
+     @GuardedBy("mLock")
+-    private void attemptConnectionToSecondaryZygote() throws IOException {
+-        if (secondaryZygoteState == null || secondaryZygoteState.isClosed()) {
+-            secondaryZygoteState =
+-                    ZygoteState.connect(mZygoteSecondarySocketAddress,
+-                            mUsapPoolSecondarySocketAddress);
+-
+-            maybeSetApiDenylistExemptions(secondaryZygoteState, false);
+-            maybeSetHiddenApiAccessLogSampleRate(secondaryZygoteState);
++    private void attemptConnectionToSecondaryZygote() {
++        try {
++           if (secondaryZygoteState == null || secondaryZygoteState.isClosed()) {
++               secondaryZygoteState =
++                       ZygoteState.connect(mZygoteSecondarySocketAddress,
++                               mUsapPoolSecondarySocketAddress);
++
++               maybeSetApiDenylistExemptions(secondaryZygoteState, false);
++               maybeSetHiddenApiAccessLogSampleRate(secondaryZygoteState);
++           }
++        } catch (IOException e) {
++            // No secondary zygote present.  This is expected on some devices.
+         }
+     }
+ 
+     @GuardedBy("mLock")
+-    private void attemptConnectionToV8aZygote() throws IOException {
+-        if (v8aZygoteState == null || v8aZygoteState.isClosed()) {
+-            v8aZygoteState =
+-                    ZygoteState.connect(mZygoteV8aSocketAddress,
+-                            mUsapPoolV8aSocketAddress);
++    private void attemptConnectionToV8aZygote() {
++        try {
++            if (v8aZygoteState == null || v8aZygoteState.isClosed()) {
++                v8aZygoteState =
++                        ZygoteState.connect(mZygoteV8aSocketAddress,
++                                mUsapPoolV8aSocketAddress);
+ 
+-            maybeSetApiDenylistExemptions(v8aZygoteState, false);
+-            maybeSetHiddenApiAccessLogSampleRate(v8aZygoteState);
++                maybeSetApiDenylistExemptions(v8aZygoteState, false);
++                maybeSetHiddenApiAccessLogSampleRate(v8aZygoteState);
++            }
++        } catch (IOException e) {
++            // No v8a zygote present.  This is expected on some devices.
+         }
+     }
+ 
+@@ -1127,7 +1135,7 @@ public class ZygoteProcess {
+                 // The primary zygote didn't match. Try the secondary.
+                 attemptConnectionToSecondaryZygote();
+ 
+-                if (secondaryZygoteState.matches(abi)) {
++                if (secondaryZygoteState != null && secondaryZygoteState.matches(abi)) {
+                     return secondaryZygoteState;
+                 }
+             }
+@@ -1136,7 +1144,7 @@ public class ZygoteProcess {
+                 // The primary zygote didn't match. Try the secondary.
+                 attemptConnectionToV8aZygote();
+ 
+-                if (v8aZygoteState.matches(abi)) {
++                if (v8aZygoteState != null && v8aZygoteState.matches(abi)) {
+                     return v8aZygoteState;
+                 }
+             }
+@@ -1286,42 +1294,34 @@ public class ZygoteProcess {
+             }
+ 
+             if (mZygoteSecondarySocketAddress != null) {
++                attemptConnectionToSecondaryZygote();
++
+                 try {
+-                    attemptConnectionToSecondaryZygote();
+-
+-                    try {
+-                        secondaryZygoteState.mZygoteOutputWriter.write(command);
+-                        secondaryZygoteState.mZygoteOutputWriter.flush();
+-
+-                        // Wait for the secondary Zygote to finish its work.
+-                        secondaryZygoteState.mZygoteInputStream.readInt();
+-                    } catch (IOException ioe) {
+-                        throw new IllegalStateException(
+-                                "USAP pool state change cause an irrecoverable error",
+-                                ioe);
+-                    }
++                    secondaryZygoteState.mZygoteOutputWriter.write(command);
++                    secondaryZygoteState.mZygoteOutputWriter.flush();
++
++                    // Wait for the secondary Zygote to finish its work.
++                    secondaryZygoteState.mZygoteInputStream.readInt();
+                 } catch (IOException ioe) {
+-                    // No secondary zygote present.  This is expected on some devices.
++                    throw new IllegalStateException(
++                            "USAP pool state change cause an irrecoverable error",
++                            ioe);
+                 }
+             }
+ 
+             if (mZygoteV8aSocketAddress != null) {
++                attemptConnectionToV8aZygote();
++
+                 try {
+-                    attemptConnectionToV8aZygote();
+-
+-                    try {
+-                        v8aZygoteState.mZygoteOutputWriter.write(command);
+-                        v8aZygoteState.mZygoteOutputWriter.flush();
+-
+-                        // Wait for the v8a Zygote to finish its work.
+-                        v8aZygoteState.mZygoteInputStream.readInt();
+-                    } catch (IOException ioe) {
+-                        throw new IllegalStateException(
+-                                "USAP pool state change cause an irrecoverable error",
+-                                ioe);
+-                    }
++                    v8aZygoteState.mZygoteOutputWriter.write(command);
++                    v8aZygoteState.mZygoteOutputWriter.flush();
++
++                    // Wait for the v8a Zygote to finish its work.
++                    v8aZygoteState.mZygoteInputStream.readInt();
+                 } catch (IOException ioe) {
+-                    // No v8a zygote present.  This is expected on some devices.
++                    throw new IllegalStateException(
++                            "USAP pool state change cause an irrecoverable error",
++                            ioe);
+                 }
+             }
+ 
+-- 
+2.29.2.729.g45daf8777d-goog
+

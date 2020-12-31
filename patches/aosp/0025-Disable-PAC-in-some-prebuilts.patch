@@ -1,0 +1,30 @@
+From 3fde01dcbf231b984b29f18f37272de38a7ae5bd Mon Sep 17 00:00:00 2001
+From: Peter Collingbourne <pcc@google.com>
+Date: Wed, 23 Dec 2020 15:42:34 -0800
+Subject: [PATCH 25/36] Disable PAC in some prebuilts
+
+---
+ bionic/linker/linker_main.cpp | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/bionic/linker/linker_main.cpp b/bionic/linker/linker_main.cpp
+index eb894e3eea..5dc7d682ef 100644
+--- a/bionic/linker/linker_main.cpp
++++ b/bionic/linker/linker_main.cpp
+@@ -694,8 +694,12 @@ extern "C" ElfW(Addr) __linker_init(void* raw_args) {
+ 
+ #ifdef ANDROID_EXPERIMENTAL_PAC
+   // Rust code generator doesn't know about PAC.
++  // Android emulator has /vendor/bin/ip which is a prebuilt.
++  // lldb-server is also a prebuilt.
+   if (strcmp(args.argv[0], "/system/bin/keystore2") == 0 ||
+-      strcmp(args.argv[0], "/system/bin/profcollectd") == 0) {
++      strcmp(args.argv[0], "/system/bin/profcollectd") == 0 ||
++      strcmp(args.argv[0], "/vendor/bin/ip") == 0 ||
++      strcmp(args.argv[0], "/data/local/tmp/arm64-lldb-server") == 0) {
+     disable_pac();
+   }
+ 
+-- 
+2.29.2.729.g45daf8777d-goog
+

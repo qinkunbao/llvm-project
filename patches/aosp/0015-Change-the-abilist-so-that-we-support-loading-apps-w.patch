@@ -1,7 +1,7 @@
-From f63a989db366e673b3453dbe3eb957df9d1a24d4 Mon Sep 17 00:00:00 2001
+From 26f09d39e3f95331bc31937de2b4fb6e32925138 Mon Sep 17 00:00:00 2001
 From: Peter Collingbourne <pcc@google.com>
 Date: Fri, 18 Sep 2020 18:03:05 -0700
-Subject: [PATCH 14/17] Change the abilist so that we support loading apps with
+Subject: [PATCH 15/36] Change the abilist so that we support loading apps with
  the arm64-v9a ABI
 
 ---
@@ -9,10 +9,10 @@ Subject: [PATCH 14/17] Change the abilist so that we support loading apps with
  1 file changed, 4 insertions(+)
 
 diff --git a/build/make/core/board_config.mk b/build/make/core/board_config.mk
-index 95d8af88f0..dbe76ee325 100644
+index 725c0a54f9..fa07bb050a 100644
 --- a/build/make/core/board_config.mk
 +++ b/build/make/core/board_config.mk
-@@ -228,6 +228,10 @@ ifeq (,$(TARGET_CPU_ABI_LIST_64_BIT))
+@@ -260,6 +260,10 @@ ifeq (,$(TARGET_CPU_ABI_LIST_64_BIT))
    endif
  endif
  
@@ -24,5 +24,5 @@ index 95d8af88f0..dbe76ee325 100644
  # in all builds with SANITIZE_TARGET=hwaddress.
  ifneq ($(filter hwaddress,$(SANITIZE_TARGET)),)
 -- 
-2.28.0.681.g6f77f65b4e-goog
+2.29.2.729.g45daf8777d-goog
 

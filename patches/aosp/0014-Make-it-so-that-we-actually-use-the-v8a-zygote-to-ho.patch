@@ -1,7 +1,7 @@
-From 1cc813649165c6fd698e097121fba3c1324702a6 Mon Sep 17 00:00:00 2001
+From f3d25d5a46e3df2741156a656d0a4ac36adaf07f Mon Sep 17 00:00:00 2001
 From: Peter Collingbourne <pcc@google.com>
 Date: Fri, 18 Sep 2020 18:02:29 -0700
-Subject: [PATCH 13/17] Make it so that we actually use the v8a zygote to host
+Subject: [PATCH 14/36] Make it so that we actually use the v8a zygote to host
  v8a apps
 
 ---
@@ -38,7 +38,7 @@ index 12083b6fe2..7539e48ed3 100644
          String8 abiFlag("--abi-list=");
          abiFlag.append(prop);
 diff --git a/frameworks/base/core/java/android/os/ZygoteProcess.java b/frameworks/base/core/java/android/os/ZygoteProcess.java
-index 77e724beb7..32e0d040d4 100644
+index 9e332e9b04..0a63d2937d 100644
 --- a/frameworks/base/core/java/android/os/ZygoteProcess.java
 +++ b/frameworks/base/core/java/android/os/ZygoteProcess.java
 @@ -98,6 +98,8 @@ public class ZygoteProcess {
@@ -199,10 +199,10 @@ index 77e724beb7..32e0d040d4 100644
              // can work concurrently.
              try {
 diff --git a/frameworks/base/core/jni/com_android_internal_os_Zygote.cpp b/frameworks/base/core/jni/com_android_internal_os_Zygote.cpp
-index 9f47b80d8f..af9e7b4e96 100644
+index 98697e48e2..8615db895b 100644
 --- a/frameworks/base/core/jni/com_android_internal_os_Zygote.cpp
 +++ b/frameworks/base/core/jni/com_android_internal_os_Zygote.cpp
-@@ -911,6 +911,9 @@ static void DetachDescriptors(JNIEnv* env,
+@@ -922,6 +922,9 @@ static void DetachDescriptors(JNIEnv* env,
      }
  
      for (int fd : fds_to_close) {
@@ -213,10 +213,10 @@ index 9f47b80d8f..af9e7b4e96 100644
        if (dup3(devnull_fd, fd, O_CLOEXEC) == -1) {
          fail_fn(StringPrintf("Failed dup3() on descriptor %d: %s", fd, strerror(errno)));
 diff --git a/libcore/libart/src/main/java/dalvik/system/VMRuntime.java b/libcore/libart/src/main/java/dalvik/system/VMRuntime.java
-index b6bb2bf60f..bc04f51e72 100644
+index 5f001c1289..aa71c14318 100644
 --- a/libcore/libart/src/main/java/dalvik/system/VMRuntime.java
 +++ b/libcore/libart/src/main/java/dalvik/system/VMRuntime.java
-@@ -62,6 +62,7 @@ public final class VMRuntime {
+@@ -63,6 +63,7 @@ public final class VMRuntime {
          ABI_TO_INSTRUCTION_SET_MAP.put("x86_64", "x86_64");
          ABI_TO_INSTRUCTION_SET_MAP.put("arm64-v8a", "arm64");
          ABI_TO_INSTRUCTION_SET_MAP.put("arm64-v8a-hwasan", "arm64");
@@ -225,5 +225,5 @@ index b6bb2bf60f..bc04f51e72 100644
  
      /**
 -- 
-2.28.0.681.g6f77f65b4e-goog
+2.29.2.729.g45daf8777d-goog
 

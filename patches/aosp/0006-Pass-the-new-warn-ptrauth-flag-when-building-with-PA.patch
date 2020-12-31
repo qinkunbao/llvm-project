@@ -1,7 +1,7 @@
-From c8e38a4bfbbc3d638b609a85c3b07a9ebeae6b3c Mon Sep 17 00:00:00 2001
+From 354d91fe3419075cc2344317ef7792f875e01d1a Mon Sep 17 00:00:00 2001
 From: Peter Collingbourne <pcc@google.com>
 Date: Thu, 16 Jul 2020 17:56:15 -0700
-Subject: [PATCH 06/17] Pass the new --warn-ptrauth flag when building with PAC
+Subject: [PATCH 06/36] Pass the new --warn-ptrauth flag when building with PAC
 
 We don't want to see warnings when PAC is disabled.
 ---
@@ -9,10 +9,10 @@ We don't want to see warnings when PAC is disabled.
  1 file changed, 4 insertions(+)
 
 diff --git a/build/soong/cc/config/arm64_device.go b/build/soong/cc/config/arm64_device.go
-index ed16c0fe93..8f4a6ace22 100644
+index 982dbb226e..7c38d16489 100644
 --- a/build/soong/cc/config/arm64_device.go
 +++ b/build/soong/cc/config/arm64_device.go
-@@ -222,6 +222,10 @@ func arm64ToolchainFactory(arch android.Arch) Toolchain {
+@@ -228,6 +228,10 @@ func arm64ToolchainFactory(arch android.Arch) Toolchain {
  		extraLdflags = "-Wl,--fix-cortex-a53-843419"
  	}
  
@@ -24,5 +24,5 @@ index ed16c0fe93..8f4a6ace22 100644
  		ldflags: strings.Join([]string{
  			"${config.Arm64Ldflags}",
 -- 
-2.28.0.681.g6f77f65b4e-goog
+2.29.2.729.g45daf8777d-goog
 

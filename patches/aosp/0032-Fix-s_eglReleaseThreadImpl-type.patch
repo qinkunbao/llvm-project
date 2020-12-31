@@ -1,0 +1,35 @@
+From 3669c1a9af1ec1ec0944dedcfbebb56e8e603b8a Mon Sep 17 00:00:00 2001
+From: Peter Collingbourne <pcc@google.com>
+Date: Mon, 28 Dec 2020 13:39:39 -0800
+Subject: [PATCH 32/36] Fix s_eglReleaseThreadImpl type
+
+---
+ device/generic/goldfish-opengl/system/egl/egl.cpp | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/device/generic/goldfish-opengl/system/egl/egl.cpp b/device/generic/goldfish-opengl/system/egl/egl.cpp
+index a5aee176a2..c703c0a612 100644
+--- a/device/generic/goldfish-opengl/system/egl/egl.cpp
++++ b/device/generic/goldfish-opengl/system/egl/egl.cpp
+@@ -1493,7 +1493,8 @@ EGLBoolean eglWaitClient()
+ }
+ 
+ // We may need to trigger this directly from the TLS destructor.
+-static EGLBoolean s_eglReleaseThreadImpl(EGLThreadInfo* tInfo) {
++static bool s_eglReleaseThreadImpl(void* ptr) {
++    auto* tInfo = reinterpret_cast<EGLThreadInfo*>(ptr);
+     if (!tInfo) return EGL_TRUE;
+ 
+     tInfo->eglError = EGL_SUCCESS;
+@@ -1848,7 +1849,7 @@ EGLBoolean eglMakeCurrent(EGLDisplay dpy, EGLSurface draw, EGLSurface read, EGLC
+ 
+     // Only place to initialize the TLS destructor; any
+     // thread can suddenly jump in any eglMakeCurrent
+-    setTlsDestructor((tlsDtorCallback)s_eglReleaseThreadImpl);
++    setTlsDestructor(s_eglReleaseThreadImpl);
+ 
+     if ((read == EGL_NO_SURFACE && draw == EGL_NO_SURFACE) && (ctx != EGL_NO_CONTEXT))
+         setErrorReturn(EGL_BAD_MATCH, EGL_FALSE);
+-- 
+2.29.2.729.g45daf8777d-goog
+

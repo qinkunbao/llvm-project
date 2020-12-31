@@ -1,0 +1,29 @@
+From 111372bca98daeb3f83836b0a0a3ed82f7e2e149 Mon Sep 17 00:00:00 2001
+From: Peter Collingbourne <pcc@google.com>
+Date: Tue, 29 Dec 2020 15:26:24 -0800
+Subject: [PATCH 33/36] Define _LIBUNWIND_IS_NATIVE_ONLY when building LLVM
+ libunwind.
+
+This macro needs to be defined in order to support unwinding past
+functions built with return pointer authentication.
+
+Change-Id: Id8c6f1db55fc5341285629fbb3d3b41b7dcf14e7
+---
+ external/libunwind_llvm/Android.bp | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/external/libunwind_llvm/Android.bp b/external/libunwind_llvm/Android.bp
+index 4c5ab79611..ce1fcd8846 100644
+--- a/external/libunwind_llvm/Android.bp
++++ b/external/libunwind_llvm/Android.bp
+@@ -36,6 +36,7 @@ LIBUNWIND_CFLAGS = [
+     "-Wall",
+     "-Werror",
+     "-D_LIBUNWIND_USE_DLADDR=0",
++    "-D_LIBUNWIND_IS_NATIVE_ONLY",
+ ]
+ 
+ LIBUNWIND_CPPFLAGS = [
+-- 
+2.29.2.729.g45daf8777d-goog
+

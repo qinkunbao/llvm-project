@@ -1,0 +1,30 @@
+From 9f563292257f28441e25a6d12eafdf381cc1e6a8 Mon Sep 17 00:00:00 2001
+From: Peter Collingbourne <pcc@google.com>
+Date: Fri, 16 Oct 2020 11:40:05 -0700
+Subject: [PATCH 18/36] Disable -fwhole-program-vtables if PAC
+
+---
+ build/soong/cc/lto.go | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/build/soong/cc/lto.go b/build/soong/cc/lto.go
+index 145468426c..5bfbdee54b 100644
+--- a/build/soong/cc/lto.go
++++ b/build/soong/cc/lto.go
+@@ -109,10 +109,10 @@ func (lto *lto) flags(ctx BaseModuleContext, flags Flags) Flags {
+ 
+ 			flags.Local.CFlags = append(flags.Local.CFlags, ltoFlag)
+ 			flags.Local.LdFlags = append(flags.Local.LdFlags, ltoFlag)
+-		}
+ 
+-		if Bool(lto.Properties.Whole_program_vtables) {
+-			flags.Local.CFlags = append(flags.Local.CFlags, "-fwhole-program-vtables")
++			if Bool(lto.Properties.Whole_program_vtables) {
++				flags.Local.CFlags = append(flags.Local.CFlags, "-fwhole-program-vtables")
++			}
+ 		}
+ 
+ 		if lto.ThinLTO() && ctx.Config().IsEnvTrue("USE_THINLTO_CACHE") && lto.useClangLld(ctx) {
+-- 
+2.29.2.729.g45daf8777d-goog
+

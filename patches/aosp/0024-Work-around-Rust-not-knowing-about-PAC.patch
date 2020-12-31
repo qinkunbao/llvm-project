@@ -1,0 +1,59 @@
+From fb68e53c1e7ec5515605731bccb4b907899b6da4 Mon Sep 17 00:00:00 2001
+From: Peter Collingbourne <pcc@google.com>
+Date: Fri, 27 Nov 2020 16:50:37 -0800
+Subject: [PATCH 24/36] Work around Rust not knowing about PAC
+
+---
+ bionic/linker/linker_main.cpp | 27 +++++++++++++++++++--------
+ 1 file changed, 19 insertions(+), 8 deletions(-)
+
+diff --git a/bionic/linker/linker_main.cpp b/bionic/linker/linker_main.cpp
+index a25541fd49..eb894e3eea 100644
+--- a/bionic/linker/linker_main.cpp
++++ b/bionic/linker/linker_main.cpp
+@@ -645,6 +645,18 @@ __attribute__((constructor(1))) static void detect_self_exec() {
+ static ElfW(Addr) __attribute__((noinline))
+ __linker_init_post_relocation(KernelArgumentBlock& args, soinfo& linker_so);
+ 
++#ifdef ANDROID_EXPERIMENTAL_PAC
++static void disable_pac() {
++#ifdef ANDROID_FAKE_PAC
++  __asm__ __volatile__("orr x18, x18, %0" ::"r"(0xd0ULL << 56));
++#else
++#define PR_PAC_SET_ENABLED_KEYS 59
++  prctl(PR_PAC_SET_ENABLED_KEYS, PR_PAC_APIAKEY | PR_PAC_APIBKEY | PR_PAC_APDAKEY | PR_PAC_APDBKEY,
++        PR_PAC_APIBKEY, 0, 0);
++#endif
++}
++#endif
++
+ /*
+  * This is the entry point for the linker, called from begin.S. This
+  * method is responsible for fixing the linker's own relocations, and
+@@ -681,16 +693,15 @@ extern "C" ElfW(Addr) __linker_init(void* raw_args) {
+   call_ifunc_resolvers(load_bias);
+ 
+ #ifdef ANDROID_EXPERIMENTAL_PAC
++  // Rust code generator doesn't know about PAC.
++  if (strcmp(args.argv[0], "/system/bin/keystore2") == 0 ||
++      strcmp(args.argv[0], "/system/bin/profcollectd") == 0) {
++    disable_pac();
++  }
++
+   if (strcmp(args.argv[0], "/system/bin/app_process64") == 0) {
+     if (fork() == 0) {
+-#ifdef ANDROID_FAKE_PAC
+-      __asm__ __volatile__("orr x18, x18, %0" ::"r"(0xd0ULL << 56));
+-#else
+-#define PR_PAC_SET_ENABLED_KEYS 59
+-      prctl(PR_PAC_SET_ENABLED_KEYS,
+-            PR_PAC_APIAKEY | PR_PAC_APIBKEY | PR_PAC_APDAKEY | PR_PAC_APDBKEY, PR_PAC_APIBKEY, 0,
+-            0);
+-#endif
++      disable_pac();
+     }
+   }
+ #endif
+-- 
+2.29.2.729.g45daf8777d-goog
+

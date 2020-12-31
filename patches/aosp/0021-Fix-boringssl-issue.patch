@@ -1,0 +1,24 @@
+From c05d35fb684711520e5e93511eae7b3047d4092a Mon Sep 17 00:00:00 2001
+From: Peter Collingbourne <pcc@google.com>
+Date: Tue, 22 Dec 2020 23:07:19 -0800
+Subject: [PATCH 21/36] Fix boringssl issue
+
+---
+ external/boringssl/src/crypto/fipsmodule/fips_shared.lds | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/external/boringssl/src/crypto/fipsmodule/fips_shared.lds b/external/boringssl/src/crypto/fipsmodule/fips_shared.lds
+index 323de73b00..ebd3c8962b 100644
+--- a/external/boringssl/src/crypto/fipsmodule/fips_shared.lds
++++ b/external/boringssl/src/crypto/fipsmodule/fips_shared.lds
+@@ -3,6 +3,7 @@ SECTIONS
+   .text : {
+     BORINGSSL_bcm_text_start = .;
+     *(.text)
++    *(.text.unlikely.*)
+     BORINGSSL_bcm_text_end = .;
+   }
+   .rodata : {
+-- 
+2.29.2.729.g45daf8777d-goog
+

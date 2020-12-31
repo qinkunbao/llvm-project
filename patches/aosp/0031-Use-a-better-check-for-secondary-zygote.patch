@@ -1,0 +1,25 @@
+From 46e54718af190952f17483976f7b51b847c081ac Mon Sep 17 00:00:00 2001
+From: Peter Collingbourne <pcc@google.com>
+Date: Wed, 30 Dec 2020 19:00:37 -0800
+Subject: [PATCH 31/36] Use a better check for secondary zygote
+
+---
+ .../base/core/java/com/android/internal/os/ZygoteInit.java      | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/frameworks/base/core/java/com/android/internal/os/ZygoteInit.java b/frameworks/base/core/java/com/android/internal/os/ZygoteInit.java
+index f636dcad1b..e7f49a3805 100644
+--- a/frameworks/base/core/java/com/android/internal/os/ZygoteInit.java
++++ b/frameworks/base/core/java/com/android/internal/os/ZygoteInit.java
+@@ -993,7 +993,7 @@ public class ZygoteInit {
+      * supports all ABIs this device supports, there won't be another zygote.
+      */
+     private static boolean hasSecondZygote(String abiList) {
+-        return !SystemProperties.get("ro.product.cpu.abilist").equals(abiList);
++        return !SystemProperties.get("ro.product.cpu.abilist32").isEmpty();
+     }
+ 
+     private static void waitForSecondaryZygote(String socketName) {
+-- 
+2.29.2.729.g45daf8777d-goog
+

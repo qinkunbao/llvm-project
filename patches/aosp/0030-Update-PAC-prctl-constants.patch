@@ -1,0 +1,39 @@
+From 5b0a3e608f26dc58d3c99ff06f99705e52e1c897 Mon Sep 17 00:00:00 2001
+From: Peter Collingbourne <pcc@google.com>
+Date: Wed, 30 Dec 2020 18:59:52 -0800
+Subject: [PATCH 30/36] Update PAC prctl constants
+
+---
+ bionic/libc/bionic/__libc_init_main_thread.cpp | 2 +-
+ bionic/linker/linker_main.cpp                  | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/bionic/libc/bionic/__libc_init_main_thread.cpp b/bionic/libc/bionic/__libc_init_main_thread.cpp
+index 113c64012b..88f5a5f79d 100644
+--- a/bionic/libc/bionic/__libc_init_main_thread.cpp
++++ b/bionic/libc/bionic/__libc_init_main_thread.cpp
+@@ -83,7 +83,7 @@ extern "C" void __libc_init_main_thread_early(const KernelArgumentBlock& args,
+   main_thread.set_cached_pid(main_thread.tid);
+   main_thread.stack_top = reinterpret_cast<uintptr_t>(args.argv);
+ 
+-#define PR_PAC_SET_ENABLED_KEYS 59
++#define PR_PAC_SET_ENABLED_KEYS 60
+   // prctl(PR_PAC_SET_ENABLED_KEYS, PR_PAC_APIBKEY, 0, 0, 0);
+ }
+ 
+diff --git a/bionic/linker/linker_main.cpp b/bionic/linker/linker_main.cpp
+index 5dc7d682ef..52145a0dfb 100644
+--- a/bionic/linker/linker_main.cpp
++++ b/bionic/linker/linker_main.cpp
+@@ -650,7 +650,7 @@ static void disable_pac() {
+ #ifdef ANDROID_FAKE_PAC
+   __asm__ __volatile__("orr x18, x18, %0" ::"r"(0xd0ULL << 56));
+ #else
+-#define PR_PAC_SET_ENABLED_KEYS 59
++#define PR_PAC_SET_ENABLED_KEYS 60
+   prctl(PR_PAC_SET_ENABLED_KEYS, PR_PAC_APIAKEY | PR_PAC_APIBKEY | PR_PAC_APDAKEY | PR_PAC_APDBKEY,
+         PR_PAC_APIBKEY, 0, 0);
+ #endif
+-- 
+2.29.2.729.g45daf8777d-goog
+

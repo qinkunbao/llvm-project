@@ -1,14 +1,14 @@
-From 37b4dd0ac263ffb5eb449ddc5c7b16057ed3e6e1 Mon Sep 17 00:00:00 2001
+From 290b79a543fadf26fd983aad36a59be4e76ef35b Mon Sep 17 00:00:00 2001
 From: Peter Collingbourne <pcc@google.com>
 Date: Fri, 17 Jul 2020 11:10:50 -0700
-Subject: [PATCH 08/17] Make it compile on normal compilers
+Subject: [PATCH 10/36] Make it compile on normal compilers
 
 ---
  system/bt/osi/src/alarm.cc | 2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/system/bt/osi/src/alarm.cc b/system/bt/osi/src/alarm.cc
-index c9264e3177..d143a42fcb 100644
+index 3466590eee..5f5d296fd4 100644
 --- a/system/bt/osi/src/alarm.cc
 +++ b/system/bt/osi/src/alarm.cc
 @@ -143,7 +143,7 @@ static void remove_pending_alarm(alarm_t* alarm);
@@ -21,5 +21,5 @@ index c9264e3177..d143a42fcb 100644
  static bool timer_create_internal(const clockid_t clock_id, timer_t* timer);
  static void update_scheduling_stats(alarm_stats_t* stats, uint64_t now_ms,
 -- 
-2.28.0.681.g6f77f65b4e-goog
+2.29.2.729.g45daf8777d-goog
 

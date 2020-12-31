@@ -1,0 +1,25 @@
+From be4e63d35fb09c7ff8287b46dc34c1c92e604dfe Mon Sep 17 00:00:00 2001
+From: Peter Collingbourne <pcc@google.com>
+Date: Wed, 30 Dec 2020 21:44:39 -0800
+Subject: [PATCH 36/36] Use ARM's pac-ret flag so we get the right unwind info
+
+---
+ build/soong/cc/config/arm64_device.go | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/build/soong/cc/config/arm64_device.go b/build/soong/cc/config/arm64_device.go
+index 0d82f0bc3a..42308bf3f7 100644
+--- a/build/soong/cc/config/arm64_device.go
++++ b/build/soong/cc/config/arm64_device.go
+@@ -214,7 +214,7 @@ func arm64ToolchainFactory(arch android.Arch) Toolchain {
+ 		variantOrDefault(arm64ClangCpuVariantCflagsVar, arch.CpuVariant))
+ 
+ 	if android.TargetExperimentalPac != "" {
+-		toolchainClangCflags = append(toolchainClangCflags, "-DANDROID_EXPERIMENTAL_PAC", "-fptrauth-returns", "-fptrauth-intrinsics", "-fptrauth-calls", "-fptrauth-indirect-gotos", "-fptrauth-auth-traps")
++		toolchainClangCflags = append(toolchainClangCflags, "-DANDROID_EXPERIMENTAL_PAC", "-mbranch-protection=pac-ret+b-key", "-fptrauth-intrinsics", "-fptrauth-calls", "-fptrauth-indirect-gotos", "-fptrauth-auth-traps")
+ 		if android.TargetExperimentalPac == "fake" {
+ 			toolchainClangCflags = append(toolchainClangCflags, "-mllvm", "-fake-pac", "-DANDROID_FAKE_PAC")
+ 		} else if android.TargetExperimentalPac == "size" {
+-- 
+2.29.2.729.g45daf8777d-goog
+

@@ -1,0 +1,43 @@
+From b043470dcdc7647d1926e27f10d9267fcc182d7f Mon Sep 17 00:00:00 2001
+From: Peter Collingbourne <pcc@google.com>
+Date: Wed, 30 Dec 2020 20:23:01 -0800
+Subject: [PATCH 34/36] Allow the clang version used for bindgen to be
+ configured.
+
+This is useful when experimenting with new compiler flags that the
+existing compiler does not support.
+
+Change-Id: I45b8a2980b247d60a7f4e2ba55169267aeceef2b
+---
+ build/soong/rust/bindgen.go | 11 +++++++++--
+ 1 file changed, 9 insertions(+), 2 deletions(-)
+
+diff --git a/build/soong/rust/bindgen.go b/build/soong/rust/bindgen.go
+index 35a807bfd9..56d660eca6 100644
+--- a/build/soong/rust/bindgen.go
++++ b/build/soong/rust/bindgen.go
+@@ -31,12 +31,19 @@ var (
+ 	// bindgen should specify its own Clang revision so updating Clang isn't potentially blocked on bindgen failures.
+ 	bindgenClangVersion = "clang-r399163b"
+ 
++	_ = pctx.VariableFunc("bindgenClangVersion", func(ctx android.PackageVarContext) string {
++		if override := ctx.Config().Getenv("LLVM_BINDGEN_PREBUILTS_VERSION"); override != "" {
++			return override
++		}
++		return bindgenClangVersion
++	})
++
+ 	//TODO(b/160803703) Use a prebuilt bindgen instead of the built bindgen.
+ 	_ = pctx.HostBinToolVariable("bindgenCmd", "bindgen")
+ 	_ = pctx.SourcePathVariable("bindgenClang",
+-		"${cc_config.ClangBase}/${config.HostPrebuiltTag}/"+bindgenClangVersion+"/bin/clang")
++		"${cc_config.ClangBase}/${config.HostPrebuiltTag}/${bindgenClangVersion}/bin/clang")
+ 	_ = pctx.SourcePathVariable("bindgenLibClang",
+-		"${cc_config.ClangBase}/${config.HostPrebuiltTag}/"+bindgenClangVersion+"/lib64/")
++		"${cc_config.ClangBase}/${config.HostPrebuiltTag}/${bindgenClangVersion}/lib64/")
+ 
+ 	//TODO(ivanlozano) Switch this to RuleBuilder
+ 	bindgen = pctx.AndroidStaticRule("bindgen",
+-- 
+2.29.2.729.g45daf8777d-goog
+

@@ -1,0 +1,51 @@
+From 59609a292fb3c3249d595b9eb133b61da18e9d39 Mon Sep 17 00:00:00 2001
+From: Peter Collingbourne <pcc@google.com>
+Date: Wed, 23 Dec 2020 14:20:45 -0800
+Subject: [PATCH 26/36] () -> (void) in cuttlefish RIL
+
+---
+ .../guest/hals/ril/reference-ril/reference-ril.c     | 12 ++++++------
+ 1 file changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/device/google/cuttlefish/guest/hals/ril/reference-ril/reference-ril.c b/device/google/cuttlefish/guest/hals/ril/reference-ril/reference-ril.c
+index 6580c0f708..edd5ab3990 100644
+--- a/device/google/cuttlefish/guest/hals/ril/reference-ril/reference-ril.c
++++ b/device/google/cuttlefish/guest/hals/ril/reference-ril/reference-ril.c
+@@ -290,12 +290,12 @@ typedef enum {
+ } SIM_Status;
+ 
+ static void onRequest (int request, void *data, size_t datalen, RIL_Token t);
+-static RIL_RadioState currentState();
++static RIL_RadioState currentState(void);
+ static int onSupports (int requestCode);
+ static void onCancel (RIL_Token t);
+-static const char *getVersion();
+-static int isRadioOn();
+-static SIM_Status getSIMStatus();
++static const char *getVersion(void);
++static int isRadioOn(void);
++static SIM_Status getSIMStatus(void);
+ static int getCardStatus(RIL_CardStatus_v1_5 **pp_card_status);
+ static void freeCardStatus(RIL_CardStatus_v1_5 *p_card_status);
+ static void onDataCallListChanged(void *param);
+@@ -5080,7 +5080,7 @@ done:
+ 
+ /** Returns SIM_NOT_READY on error */
+ static SIM_Status
+-getSIMStatus()
++getSIMStatus(void)
+ {
+     ATResponse *p_response = NULL;
+     int err;
+@@ -5337,7 +5337,7 @@ static void pollSIMState (void *param __unused)
+ }
+ 
+ /** returns 1 if on, 0 if off, and -1 on error */
+-static int isRadioOn()
++static int isRadioOn(void)
+ {
+     ATResponse *p_response = NULL;
+     int err;
+-- 
+2.29.2.729.g45daf8777d-goog
+

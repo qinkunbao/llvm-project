@@ -1,0 +1,25 @@
+From f57eb91ce3cc480d0e9a6d639adaaa5ca8231f39 Mon Sep 17 00:00:00 2001
+From: Peter Collingbourne <pcc@google.com>
+Date: Tue, 22 Dec 2020 23:12:19 -0800
+Subject: [PATCH 23/36] Fix a type mismatch
+
+---
+ hardware/interfaces/usb/1.0/default/Usb.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/hardware/interfaces/usb/1.0/default/Usb.cpp b/hardware/interfaces/usb/1.0/default/Usb.cpp
+index 6eb88428c9..0ffda39cb4 100644
+--- a/hardware/interfaces/usb/1.0/default/Usb.cpp
++++ b/hardware/interfaces/usb/1.0/default/Usb.cpp
+@@ -396,7 +396,7 @@ void* work(void* param) {
+ 
+         for (int n = 0; n < nevents; ++n) {
+             if (events[n].data.ptr)
+-                (*(void (*)(int, struct data *payload))events[n].data.ptr)
++                (*(void (*)(uint32_t, struct data *payload))events[n].data.ptr)
+                     (events[n].events, &payload);
+         }
+     }
+-- 
+2.29.2.729.g45daf8777d-goog
+

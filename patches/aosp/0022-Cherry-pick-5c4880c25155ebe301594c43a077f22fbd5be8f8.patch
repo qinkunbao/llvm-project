@@ -1,0 +1,150 @@
+From eddc65f38c599a73b169e2a9c9f5c9260d2c6f20 Mon Sep 17 00:00:00 2001
+From: Peter Collingbourne <pcc@google.com>
+Date: Fri, 27 Nov 2020 17:17:22 -0800
+Subject: [PATCH 22/36] Cherry-pick 5c4880c25155ebe301594c43a077f22fbd5be8f8 to
+ fix PAC
+
+---
+ external/skia/src/core/SkArenaAlloc.cpp | 40 ++++++++-----------------
+ external/skia/src/core/SkArenaAlloc.h   | 16 ++++++----
+ 2 files changed, 24 insertions(+), 32 deletions(-)
+
+diff --git a/external/skia/src/core/SkArenaAlloc.cpp b/external/skia/src/core/SkArenaAlloc.cpp
+index 6765c3cdf0..72eabae8b5 100644
+--- a/external/skia/src/core/SkArenaAlloc.cpp
++++ b/external/skia/src/core/SkArenaAlloc.cpp
+@@ -43,23 +43,12 @@ void SkArenaAlloc::reset() {
+ }
+ 
+ void SkArenaAlloc::installFooter(FooterAction* action, uint32_t padding) {
+-    assert(padding < 64);
+-    int64_t actionInt = (int64_t)(intptr_t)action;
+-
+-    // The top 14 bits should be either all 0s or all 1s. Check this.
+-    assert((actionInt << 6) >> 6 == actionInt);
+-    Footer encodedFooter = (actionInt << 6) | padding;
+-    memmove(fCursor, &encodedFooter, sizeof(Footer));
+-    fCursor += sizeof(Footer);
++    assert(SkTFitsIn<uint8_t>(padding));
++    this->installRaw(action);
++    this->installRaw((uint8_t)padding);
+     fDtorCursor = fCursor;
+ }
+ 
+-void SkArenaAlloc::installPtrFooter(FooterAction* action, char* ptr, uint32_t padding) {
+-    memmove(fCursor, &ptr, sizeof(char*));
+-    fCursor += sizeof(char*);
+-    this->installFooter(action, padding);
+-}
+-
+ char* SkArenaAlloc::SkipPod(char* footerEnd) {
+     char* objEnd = footerEnd - (sizeof(Footer) + sizeof(int32_t));
+     int32_t skip;
+@@ -69,18 +58,18 @@ char* SkArenaAlloc::SkipPod(char* footerEnd) {
+ 
+ void SkArenaAlloc::RunDtorsOnBlock(char* footerEnd) {
+     while (footerEnd != nullptr) {
+-        Footer footer;
+-        memcpy(&footer, footerEnd - sizeof(Footer), sizeof(Footer));
++        FooterAction* action;
++        uint8_t       padding;
+ 
+-        FooterAction* action = (FooterAction*)(footer >> 6);
+-        ptrdiff_t padding = footer & 63;
++        memcpy(&action,  footerEnd - sizeof( Footer), sizeof( action));
++        memcpy(&padding, footerEnd - sizeof(padding), sizeof(padding));
+ 
+-        footerEnd = action(footerEnd) - padding;
++        footerEnd = action(footerEnd) - (ptrdiff_t)padding;
+     }
+ }
+ 
+ char* SkArenaAlloc::NextBlock(char* footerEnd) {
+-    char* objEnd = footerEnd - (sizeof(Footer) + sizeof(char*));
++    char* objEnd = footerEnd - (sizeof(char*) + sizeof(Footer));
+     char* next;
+     memmove(&next, objEnd, sizeof(char*));
+     RunDtorsOnBlock(next);
+@@ -88,11 +77,6 @@ char* SkArenaAlloc::NextBlock(char* footerEnd) {
+     return nullptr;
+ }
+ 
+-void SkArenaAlloc::installUint32Footer(FooterAction* action, uint32_t value, uint32_t padding) {
+-    memmove(fCursor, &value, sizeof(uint32_t));
+-    fCursor += sizeof(uint32_t);
+-    this->installFooter(action, padding);
+-}
+ 
+ void SkArenaAlloc::ensureSpace(uint32_t size, uint32_t alignment) {
+     constexpr uint32_t headerSize = sizeof(Footer) + sizeof(ptrdiff_t);
+@@ -134,7 +118,8 @@ void SkArenaAlloc::ensureSpace(uint32_t size, uint32_t alignment) {
+     fCursor = newBlock;
+     fDtorCursor = newBlock;
+     fEnd = fCursor + allocationSize;
+-    this->installPtrFooter(NextBlock, previousDtor, 0);
++    this->installRaw(previousDtor);
++    this->installFooter(NextBlock, 0);
+ }
+ 
+ char* SkArenaAlloc::allocObjectWithFooter(uint32_t sizeIncludingFooter, uint32_t alignment) {
+@@ -167,7 +152,8 @@ restart:
+     // Install a skip footer if needed, thus terminating a run of POD data. The calling code is
+     // responsible for installing the footer after the object.
+     if (needsSkipFooter) {
+-        this->installUint32Footer(SkipPod, ToU32(fCursor - fDtorCursor), 0);
++        this->installRaw(ToU32(fCursor - fDtorCursor));
++        this->installFooter(SkipPod, 0);
+     }
+ 
+     return objStart;
+diff --git a/external/skia/src/core/SkArenaAlloc.h b/external/skia/src/core/SkArenaAlloc.h
+index 6ff7c6be9f..b4b0142507 100644
+--- a/external/skia/src/core/SkArenaAlloc.h
++++ b/external/skia/src/core/SkArenaAlloc.h
+@@ -144,16 +144,22 @@ private:
+         return (uint32_t)v;
+     }
+ 
+-    using Footer = int64_t;
+     using FooterAction = char* (char*);
++    struct Footer {
++        uint8_t unaligned_action[sizeof(FooterAction*)];
++        uint8_t padding;
++    };
+ 
+     static char* SkipPod(char* footerEnd);
+     static void RunDtorsOnBlock(char* footerEnd);
+     static char* NextBlock(char* footerEnd);
+ 
++    template <typename T>
++    void installRaw(const T& val) {
++        memcpy(fCursor, &val, sizeof(val));
++        fCursor += sizeof(val);
++    }
+     void installFooter(FooterAction* releaser, uint32_t padding);
+-    void installUint32Footer(FooterAction* action, uint32_t value, uint32_t padding);
+-    void installPtrFooter(FooterAction* action, char* ptr, uint32_t padding);
+ 
+     void ensureSpace(uint32_t size, uint32_t alignment);
+ 
+@@ -192,7 +198,8 @@ private:
+ 
+             // Advance to end of array to install footer.?
+             fCursor = objStart + arraySize;
+-            this->installUint32Footer(
++            this->installRaw(ToU32(count));
++            this->installFooter(
+                 [](char* footerEnd) {
+                     char* objEnd = footerEnd - (sizeof(Footer) + sizeof(uint32_t));
+                     uint32_t count;
+@@ -204,7 +211,6 @@ private:
+                     }
+                     return objStart;
+                 },
+-                ToU32(count),
+                 padding);
+         }
+ 
+-- 
+2.29.2.729.g45daf8777d-goog
+

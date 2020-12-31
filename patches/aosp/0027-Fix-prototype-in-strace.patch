@@ -1,0 +1,31 @@
+From 55678fbefba01c726677fb014767b3acffff2cc6 Mon Sep 17 00:00:00 2001
+From: Peter Collingbourne <pcc@google.com>
+Date: Wed, 23 Dec 2020 16:11:19 -0800
+Subject: [PATCH 27/36] Fix prototype in strace
+
+---
+ external/strace/sysent.h | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/external/strace/sysent.h b/external/strace/sysent.h
+index cf2daed1be..d3ffb2f14f 100644
+--- a/external/strace/sysent.h
++++ b/external/strace/sysent.h
+@@ -1,11 +1,13 @@
+ #ifndef STRACE_SYSENT_H
+ #define STRACE_SYSENT_H
+ 
++struct tcb;
++
+ typedef struct sysent {
+ 	unsigned nargs;
+ 	int	sys_flags;
+ 	int	sen;
+-	int	(*sys_func)();
++	int	(*sys_func)(struct tcb *);
+ 	const char *sys_name;
+ } struct_sysent;
+ 
+-- 
+2.29.2.729.g45daf8777d-goog
+

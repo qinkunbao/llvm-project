@@ -1,7 +1,7 @@
-From c1aa2e6d5f36efb5062784ead21d9671acfd5816 Mon Sep 17 00:00:00 2001
+From 8e7b466d8c2a8a9191f8c6f11b7f829a0423ca53 Mon Sep 17 00:00:00 2001
 From: Peter Collingbourne <pcc@google.com>
 Date: Fri, 17 Jul 2020 14:49:24 -0700
-Subject: [PATCH 09/17] Fix SwiftShader build
+Subject: [PATCH 11/36] Fix SwiftShader build
 
 ---
  external/swiftshader/src/Pipeline/SpirvShaderSampling.cpp | 7 ++++---
@@ -28,5 +28,5 @@ index 2486ff5679..1e4ca6fdd5 100644
  
  std::shared_ptr<rr::Routine> SpirvShader::emitSamplerRoutine(ImageInstruction instruction, const Sampler &samplerState)
 -- 
-2.28.0.681.g6f77f65b4e-goog
+2.29.2.729.g45daf8777d-goog
 

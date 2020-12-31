@@ -1,0 +1,25 @@
+From bf5d806daca68d23a29918774d64a6fede72fd29 Mon Sep 17 00:00:00 2001
+From: Peter Collingbourne <pcc@google.com>
+Date: Wed, 30 Dec 2020 21:29:42 -0800
+Subject: [PATCH 35/36] Fix fd_get_compiler_options type
+
+---
+ .../mesa3d/src/gallium/drivers/freedreno/freedreno_screen.c     | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/external/mesa3d/src/gallium/drivers/freedreno/freedreno_screen.c b/external/mesa3d/src/gallium/drivers/freedreno/freedreno_screen.c
+index 5c0feb9e0f..3c85a93c22 100644
+--- a/external/mesa3d/src/gallium/drivers/freedreno/freedreno_screen.c
++++ b/external/mesa3d/src/gallium/drivers/freedreno/freedreno_screen.c
+@@ -685,7 +685,7 @@ fd_get_compute_param(struct pipe_screen *pscreen, enum pipe_shader_ir ir_type,
+ 
+ static const void *
+ fd_get_compiler_options(struct pipe_screen *pscreen,
+-		enum pipe_shader_ir ir, unsigned shader)
++		enum pipe_shader_ir ir, enum pipe_shader_type shader)
+ {
+ 	struct fd_screen *screen = fd_screen(pscreen);
+ 
+-- 
+2.29.2.729.g45daf8777d-goog
+

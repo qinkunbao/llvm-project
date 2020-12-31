@@ -1,0 +1,40 @@
+From 1a21d3b07e441356f09444d3e50de076dd8f6bad Mon Sep 17 00:00:00 2001
+From: Peter Collingbourne <pcc@google.com>
+Date: Thu, 16 Jul 2020 17:57:06 -0700
+Subject: [PATCH 09/36] Revert "Make ENABLE_CFI=false disable LTO as well"
+
+This reverts commit 3e406821be6a48d311eddf525cd6d4c996462a33.
+---
+ build/soong/cc/compiler.go | 2 +-
+ build/soong/cc/lto.go      | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/build/soong/cc/compiler.go b/build/soong/cc/compiler.go
+index d81a3113e5..5c813c047a 100644
+--- a/build/soong/cc/compiler.go
++++ b/build/soong/cc/compiler.go
+@@ -399,7 +399,7 @@ func (compiler *baseCompiler) compilerFlags(ctx ModuleContext, flags Flags, deps
+ 	flags.Local.ConlyFlags = config.ClangFilterUnknownCflags(flags.Local.ConlyFlags)
+ 	flags.Local.LdFlags = config.ClangFilterUnknownCflags(flags.Local.LdFlags)
+ 
+-	if !ctx.Config().EnableCFI() {
++	if ctx.Config().Getenv("TARGET_EXPERIMENTAL_PAC") != "" {
+ 		var cflags []string
+ 		for _, f := range flags.Local.CFlags {
+ 			if f != "-fwhole-program-vtables" {
+diff --git a/build/soong/cc/lto.go b/build/soong/cc/lto.go
+index 1bf9d263e6..145468426c 100644
+--- a/build/soong/cc/lto.go
++++ b/build/soong/cc/lto.go
+@@ -99,7 +99,7 @@ func (lto *lto) flags(ctx BaseModuleContext, flags Flags) Flags {
+ 	}
+ 
+ 	if lto.LTO() {
+-		if ctx.Config().EnableCFI() {
++		if ctx.Config().Getenv("TARGET_EXPERIMENTAL_PAC") == "" {
+ 			var ltoFlag string
+ 			if lto.ThinLTO() {
+ 				ltoFlag = "-flto=thin -fsplit-lto-unit"
+-- 
+2.29.2.729.g45daf8777d-goog
+

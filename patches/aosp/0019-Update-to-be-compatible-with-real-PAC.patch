@@ -1,0 +1,50 @@
+From 2fc006c368c8a7fa05782a3f02779221996fb129 Mon Sep 17 00:00:00 2001
+From: Peter Collingbourne <pcc@google.com>
+Date: Fri, 16 Oct 2020 18:45:08 -0700
+Subject: [PATCH 19/36] Update to be compatible with real PAC
+
+- Update to the new prctl calling convention
+- Disable key reset because -fptrauth-returns doesn't
+  understand NO_PAC_FUNC (if it did work, we would only
+  be able to reset IB, so change the code to do that)
+---
+ bionic/linker/linker_main.cpp                               | 4 +++-
+ frameworks/base/core/jni/com_android_internal_os_Zygote.cpp | 5 ++---
+ 2 files changed, 5 insertions(+), 4 deletions(-)
+
+diff --git a/bionic/linker/linker_main.cpp b/bionic/linker/linker_main.cpp
+index 2102926faa..a25541fd49 100644
+--- a/bionic/linker/linker_main.cpp
++++ b/bionic/linker/linker_main.cpp
+@@ -687,7 +687,9 @@ extern "C" ElfW(Addr) __linker_init(void* raw_args) {
+       __asm__ __volatile__("orr x18, x18, %0" ::"r"(0xd0ULL << 56));
+ #else
+ #define PR_PAC_SET_ENABLED_KEYS 59
+-      prctl(PR_PAC_SET_ENABLED_KEYS, PR_PAC_APIBKEY, 0, 0, 0);
++      prctl(PR_PAC_SET_ENABLED_KEYS,
++            PR_PAC_APIAKEY | PR_PAC_APIBKEY | PR_PAC_APDAKEY | PR_PAC_APDBKEY, PR_PAC_APIBKEY, 0,
++            0);
+ #endif
+     }
+   }
+diff --git a/frameworks/base/core/jni/com_android_internal_os_Zygote.cpp b/frameworks/base/core/jni/com_android_internal_os_Zygote.cpp
+index 8615db895b..7b9446f65b 100644
+--- a/frameworks/base/core/jni/com_android_internal_os_Zygote.cpp
++++ b/frameworks/base/core/jni/com_android_internal_os_Zygote.cpp
+@@ -1105,11 +1105,10 @@ static void ClearUsapTable() {
+ 
+ NO_PAC_FUNC
+ static void PAuthKeyChange(JNIEnv* env) {
+-#ifdef __aarch64__
++#if 0
+   unsigned long int hwcaps = getauxval(AT_HWCAP);
+   if (hwcaps & HWCAP_PACA) {
+-    const unsigned long key_mask = PR_PAC_APIAKEY | PR_PAC_APIBKEY |
+-                                   PR_PAC_APDAKEY | PR_PAC_APDBKEY | PR_PAC_APGAKEY;
++    const unsigned long key_mask = PR_PAC_APIBKEY;
+     if (prctl(PR_PAC_RESET_KEYS, key_mask, 0, 0, 0) != 0) {
+       ALOGE("Failed to change the PAC keys: %s", strerror(errno));
+       RuntimeAbort(env, __LINE__, "PAC key change failed.");
+-- 
+2.29.2.729.g45daf8777d-goog
+
