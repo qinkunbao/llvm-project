@@ -1,0 +1,12 @@
+diff --git a/devil/devil/android/apk_helper.py b/devil/devil/android/apk_helper.py
+index 8e7a2d713..7cd6cee91 100644
+--- a/devil/devil/android/apk_helper.py
++++ b/devil/devil/android/apk_helper.py
+@@ -401,6 +401,7 @@ class BaseApkHelper(object):
+     lib_to_abi = {
+         abis.ARM: [abis.ARM, abis.ARM_64],
+         abis.ARM_64: [abis.ARM_64],
++        'arm64-v9a': [abis.ARM_64],
+         abis.X86: [abis.X86, abis.X86_64],
+         abis.X86_64: [abis.X86_64]
+     }

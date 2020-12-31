@@ -1,0 +1,11 @@
+#!/bin/sh -xe
+
+fish -c 'ao emupac m out.emupac/soong/.intermediates/external/libunwind_llvm/libunwind_llvm/android_arm64_armv8-a_sdk_static/libunwind_llvm.a'
+
+rm -rf /tmp/libgcc
+mkdir /tmp/libgcc
+cd /tmp/libgcc
+ar x ~/2/aosp/out.emupac/soong/.intermediates/external/libunwind_llvm/libunwind_llvm/android_arm64_armv8-a_sdk_static/libunwind_llvm.a
+ar x ~/l4/ra/lib/clang/12.0.0/lib/linux/libclang_rt.builtins-aarch64-android.a
+~/l4/ra/bin/llvm-ar cru libgcc_real.a *.o
+cp libgcc_real.a ~/c/src/third_party/android_ndk/toolchains/llvm/prebuilt/linux-x86_64/lib/gcc/aarch64-linux-android/4.9.x/libgcc_real.a
