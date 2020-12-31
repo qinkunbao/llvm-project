@@ -1,36 +1,57 @@
 diff --git a/build/config/android/abi.gni b/build/config/android/abi.gni
-index ed7c2ffc8be1..cf488ad9e49b 100644
+index b556473a3097..ac82cc3903c9 100644
 --- a/build/config/android/abi.gni
 +++ b/build/config/android/abi.gni
-@@ -50,7 +50,7 @@ if (current_cpu == "x86") {
+@@ -34,6 +34,8 @@ declare_args() {
+ 
+   # Build additional browser splits with HWASAN instrumentation enabled.
+   build_hwasan_splits = false
++
++  use_pac = false
+ }
+ 
+ assert(!devtools_instrumentation_dumping || use_order_profiling,
+@@ -55,7 +57,11 @@ if (current_cpu == "x86") {
  } else if (current_cpu == "x64") {
    android_app_abi = "x86_64"
  } else if (current_cpu == "arm64") {
 -  android_app_abi = "arm64-v8a"
-+  android_app_abi = "arm64-v9a"
++  if (use_pac) {
++    android_app_abi = "arm64-v9a"
++  } else {
++    android_app_abi = "arm64-v8a"
++  }
  } else if (current_cpu == "mips64el") {
    android_app_abi = "mips64"
  } else {
 diff --git a/build/config/compiler/BUILD.gn b/build/config/compiler/BUILD.gn
-index a84942455d74..8fb48310a2bf 100644
+index 9d66490cdb55..f00aff5e3fb4 100644
 --- a/build/config/compiler/BUILD.gn
 +++ b/build/config/compiler/BUILD.gn
-@@ -152,6 +152,8 @@ declare_args() {
-        (is_win && target_cpu == "x86") || (is_win && target_cpu == "x64") ||
-        (is_android && target_cpu == "arm") ||
-        (is_android && target_cpu == "arm64"))
-+
-+  use_fake_pac = false
+@@ -43,6 +43,9 @@ if (is_nacl) {
+   # is_nacl conditions.
+   import("//build/config/nacl/config.gni")
  }
++if (is_android) {
++  import("//build/config/android/abi.gni")
++}
  
  declare_args() {
-@@ -1045,6 +1047,10 @@ config("compiler_codegen") {
+   # Normally, Android builds are lightly optimized, even for debug builds, to
+@@ -1078,6 +1081,17 @@ config("compiler_codegen") {
      # has been resolved, and -mno-outline is obeyed by the linker during
      # ThinLTO.
      ldflags += [ "-Wl,-mllvm,-enable-machine-outliner=never" ]
 +
-+    if (use_fake_pac) {
-+      cflags += [ "-fptrauth-returns", "-fptrauth-intrinsics", "-fptrauth-calls", "-fptrauth-indirect-gotos", "-fptrauth-auth-traps", "-mllvm", "-fake-pac"]
++    if (use_pac) {
++      cflags += [
++        "-mbranch-protection=pac-ret+b-key",
++        "-fptrauth-intrinsics",
++        "-fptrauth-calls",
++        "-fptrauth-indirect-gotos",
++        "-fptrauth-auth-traps",
++        "-march=armv8.3a",
++      ]
 +    }
    }
  
@@ -49,14 +70,23 @@ index 399ea36ce382..d0b207b82764 100644
    if (device_api_level() >= __ANDROID_API_O__) {
      /* Leaked intentionally! */
 diff --git a/third_party/blink/renderer/platform/heap/asm/SaveRegisters_arm64.S b/third_party/blink/renderer/platform/heap/asm/SaveRegisters_arm64.S
-index ab6c6ffecb8c..43bf390bd454 100644
+index 46466365653e..57038b880707 100644
 --- a/third_party/blink/renderer/platform/heap/asm/SaveRegisters_arm64.S
 +++ b/third_party/blink/renderer/platform/heap/asm/SaveRegisters_arm64.S
-@@ -65,6 +65,7 @@ asm_function PushAllRegisters
+@@ -62,12 +62,13 @@ asm_function PushAllRegisters
+         stp x30, x29, [sp, #0]  // x30 is lr.
+ 
+         /* Pass the first argument unchanged (x0)
+-         * and pass the stack pointer as third argument to the
++         * and pass the stack pointer as second argument to the
+          * callback function.
           */
-         mov x2, x1
+-        mov x2, x1
++        mov x30, x1
          mov x1, sp
-+        and x2, x2, 0x7fffffffff
-         blr x2
+-        blr x2
++        xpaclri
++        blr x30
  
          /* We don't restore all registers since they are callee saved (so
+          * the callback didn't clobber them) and we didn't modify them either.
