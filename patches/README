@@ -73,9 +73,13 @@ directories in external.
 Patching the kernel
 -------------------
 
-This prototype requires use of the android-mainline kernel. The patches
-in the linux directory must be applied and the kernel must be rebuilt.
-This applies to both FVP and DragonBoard 845c. Follow the normal
+This prototype requires use of the android-mainline kernel. This patch
+series must be applied to the kernel:
+   https://linux-review.googlesource.com/id/Ieddf6b580d23c9e0bed45a822dabe72d2ffc9a8e
+On top of that, the patch in the linux directory must be applied and
+the kernel must be rebuilt.
+
+This applies to FVP, DragonBoard 845c and M1. Follow the normal
 target-specific instructions linked below to rebuild the kernel.
 
 Building AOSP
@@ -102,7 +106,7 @@ Aside from that, follow the target-specific instructions.
 
 For FVP, see https://cs.android.com/android/platform/superproject/+/master:device/generic/goldfish/fvpbase/README.md
 For DragonBoard 845c, see https://source.android.com/setup/build/devices#845cdragonboard
-For M1, see https://github.com/741g/android-emulator-m1-preview
+For M1, see https://github.com/google/android-emulator-m1-preview
 
 Running AOSP
 ------------
