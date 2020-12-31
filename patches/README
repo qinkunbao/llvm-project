@@ -1,10 +1,11 @@
 Building AOSP with the PAC Prototype
 ====================================
 
-This prototype supports two possible targets:
+This prototype supports three possible targets:
 
 1. An emulated device (FVP) which uses real PAC instructions.
 2. A real device (DragonBoard 845c) which uses fake PAC.
+3. A hypervisor guest (Apple M1) which uses real PAC instructions.
 
 Fake PAC is a compiler hack that uses alternative instruction sequences
 in place of the PAC instructions, in order to enable testing on
@@ -89,10 +90,10 @@ Some environment variables need to be set. Set
 TARGET_EXPERIMENTAL_PAC=1 to build with real PAC, or
 TARGET_EXPERIMENTAL_PAC=fake to build with fake PAC.
 
-Set LLVM_PREBUILTS_VERSION to the basename of your LLVM
-source directory. This is the name of the subdirectory under
-prebuilts/clang/host/linux-x86 that was created by the frankendroid
-script.
+Set LLVM_PREBUILTS_VERSION and LLVM_BINDGEN_PREBUILTS_VERSION to
+the basename of your LLVM source directory. This is the name of the
+subdirectory under prebuilts/clang/host/linux-x86 that was created
+by the frankendroid script.
 
 Set ENABLE_CFI=false because this prototype is not compatible
 with the software-based CFI used in Android.
@@ -101,6 +102,7 @@ Aside from that, follow the target-specific instructions.
 
 For FVP, see https://cs.android.com/android/platform/superproject/+/master:device/generic/goldfish/fvpbase/README.md
 For DragonBoard 845c, see https://source.android.com/setup/build/devices#845cdragonboard
+For M1, see https://github.com/741g/android-emulator-m1-preview
 
 Running AOSP
 ------------
