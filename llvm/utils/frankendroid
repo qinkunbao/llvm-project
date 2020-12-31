@@ -32,10 +32,11 @@ cp $builddir/bin/clang $treepath/bin/clang-$majorver
 cp $builddir/bin/clang $treepath/bin/clang.real
 ln -sf clang $treepath/bin.real/clang++
 ln -sf ../bin/ld.lld $treepath/bin.real/ld.lld
+cflags='-w -Wno-invalid-partial-specialization -fno-sanitize=unsigned-shift-base'
 echo '#!/bin/sh
-exec '$treepath_dest'/bin.real/clang "$@" -w -Wno-invalid-partial-specialization -fcommon' > $treepath/bin/clang
+exec '$treepath_dest'/bin.real/clang "$@" '$cflags > $treepath/bin/clang
 echo '#!/bin/sh
-exec '$treepath_dest'/bin.real/clang++ "$@" -w -Wno-invalid-partial-specialization' > $treepath/bin/clang++
+exec '$treepath_dest'/bin.real/clang++ "$@" '$cflags > $treepath/bin/clang++
 echo '#!/bin/sh
 exit 0' > $treepath/bin/clang-tidy
 
