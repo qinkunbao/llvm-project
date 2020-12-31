@@ -26,7 +26,7 @@ if (current_os == "android") {
   }
   if (current_cpu == "arm64") {
     target_flags += [
-      "-fptrauth-returns",
+      "-mbranch-protection=pac-ret+b-key",
       "-fptrauth-intrinsics",
       "-fptrauth-calls",
       "-fptrauth-indirect-gotos",
