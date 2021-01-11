@@ -10,15 +10,9 @@
 
 #if SCUDO_FUCHSIA
 #include <zxtest/zxtest.h>
+#define EXPECT_DEATH(X, Y) ASSERT_DEATH([&]() { X; }, Y)
 #else
 #include "gtest/gtest.h"
-#endif
-
-// If EXPECT_DEATH isn't defined, make it a no-op.
-#ifndef EXPECT_DEATH
-#define EXPECT_DEATH(X, Y)                                                     \
-  do {                                                                         \
-  } while (0)
 #endif
 
 // If EXPECT_STREQ isn't defined, define our own simple one.

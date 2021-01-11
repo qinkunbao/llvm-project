@@ -15,6 +15,39 @@
 // do not have to abide by the same requirement.
 #ifndef SCUDO_MALLOC_ALIGNMENT
 #define SCUDO_MALLOC_ALIGNMENT FIRST_32_SECOND_64(8U, 16U)
+
+static void *tag(void *ptr) {
+#ifdef __aarch64__
+  if (!ptr)
+    return 0;
+  return reinterpret_cast<void *>(reinterpret_cast<uintptr_t>(ptr) | (0xb4ULL << 56));
+#else
+  return ptr;
+#endif
+}
+
+static void *untag(void *ptr) {
+#ifdef __aarch64__
+  auto uptr = reinterpret_cast<uintptr_t>(ptr);
+  if (uptr != 0 && (uptr & (0xffULL << 56)) != (0xb4ULL << 56))
+    __builtin_trap();
+  return reinterpret_cast<void *>(uptr & ((1ULL << 56) - 1));
+#else
+  return ptr;
+#endif
+}
+
+struct wrapper {
+  void (*callback)(uintptr_t base, size_t size, void *arg);
+  void *arg;
+};
+
+static void wrapper_callback(uintptr_t base, size_t size, void *arg) {
+  auto *w = reinterpret_cast<wrapper *>(arg);
+  w->callback(reinterpret_cast<uintptr_t>(tag(reinterpret_cast<void *>(base))),
+              size, w->arg);
+}
+
 #endif
 
 extern "C" {
@@ -28,12 +61,12 @@ INTERFACE WEAK void *SCUDO_PREFIX(calloc)(size_t nmemb, size_t size) {
     }
     scudo::reportCallocOverflow(nmemb, size);
   }
-  return scudo::setErrnoOnNull(SCUDO_ALLOCATOR.allocate(
-      Product, scudo::Chunk::Origin::Malloc, SCUDO_MALLOC_ALIGNMENT, true));
+  return tag(scudo::setErrnoOnNull(SCUDO_ALLOCATOR.allocate(
+      Product, scudo::Chunk::Origin::Malloc, SCUDO_MALLOC_ALIGNMENT, true)));
 }
 
 INTERFACE WEAK void SCUDO_PREFIX(free)(void *ptr) {
-  SCUDO_ALLOCATOR.deallocate(ptr, scudo::Chunk::Origin::Malloc);
+  SCUDO_ALLOCATOR.deallocate(untag(ptr), scudo::Chunk::Origin::Malloc);
 }
 
 INTERFACE WEAK struct SCUDO_MALLINFO SCUDO_PREFIX(mallinfo)(void) {
@@ -55,8 +88,8 @@ INTERFACE WEAK struct SCUDO_MALLINFO SCUDO_PREFIX(mallinfo)(void) {
 }
 
 INTERFACE WEAK void *SCUDO_PREFIX(malloc)(size_t size) {
-  return scudo::setErrnoOnNull(SCUDO_ALLOCATOR.allocate(
-      size, scudo::Chunk::Origin::Malloc, SCUDO_MALLOC_ALIGNMENT));
+  return tag(scudo::setErrnoOnNull(SCUDO_ALLOCATOR.allocate(
+      size, scudo::Chunk::Origin::Malloc, SCUDO_MALLOC_ALIGNMENT)));
 }
 
 #if SCUDO_ANDROID
@@ -64,7 +97,7 @@ INTERFACE WEAK size_t SCUDO_PREFIX(malloc_usable_size)(const void *ptr) {
 #else
 INTERFACE WEAK size_t SCUDO_PREFIX(malloc_usable_size)(void *ptr) {
 #endif
-  return SCUDO_ALLOCATOR.getUsableSize(ptr);
+  return SCUDO_ALLOCATOR.getUsableSize(untag(ptr));
 }
 
 INTERFACE WEAK void *SCUDO_PREFIX(memalign)(size_t alignment, size_t size) {
@@ -85,8 +118,8 @@ INTERFACE WEAK void *SCUDO_PREFIX(memalign)(size_t alignment, size_t size) {
       scudo::reportAlignmentNotPowerOfTwo(alignment);
     }
   }
-  return SCUDO_ALLOCATOR.allocate(size, scudo::Chunk::Origin::Memalign,
-                                  alignment);
+  return tag(SCUDO_ALLOCATOR.allocate(size, scudo::Chunk::Origin::Memalign,
+                                      alignment));
 }
 
 INTERFACE WEAK int SCUDO_PREFIX(posix_memalign)(void **memptr, size_t alignment,
@@ -100,7 +133,7 @@ INTERFACE WEAK int SCUDO_PREFIX(posix_memalign)(void **memptr, size_t alignment,
       SCUDO_ALLOCATOR.allocate(size, scudo::Chunk::Origin::Memalign, alignment);
   if (UNLIKELY(!Ptr))
     return ENOMEM;
-  *memptr = Ptr;
+  *memptr = tag(Ptr);
   return 0;
 }
 
@@ -114,32 +147,36 @@ INTERFACE WEAK void *SCUDO_PREFIX(pvalloc)(size_t size) {
     scudo::reportPvallocOverflow(size);
   }
   // pvalloc(0) should allocate one page.
-  return scudo::setErrnoOnNull(SCUDO_ALLOCATOR.allocate(
+  return tag(scudo::setErrnoOnNull(SCUDO_ALLOCATOR.allocate(
       size ? scudo::roundUpTo(size, PageSize) : PageSize,
-      scudo::Chunk::Origin::Memalign, PageSize));
+      scudo::Chunk::Origin::Memalign, PageSize)));
 }
 
 INTERFACE WEAK void *SCUDO_PREFIX(realloc)(void *ptr, size_t size) {
   if (!ptr)
-    return scudo::setErrnoOnNull(SCUDO_ALLOCATOR.allocate(
-        size, scudo::Chunk::Origin::Malloc, SCUDO_MALLOC_ALIGNMENT));
+    return tag(scudo::setErrnoOnNull(SCUDO_ALLOCATOR.allocate(
+        size, scudo::Chunk::Origin::Malloc, SCUDO_MALLOC_ALIGNMENT)));
   if (size == 0) {
-    SCUDO_ALLOCATOR.deallocate(ptr, scudo::Chunk::Origin::Malloc);
+    SCUDO_ALLOCATOR.deallocate(untag(ptr), scudo::Chunk::Origin::Malloc);
     return nullptr;
   }
-  return scudo::setErrnoOnNull(
-      SCUDO_ALLOCATOR.reallocate(ptr, size, SCUDO_MALLOC_ALIGNMENT));
+  return tag(scudo::setErrnoOnNull(
+      SCUDO_ALLOCATOR.reallocate(untag(ptr), size, SCUDO_MALLOC_ALIGNMENT)));
 }
 
 INTERFACE WEAK void *SCUDO_PREFIX(valloc)(size_t size) {
-  return scudo::setErrnoOnNull(SCUDO_ALLOCATOR.allocate(
-      size, scudo::Chunk::Origin::Memalign, scudo::getPageSizeCached()));
+  return tag(scudo::setErrnoOnNull(SCUDO_ALLOCATOR.allocate(
+      size, scudo::Chunk::Origin::Memalign, scudo::getPageSizeCached())));
 }
 
 INTERFACE WEAK int SCUDO_PREFIX(malloc_iterate)(
     uintptr_t base, size_t size,
     void (*callback)(uintptr_t base, size_t size, void *arg), void *arg) {
-  SCUDO_ALLOCATOR.iterateOverChunks(base, size, callback, arg);
+  wrapper w = {callback, arg};
+#ifdef __aarch64__
+  base &= (1ULL << 56) - 1;
+#endif
+  SCUDO_ALLOCATOR.iterateOverChunks(base, size, wrapper_callback, &w);
   return 0;
 }
 
@@ -207,8 +244,8 @@ INTERFACE WEAK void *SCUDO_PREFIX(aligned_alloc)(size_t alignment,
     }
     scudo::reportInvalidAlignedAllocAlignment(alignment, size);
   }
-  return scudo::setErrnoOnNull(
-      SCUDO_ALLOCATOR.allocate(size, scudo::Chunk::Origin::Malloc, alignment));
+  return tag(scudo::setErrnoOnNull(
+      SCUDO_ALLOCATOR.allocate(size, scudo::Chunk::Origin::Malloc, alignment)));
 }
 
 INTERFACE WEAK int SCUDO_PREFIX(malloc_info)(UNUSED int options, FILE *stream) {

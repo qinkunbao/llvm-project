@@ -305,6 +305,7 @@ TEST(ScudoWrappersCTest, MallocIterateBoundary) {
 
 // We expect heap operations within a disable/enable scope to deadlock.
 TEST(ScudoWrappersCTest, MallocDisableDeadlock) {
+#if 0
   EXPECT_DEATH(
       {
         void *P = malloc(Size);
@@ -316,6 +317,7 @@ TEST(ScudoWrappersCTest, MallocDisableDeadlock) {
         malloc_enable();
       },
       "");
+#endif
 }
 
 // Fuchsia doesn't have fork or malloc_info.
