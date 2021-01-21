@@ -132,6 +132,16 @@ unsigned AArch64InstrInfo::getInstSizeInBytes(const MachineInstr &MI) const {
   case AArch64::AUTPAC:
     NumBytes = 48;
     break;
+  case AArch64::AUTH_TCRETURNrii:
+  case AArch64::AUTH_TCRETURNriri:
+  case AArch64::AUTH_TCRETURN_BTIrii:
+  case AArch64::AUTH_TCRETURN_BTIriri:
+  case AArch64::TCRETURNri:
+  case AArch64::TCRETURNriBTI:
+  case AArch64::TCRETURNriALL:
+  case AArch64::TCRETURNdi:
+    // 4 fixed + 12 variable to check LR.
+    return 16;
   case AArch64::JumpTableDest32:
   case AArch64::JumpTableDest16:
   case AArch64::JumpTableDest8:
