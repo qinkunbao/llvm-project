@@ -2208,6 +2208,54 @@ bool IRTranslator::translateKnownIntrinsic(const CallInst &CI, Intrinsic::ID ID,
 
     return true;
   }
+  case Intrinsic::ptrauth_sign: {
+    Value *Ptr = CI.getArgOperand(0);
+    auto *Key = cast<ConstantInt>(CI.getArgOperand(1));
+    Value *Disc = CI.getArgOperand(2);
+
+    if (auto *PtrToInt = dyn_cast<PtrToIntOperator>(Ptr))
+      Ptr = PtrToInt->getOperand(0);
+
+    APInt PtrOff(DL->getPointerSizeInBits(), 0);
+    Value *BasePtr =
+        Ptr->stripAndAccumulateConstantOffsets(*DL, PtrOff,
+                                               /*AllowNonInbounds=*/true);
+
+    // We found that the raw pointer is a pointer constant + constant offset:
+    // we can turn it into the (hardened) signed constant pointer
+    // materialization sequence, via G_PTRAUTH_GLOBAL_VALUE.
+    // Otherwise, let it be handled as a plain raw intrinsic.
+    if (!isa<GlobalValue>(BasePtr))
+      return false;
+
+    auto *DiscC = dyn_cast<ConstantInt>(Disc);
+    Value *AddrDisc = nullptr;
+
+    auto *BlendInt = dyn_cast<IntrinsicInst>(Disc);
+    if (BlendInt && BlendInt->getIntrinsicID() == Intrinsic::ptrauth_blend) {
+      DiscC = dyn_cast<ConstantInt>(BlendInt->getOperand(1));
+      AddrDisc = BlendInt->getOperand(0);
+    }
+    // If we can't isolate the constant discriminator, treat the whole thing
+    // as a variable address discriminator.
+    if (!DiscC)
+      AddrDisc = Disc;
+
+    if (!AddrDisc)
+      AddrDisc = Constant::getNullValue(Disc->getType());
+
+    Register PtrRes =
+        MRI->createGenericVirtualRegister(getLLTForType(*Ptr->getType(), *DL));
+
+    MIRBuilder.buildInstr(TargetOpcode::G_PTRAUTH_GLOBAL_VALUE)
+        .addDef(PtrRes)
+        .addUse(getOrCreateVReg(*Ptr))
+        .addImm(Key->getZExtValue())
+        .addUse(getOrCreateVReg(*AddrDisc))
+        .addImm(DiscC ? DiscC->getZExtValue() : 0);
+    MIRBuilder.buildPtrToInt(getOrCreateVReg(CI), PtrRes);
+    return true;
+  }
 #define INSTRUCTION(NAME, NARG, ROUND_MODE, INTRINSIC)  \
   case Intrinsic::INTRINSIC:
 #include "llvm/IR/ConstrainedOps.def"

@@ -11174,8 +11174,21 @@ static bool areOperandsOfVmullHighP64(Value *Op1, Value *Op2) {
 /// shufflevectors extracts and/or sext/zext can be folded into (u,s)subl(2).
 bool AArch64TargetLowering::shouldSinkOperands(
     Instruction *I, SmallVectorImpl<Use *> &Ops) const {
-  if (!I->getType()->isVectorTy())
-    return false;
+
+  // Most of this function deals with vector ops, except for one special case:
+  // llvm.ptrauth.sign of constants get special treatment in the builder, so
+  // it's desirable (and should really be guaranteed from a hardening
+  // perspective) that we be able to fold the discriminator into the sign
+  // itself.  Sink it near the sign.
+  if (!I->getType()->isVectorTy()) {
+    IntrinsicInst *II = dyn_cast<IntrinsicInst>(I);
+    if (!II || II->getIntrinsicID() != Intrinsic::ptrauth_sign)
+      return false;
+    if (!isa<Instruction>(II->getOperand(2)))
+      return false;
+    Ops.push_back(&II->getOperandUse(2));
+    return true;
+  }
 
   if (IntrinsicInst *II = dyn_cast<IntrinsicInst>(I)) {
     switch (II->getIntrinsicID()) {
