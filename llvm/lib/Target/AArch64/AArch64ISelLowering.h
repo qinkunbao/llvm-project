@@ -54,6 +54,11 @@ enum NodeType : unsigned {
   // Pseudo for a OBJC call that gets emitted together with a special `mov
   // x29, x29` marker instruction.
   CALL_RVMARKER,
+  // Function call, authenticating the callee value first:
+  // AUTH_CALL chain, callee, auth key #, discriminator, operands.
+  AUTH_CALL,
+  // AUTH_TC_RETURN chain, callee, fpdiff, auth key #, discriminator, operands.
+  AUTH_TC_RETURN,
 
   // Produces the full sequence of instructions for getting the thread pointer
   // offset of a variable into X0, using the TLSDesc model.
@@ -778,6 +783,10 @@ public:
       const SmallVectorImpl<MachineBasicBlock *> &Exits) const override;
 
   bool supportSwiftError() const override {
+    return true;
+  }
+
+  bool supportPtrAuthBundles() const override {
     return true;
   }
 
