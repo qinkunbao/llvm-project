@@ -1020,6 +1020,17 @@ let Predicates = [HasComplxNum, HasNEON] in {
                          (v4f32 (bitconvert (v2i64 (AArch64duplane64 (v2i64 V128:$Rm), VectorIndexD:$idx))))>;
 }
 
+def AArch64authcall : SDNode<"AArch64ISD::AUTH_CALL",
+                             SDTypeProfile<0, -1, [SDTCisPtrTy<0>]>,
+                             [SDNPHasChain, SDNPOptInGlue, SDNPOutGlue,
+                              SDNPVariadic]>;
+
+def AArch64authtcret: SDNode<"AArch64ISD::AUTH_TC_RETURN",
+                             SDTypeProfile<0, 4, [SDTCisPtrTy<0>,
+                                                  SDTCisVT<2, i32>,
+                                                  SDTCisVT<3, i64>]>,
+                             [SDNPHasChain,  SDNPOptInGlue, SDNPVariadic]>;
+
 // v8.3a Pointer Authentication
 // These instructions inhabit part of the hint space and so can be used for
 // armv8 targets. Keeping the old HINT mnemonic when compiling without PA is
@@ -1138,6 +1149,15 @@ let Predicates = [HasPAuth] in {
     def BLRABZ  : AuthOneOperand<0b001, 1, "blrabz">;
   }
 
+  def : Pat<(AArch64authcall GPR64:$Rn, (i32 0), GPR64sp:$Rm),
+            (BLRAA GPR64:$Rn, GPR64:$Rm)>;
+  def : Pat<(AArch64authcall GPR64:$Rn, (i32 1), GPR64sp:$Rm),
+            (BLRAB GPR64:$Rn, GPR64:$Rm)>;
+  def : Pat<(AArch64authcall GPR64:$Rn, (i32 0), (i64 0)),
+            (BLRAAZ GPR64:$Rn)>;
+  def : Pat<(AArch64authcall GPR64:$Rn, (i32 1), (i64 0)),
+            (BLRABZ GPR64:$Rn)>;
+
   let isReturn = 1, isTerminator = 1, isBarrier = 1 in {
     def RETAA   : AuthReturn<0b010, 0, "retaa">;
     def RETAB   : AuthReturn<0b010, 1, "retab">;
@@ -1175,6 +1195,44 @@ let Predicates = [HasPAuth] in {
     let mayLoad = 0;
     let Defs = [X16,X17,NZCV];
     let Uses = [X16];
+  }
+
+  let isCall = 1, isTerminator = 1, isReturn = 1, isBarrier = 1,
+      Uses = [SP] in {
+    def AUTH_TCRETURNriri : Pseudo<(outs), (ins tcGPR64:$dst, i32imm:$FPDiff,
+                                                i32imm:$Key, tcGPR64:$Rn),
+                                 []>, Sched<[WriteBrReg]>;
+    def AUTH_TCRETURNrii : Pseudo<(outs), (ins tcGPR64:$dst, i32imm:$FPDiff,
+                                                i32imm:$Key),
+                                 []>, Sched<[WriteBrReg]>;
+    def AUTH_TCRETURN_BTIriri : Pseudo<(outs), (ins rtcGPR64:$dst, i32imm:$FPDiff,
+                                                    i32imm:$Key, tcGPR64:$Rn),
+                                 []>, Sched<[WriteBrReg]>;
+    def AUTH_TCRETURN_BTIrii : Pseudo<(outs), (ins rtcGPR64:$dst, i32imm:$FPDiff,
+                                                    i32imm:$Key),
+                                 []>, Sched<[WriteBrReg]>;
+  }
+
+  let Predicates = [NotUseBTI] in {
+    def : Pat<(AArch64authtcret tcGPR64:$dst, (i32 timm:$FPDiff), (i32 timm:$Key),
+                                tcGPR64:$Rn),
+              (AUTH_TCRETURNriri tcGPR64:$dst, imm:$FPDiff, imm:$Key,
+                                 tcGPR64:$Rn)>;
+
+    def : Pat<(AArch64authtcret tcGPR64:$dst, (i32 timm:$FPDiff), (i32 timm:$Key),
+                                (i64 0)),
+              (AUTH_TCRETURNrii tcGPR64:$dst, imm:$FPDiff, imm:$Key)>;
+  }
+
+  let Predicates = [UseBTI] in {
+    def : Pat<(AArch64authtcret rtcGPR64:$dst, (i32 timm:$FPDiff), (i32 timm:$Key),
+                                tcGPR64:$Rn),
+              (AUTH_TCRETURN_BTIriri rtcGPR64:$dst, imm:$FPDiff, imm:$Key,
+                                     tcGPR64:$Rn)>;
+
+    def : Pat<(AArch64authtcret rtcGPR64:$dst, (i32 timm:$FPDiff), (i32 timm:$Key),
+                                (i64 0)),
+              (AUTH_TCRETURN_BTIrii rtcGPR64:$dst, imm:$FPDiff, imm:$Key)>;
   }
 }
 

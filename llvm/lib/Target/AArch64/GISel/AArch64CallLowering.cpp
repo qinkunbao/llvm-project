@@ -520,6 +520,21 @@ bool AArch64CallLowering::lowerFormalArguments(
   return true;
 }
 
+static bool isConstantZero(Register Reg, MachineRegisterInfo &MRI) {
+  if (!MRI.hasOneDef(Reg))
+    return false;
+
+  MachineInstr &DefMI = *MRI.def_instr_begin(Reg);
+  if (DefMI.getOpcode() != TargetOpcode::G_CONSTANT)
+    return false;
+  if (DefMI.getOperand(1).isImm() && DefMI.getOperand(1).getImm() == 0)
+    return true;
+  if (DefMI.getOperand(1).isCImm() &&
+      DefMI.getOperand(1).getCImm()->getZExtValue() == 0)
+    return true;
+
+  return false;
+}
 /// Return true if the calling convention is one that we can guarantee TCO for.
 static bool canGuaranteeTCO(CallingConv::ID CC) {
   return CC == CallingConv::Fast;
@@ -746,20 +761,41 @@ bool AArch64CallLowering::isEligibleForTailCallOptimization(
   return true;
 }
 
-static unsigned getCallOpcode(const MachineFunction &CallerF, bool IsIndirect,
-                              bool IsTailCall) {
-  if (!IsTailCall)
-    return IsIndirect ? getBLRCallOpcode(CallerF) : (unsigned)AArch64::BL;
+static unsigned
+getCallOpcode(const MachineFunction &CallerF, bool IsIndirect, bool IsTailCall,
+              llvm::Optional<CallLowering::PointerAuthInfo> &PAI,
+              MachineRegisterInfo &MRI) {
+  if (!IsTailCall) {
+    if (!PAI)
+      return IsIndirect ? getBLRCallOpcode(CallerF) : (unsigned)AArch64::BL;
+
+    assert(IsIndirect && "authenticated direct call");
+    assert(PAI->Key == 0 || PAI->Key == 1 && "invalid ptrauth key");
+    if (isConstantZero(PAI->Discriminator, MRI))
+      return PAI->Key == 0 ? AArch64::BLRAAZ : AArch64::BLRABZ;
+    else
+      return PAI->Key == 0 ? AArch64::BLRAA : AArch64::BLRAB;
+  }
 
   if (!IsIndirect)
     return AArch64::TCRETURNdi;
 
   // When BTI is enabled, we need to use TCRETURNriBTI to make sure that we use
   // x16 or x17.
-  if (CallerF.getInfo<AArch64FunctionInfo>()->branchTargetEnforcement())
-    return AArch64::TCRETURNriBTI;
+  if (CallerF.getInfo<AArch64FunctionInfo>()->branchTargetEnforcement()) {
+    if (!PAI)
+      return AArch64::TCRETURNriBTI;
 
-  return AArch64::TCRETURNri;
+    return isConstantZero(PAI->Discriminator, MRI)
+               ? AArch64::AUTH_TCRETURN_BTIrii
+               : AArch64::AUTH_TCRETURN_BTIriri;
+  }
+
+  if (!PAI)
+    return AArch64::TCRETURNri;
+
+  return isConstantZero(PAI->Discriminator, MRI) ? AArch64::AUTH_TCRETURNrii
+                                                 : AArch64::AUTH_TCRETURNriri;
 }
 
 bool AArch64CallLowering::lowerTailCall(
@@ -774,14 +810,6 @@ bool AArch64CallLowering::lowerTailCall(
   // True when we're tail calling, but without -tailcallopt.
   bool IsSibCall = !MF.getTarget().Options.GuaranteedTailCallOpt;
 
-  // TODO: Right now, regbankselect doesn't know how to handle the rtcGPR64
-  // register class. Until we can do that, we should fall back here.
-  if (MF.getInfo<AArch64FunctionInfo>()->branchTargetEnforcement()) {
-    LLVM_DEBUG(
-        dbgs() << "Cannot lower indirect tail calls with BTI enabled yet.\n");
-    return false;
-  }
-
   // Find out which ABI gets to decide where things go.
   CallingConv::ID CalleeCC = Info.CallConv;
   CCAssignFn *AssignFnFixed;
@@ -792,16 +820,36 @@ bool AArch64CallLowering::lowerTailCall(
   if (!IsSibCall)
     CallSeqStart = MIRBuilder.buildInstr(AArch64::ADJCALLSTACKDOWN);
 
-  unsigned Opc = getCallOpcode(MF, Info.Callee.isReg(), true);
+  unsigned Opc = getCallOpcode(MF, Info.Callee.isReg(), true, Info.PAI, MRI);
   auto MIB = MIRBuilder.buildInstrNoInsert(Opc);
   MIB.add(Info.Callee);
+
+  // Tell the call which registers are clobbered.
+  auto TRI = MF.getSubtarget<AArch64Subtarget>().getRegisterInfo();
 
   // Byte offset for the tail call. When we are sibcalling, this will always
   // be 0.
   MIB.addImm(0);
 
+  // Authenticated tail calls always take a key argument for lowering later.
+  if (Opc == AArch64::AUTH_TCRETURNrii || Opc == AArch64::AUTH_TCRETURNriri ||
+      Opc == AArch64::AUTH_TCRETURN_BTIrii ||
+      Opc == AArch64::AUTH_TCRETURN_BTIriri) {
+    assert(Info.PAI->Key == 0 || Info.PAI->Key == 1 && "invalid key");
+    MIB.addImm(Info.PAI->Key);
+  }
+
+  // And possibly a non-zero discriminator.
+  if (Opc == AArch64::AUTH_TCRETURNriri ||
+      Opc == AArch64::AUTH_TCRETURN_BTIriri) {
+    MIB.addUse(Info.PAI->Discriminator);
+    MIB->getOperand(3).setReg(constrainOperandRegClass(
+        MF, *TRI, MRI, *MF.getSubtarget().getInstrInfo(),
+        *MF.getSubtarget().getRegBankInfo(), *MIB, MIB->getDesc(),
+        MIB->getOperand(3), 3));
+  }
+
   // Tell the call which registers are clobbered.
-  auto TRI = MF.getSubtarget<AArch64Subtarget>().getRegisterInfo();
   const uint32_t *Mask = TRI->getCallPreservedMask(MF, CalleeCC);
   if (MF.getSubtarget<AArch64Subtarget>().hasCustomCallingConv())
     TRI->UpdateCustomCallPreservedMask(MF, &Mask);
@@ -950,13 +998,22 @@ bool AArch64CallLowering::lowerCall(MachineIRBuilder &MIRBuilder,
 
   // Create a temporarily-floating call instruction so we can add the implicit
   // uses of arg registers.
-  unsigned Opc = getCallOpcode(MF, Info.Callee.isReg(), false);
+  unsigned Opc = getCallOpcode(MF, Info.Callee.isReg(), false, Info.PAI, MRI);
 
   auto MIB = MIRBuilder.buildInstrNoInsert(Opc);
   MIB.add(Info.Callee);
 
   // Tell the call which registers are clobbered.
   auto TRI = MF.getSubtarget<AArch64Subtarget>().getRegisterInfo();
+  if (Opc == AArch64::BLRAA || Opc == AArch64::BLRAB) {
+    MIB.addUse(Info.PAI->Discriminator);
+    MIB->getOperand(1).setReg(constrainOperandRegClass(
+        MF, *TRI, MRI, *MF.getSubtarget().getInstrInfo(),
+        *MF.getSubtarget().getRegBankInfo(), *MIB, MIB->getDesc(),
+        MIB->getOperand(1), 1));
+  }
+
+  // Tell the call which registers are clobbered.
   const uint32_t *Mask = TRI->getCallPreservedMask(MF, Info.CallConv);
   if (MF.getSubtarget<AArch64Subtarget>().hasCustomCallingConv())
     TRI->UpdateCustomCallPreservedMask(MF, &Mask);

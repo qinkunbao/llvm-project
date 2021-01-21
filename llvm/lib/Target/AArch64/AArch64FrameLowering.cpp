@@ -191,6 +191,12 @@ static uint64_t getArgumentPopSize(MachineFunction &MF,
     IsTailCallReturn = RetOpcode == AArch64::TCRETURNdi ||
                        RetOpcode == AArch64::TCRETURNri ||
                        RetOpcode == AArch64::TCRETURNriBTI;
+
+    IsTailCallReturn |= RetOpcode == AArch64::AUTH_TCRETURNrii ||
+                        RetOpcode == AArch64::AUTH_TCRETURNriri;
+
+    IsTailCallReturn |= RetOpcode == AArch64::AUTH_TCRETURN_BTIrii ||
+                        RetOpcode == AArch64::AUTH_TCRETURN_BTIriri;
   }
   AArch64FunctionInfo *AFI = MF.getInfo<AArch64FunctionInfo>();
 
