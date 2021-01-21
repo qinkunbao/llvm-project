@@ -26,6 +26,13 @@ class MCSymbol;
 /// MachineModuleInfoMachO - This is a MachineModuleInfoImpl implementation
 /// for MachO targets.
 class MachineModuleInfoMachO : public MachineModuleInfoImpl {
+public:
+  /// The information specific to a Darwin '$auth_ptr' stub.
+  struct AuthStubInfo {
+    const MCExpr *AuthPtrRef;
+  };
+
+private:
   /// GVStubs - Darwin '$non_lazy_ptr' stubs.  The key is something like
   /// "Lfoo$non_lazy_ptr", the value is something like "_foo". The extra bit
   /// is true if this GV is external.
@@ -35,6 +42,11 @@ class MachineModuleInfoMachO : public MachineModuleInfoImpl {
   /// like "Lfoo$non_lazy_ptr", the value is something like "_foo". The extra
   /// bit is true if this GV is external.
   DenseMap<MCSymbol *, StubValueTy> ThreadLocalGVStubs;
+
+  /// Darwin '$auth_ptr' stubs.  The key is the stub symbol, like
+  /// "Lfoo$addend$auth_ptr$ib$12".  The value is the MCExpr representing that
+  /// pointer, something like "_foo+addend@AUTH(ib, 12)".
+  DenseMap<MCSymbol *, AuthStubInfo> AuthPtrStubs;
 
   virtual void anchor(); // Out of line virtual method.
 
@@ -51,11 +63,21 @@ public:
     return ThreadLocalGVStubs[Sym];
   }
 
+  AuthStubInfo &getAuthPtrStubEntry(MCSymbol *Sym) {
+    assert(Sym && "Key cannot be null");
+    return AuthPtrStubs[Sym];
+  }
+
   /// Accessor methods to return the set of stubs in sorted order.
   SymbolListTy GetGVStubList() { return getSortedStubs(GVStubs); }
   SymbolListTy GetThreadLocalGVStubList() {
     return getSortedStubs(ThreadLocalGVStubs);
   }
+
+  typedef std::pair<MCSymbol *, AuthStubInfo> AuthStubPairTy;
+  typedef std::vector<AuthStubPairTy> AuthStubListTy;
+
+  AuthStubListTy getAuthGVStubList();
 };
 
 /// MachineModuleInfoELF - This is a MachineModuleInfoImpl implementation
