@@ -11,9 +11,11 @@
 
 #include "llvm/CodeGen/TargetLoweringObjectFileImpl.h"
 #include "llvm/Target/TargetLoweringObjectFile.h"
+#include "Utils/AArch64BaseInfo.h"
 
 namespace llvm {
 class AArch64TargetMachine;
+class GlobalPtrAuthInfo;
 
 /// This implementation is used for AArch64 ELF targets (Linux in particular).
 class AArch64_ELFTargetObjectFile : public TargetLoweringObjectFileELF {
@@ -48,6 +50,14 @@ public:
 
   void getNameWithPrefix(SmallVectorImpl<char> &OutName, const GlobalValue *GV,
                          const TargetMachine &TM) const override;
+
+  MCSymbol *getAuthPtrSlotSymbol(const TargetMachine &TM, MachineModuleInfo *MMI,
+                                 MCSymbol *RawSym, int64_t RawSymOffset,
+                                 AArch64PACKey::ID Key,
+                                 uint16_t Discriminator) const;
+
+  MCSymbol *getAuthPtrSlotSymbol(const TargetMachine &TM, MachineModuleInfo *MMI,
+                                 const GlobalPtrAuthInfo &PAI) const;
 };
 
 /// This implementation is used for AArch64 COFF targets.

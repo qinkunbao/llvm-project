@@ -40,3 +40,17 @@ MachineModuleInfoImpl::SymbolListTy MachineModuleInfoImpl::getSortedStubs(
   Map.clear();
   return List;
 }
+
+MachineModuleInfoMachO::AuthStubListTy
+MachineModuleInfoMachO::getAuthGVStubList() {
+  AuthStubListTy List(AuthPtrStubs.begin(), AuthPtrStubs.end());
+
+  if (!List.empty())
+    std::sort(List.begin(), List.end(),
+              [](const AuthStubPairTy &LHS, const AuthStubPairTy &RHS) {
+              return LHS.first->getName() < RHS.first->getName();
+              });
+
+  AuthPtrStubs.clear();
+  return List;
+}

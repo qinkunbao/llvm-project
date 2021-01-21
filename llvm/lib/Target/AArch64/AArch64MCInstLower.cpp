@@ -12,12 +12,16 @@
 //===----------------------------------------------------------------------===//
 
 #include "AArch64MCInstLower.h"
+#include "AArch64TargetObjectFile.h"
 #include "MCTargetDesc/AArch64MCExpr.h"
 #include "Utils/AArch64BaseInfo.h"
 #include "llvm/CodeGen/AsmPrinter.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/CodeGen/MachineInstr.h"
+#include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/MachineModuleInfoImpls.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/GlobalPtrAuthInfo.h"
 #include "llvm/IR/Mangler.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCExpr.h"
@@ -33,9 +37,24 @@ extern cl::opt<bool> EnableAArch64ELFLocalDynamicTLSGeneration;
 AArch64MCInstLower::AArch64MCInstLower(MCContext &ctx, AsmPrinter &printer)
     : Ctx(ctx), Printer(printer) {}
 
+static MCSymbol *getAuthGVStub(const GlobalVariable *GVB, AsmPrinter &Printer) {
+  assert(Printer.TM.getTargetTriple().isOSBinFormatMachO() &&
+         "auth_ptr stubs only implemented on macho");
+  auto &TLOF = static_cast<const AArch64_MachoTargetObjectFile &>(
+      Printer.getObjFileLowering());
+
+  return TLOF.getAuthPtrSlotSymbol(Printer.TM, Printer.MMI,
+                                   *GlobalPtrAuthInfo::analyze(GVB));
+}
+
 MCSymbol *
 AArch64MCInstLower::GetGlobalAddressSymbol(const MachineOperand &MO) const {
   const GlobalValue *GV = MO.getGlobal();
+
+  if (const GlobalVariable *GVB = dyn_cast<GlobalVariable>(GV))
+    if (GV->getSection() == "llvm.ptrauth")
+      return getAuthGVStub(GVB, Printer);
+
   unsigned TargetFlags = MO.getTargetFlags();
   const Triple &TheTriple = Printer.TM.getTargetTriple();
   if (!TheTriple.isOSBinFormatCOFF())
