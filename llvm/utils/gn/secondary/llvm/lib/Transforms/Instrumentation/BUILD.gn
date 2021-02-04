@@ -26,6 +26,7 @@ static_library("Instrumentation") {
     "PGOMemOPSizeOpt.cpp",
     "PoisonChecking.cpp",
     "SanitizerCoverage.cpp",
+    "SoftPointerAuth.cpp",
     "ThreadSanitizer.cpp",
     "ValueProfileCollector.cpp",
   ]
