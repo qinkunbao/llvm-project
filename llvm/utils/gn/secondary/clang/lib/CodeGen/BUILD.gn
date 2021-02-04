@@ -67,6 +67,7 @@ static_library("CodeGen") {
     "CGOpenMPRuntimeAMDGCN.cpp",
     "CGOpenMPRuntimeGPU.cpp",
     "CGOpenMPRuntimeNVPTX.cpp",
+    "CGPointerAuth.cpp",
     "CGRecordLayoutBuilder.cpp",
     "CGStmt.cpp",
     "CGStmtOpenMP.cpp",
