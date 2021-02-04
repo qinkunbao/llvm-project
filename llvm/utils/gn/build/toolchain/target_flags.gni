@@ -22,6 +22,16 @@ if (current_os == "android") {
   if (current_cpu == "arm") {
     target_flags += [ "-march=armv7-a" ]
   }
+  if (current_cpu == "arm64") {
+    target_flags += [
+      "-march=armv8.3a",
+      "-mbranch-protection=pac-ret+b-key",
+      "-fptrauth-intrinsics",
+      "-fptrauth-calls",
+      "-fptrauth-auth-traps",
+      "-fptrauth-function-pointer-type-discrimination",
+    ]
+  }
 } else if (current_os == "ios") {
   if (current_cpu == "arm64") {
     target_flags += [
