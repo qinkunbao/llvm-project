@@ -27,6 +27,7 @@ static_library("Instrumentation") {
     "PoisonChecking.cpp",
     "SanitizerBinaryMetadata.cpp",
     "SanitizerCoverage.cpp",
+    "SoftPointerAuth.cpp",
     "ThreadSanitizer.cpp",
     "ValueProfileCollector.cpp",
   ]

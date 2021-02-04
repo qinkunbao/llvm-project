@@ -203,6 +203,7 @@ copy("Headers") {
     "ppc_wrappers/x86intrin.h",
     "ppc_wrappers/xmmintrin.h",
     "prfchwintrin.h",
+    "ptrauth.h",
     "ptwriteintrin.h",
     "rdpruintrin.h",
     "rdseedintrin.h",

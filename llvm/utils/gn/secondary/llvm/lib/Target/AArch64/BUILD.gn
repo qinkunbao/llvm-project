@@ -119,6 +119,7 @@ static_library("LLVMAArch64CodeGen") {
     "AArch64ConditionalCompares.cpp",
     "AArch64DeadRegisterDefinitionsPass.cpp",
     "AArch64ExpandImm.cpp",
+    "AArch64ExpandHardenedPseudos.cpp",
     "AArch64ExpandPseudoInsts.cpp",
     "AArch64FalkorHWPFFix.cpp",
     "AArch64FastISel.cpp",
