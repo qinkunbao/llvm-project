@@ -1,0 +1,81 @@
+diff --git a/libcxx/Android.mk b/libcxx/Android.mk
+index 0415fb2c23bf..a81f0e36bc7e 100644
+--- a/libcxx/Android.mk
++++ b/libcxx/Android.mk
+@@ -80,10 +80,6 @@ libcxx_cxxflags := \
+ libcxx_ldflags :=
+ libcxx_export_ldflags :=
+ 
+-ifeq ($(TARGET_ARCH_ABI),arm64-v8a)
+-    libcxx_cxxflags += -mbranch-protection=standard
+-endif
+-
+ ifneq ($(LIBCXX_FORCE_REBUILD),true)
+ 
+ $(call ndk_log,Using prebuilt libc++ libraries)
+diff --git a/libcxxabi/Android.mk b/libcxxabi/Android.mk
+index 905cba7cbae6..4f88cfcf70a9 100644
+--- a/libcxxabi/Android.mk
++++ b/libcxxabi/Android.mk
+@@ -45,10 +45,6 @@ libcxxabi_cflags := -D__STDC_FORMAT_MACROS
+ libcxxabi_cppflags := -std=c++11 -Wno-unknown-attributes -DHAS_THREAD_LOCAL
+ libcxxabi_cppflags += -DLIBCXXABI_USE_LLVM_UNWINDER=1
+ 
+-ifeq ($(TARGET_ARCH_ABI),arm64-v8a)
+-    libcxxabi_cppflags += -mbranch-protection=standard
+-endif
+-
+ ifneq ($(LIBCXX_FORCE_REBUILD),true) # Using prebuilt
+ 
+ include $(CLEAR_VARS)
+diff --git a/libcxxabi/src/private_typeinfo.cpp b/libcxxabi/src/private_typeinfo.cpp
+index 55a90b3ae1d4..07ee329b124a 100644
+--- a/libcxxabi/src/private_typeinfo.cpp
++++ b/libcxxabi/src/private_typeinfo.cpp
+@@ -61,6 +61,14 @@ is_equal(const std::type_info* x, const std::type_info* y, bool use_strcmp)
+     return x == y || strcmp(x->name(), y->name()) == 0;
+ }
+ 
++template <typename T>
++static inline T *maybe_authenticate_vtable(T *ptr) {
++#ifdef __aarch64__
++  ptr = __builtin_ptrauth_auth(ptr, 2, 0);
++#endif
++  return ptr;
++}
++
+ namespace __cxxabiv1
+ {
+ 
+@@ -297,6 +305,7 @@ __base_class_type_info::has_unambiguous_public_base(__dynamic_cast_info* info,
+         if (__offset_flags & __virtual_mask)
+         {
+             const char* vtable = *static_cast<const char*const*>(adjustedPtr);
++            vtable = maybe_authenticate_vtable(vtable);
+             offset_to_base = *reinterpret_cast<const ptrdiff_t*>(vtable + offset_to_base);
+         }
+     }
+@@ -616,6 +625,7 @@ __dynamic_cast(const void *static_ptr, const __class_type_info *static_type,
+ 
+     // Get (dynamic_ptr, dynamic_type) from static_ptr
+     void **vtable = *static_cast<void ** const *>(static_ptr);
++    vtable = maybe_authenticate_vtable(vtable);
+     ptrdiff_t offset_to_derived = reinterpret_cast<ptrdiff_t>(vtable[-2]);
+     const void* dynamic_ptr = static_cast<const char*>(static_ptr) + offset_to_derived;
+     const __class_type_info* dynamic_type = static_cast<const __class_type_info*>(vtable[-1]);
+@@ -1265,6 +1275,7 @@ __base_class_type_info::search_above_dst(__dynamic_cast_info* info,
+     if (__offset_flags & __virtual_mask)
+     {
+         const char* vtable = *static_cast<const char*const*>(current_ptr);
++        vtable = maybe_authenticate_vtable(vtable);
+         offset_to_base = *reinterpret_cast<const ptrdiff_t*>(vtable + offset_to_base);
+     }
+     __base_type->search_above_dst(info, dst_ptr,
+@@ -1285,6 +1296,7 @@ __base_class_type_info::search_below_dst(__dynamic_cast_info* info,
+     if (__offset_flags & __virtual_mask)
+     {
+         const char* vtable = *static_cast<const char*const*>(current_ptr);
++        vtable = maybe_authenticate_vtable(vtable);
+         offset_to_base = *reinterpret_cast<const ptrdiff_t*>(vtable + offset_to_base);
+     }
+     __base_type->search_below_dst(info,
