@@ -1,0 +1,97 @@
+Building AOSP with the PAC Prototype
+====================================
+
+This prototype supports two possible targets:
+
+1. An emulated device (FVP).
+3. A hypervisor guest (Apple M1).
+
+Building the compiler
+---------------------
+
+The compiler needs to be built against NDK r21 or later. This
+prototype requires the use of the gn build system [1] to build the
+compiler. Something like this args.gn should work:
+
+clang_base_path = "/usr"
+llvm_enable_assertions = true
+llvm_targets_to_build = "all"
+android_ndk_path = "/path/to/android-ndk-r21"
+
+The script llvm/utils/frankendroid can be used to build and prepare a
+gn-built compiler and builtins library to be used by the Android build
+system. See the comments at the top of that file for how to use it.
+
+[1] https://github.com/llvm/llvm-project/blob/master/llvm/utils/gn/README.rst
+
+Building the NDK libc++
+-----------------------
+
+Some operating system components are built against NDK libc++, so
+its ABI needs to match. See aosp/ndk.notes for quick notes on how to
+rebuild this component of the NDK.
+
+Patching AOSP
+-------------
+
+Apply aosp/0001-PAC.patch to the root of your AOSP checkout with
+"patch -p1". This patch applies cleanly to aosp/master as of:
+
+Fri Sep 30 03:03:24 2022 +0000
+
+with these patches applied:
+
+https://android-review.googlesource.com/c/platform/system/core/+/2239035
+https://chromium-review.googlesource.com/c/chromium/src/+/3933186 (in external/angle)
+
+Patching the kernel
+-------------------
+
+This prototype requires the use of the android-mainline or androidNN-5.15
+kernel. This applies to both FVP and M1. Follow the normal target-specific
+instructions linked below to rebuild the kernel, but it is not normally
+necessary to do so.
+
+Building AOSP
+-------------
+
+Set the TARGET_EXPERIMENTAL_PAC environment variable to any value
+to enable the forward-edge PAC support.
+
+Set LLVM_PREBUILTS_VERSION and LLVM_BINDGEN_PREBUILTS_VERSION to
+the basename of your LLVM source directory. This is the name of the
+subdirectory under prebuilts/clang/host/linux-x86 that was created
+by the frankendroid script.
+
+Set ENABLE_CFI=false because this prototype is not compatible
+with the software-based CFI used in Android.
+
+Aside from that, follow the target-specific instructions.
+
+For FVP, see https://cs.android.com/android/platform/superproject/+/master:device/generic/goldfish/fvpbase/README.md
+For macOS on M1, see https://github.com/google/android-emulator-m1-preview
+but use the commands below to build the system image zip file:
+
+lunch sdk_phone64_arm64-userdebug
+m emu_img_zip
+
+For Linux on M1, see README.cuttlefish
+
+Running AOSP
+------------
+
+The resulting image should be fully functional with some
+exceptions.
+
+64-bit applications that use WebView and the PAC ABI will crash on
+startup because WebView is provided as a prebuilt and therefore does
+not conform to the PAC ABI. The WebView prebuilt will need to be
+rebuilt and instructions for doing so will be provided at a later date.
+
+Programs with Rust components may crash on startup because the Rust
+compiler does not know about the PAC ABI. For now we disable PAC in
+these processes via an ELF note; the long term solution is to teach
+the Rust compiler to support the PAC ABI, for example by leveraging the
+cross-language type identifiers proposed as part of:
+
+https://github.com/rust-lang/rust/issues/89653

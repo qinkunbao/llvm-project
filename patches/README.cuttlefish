@@ -1,0 +1,66 @@
+Running Cuttlefish for arm64 on an M1 Mac
+=========================================
+
+This assumes that you're using a separate machine to the M1 to build
+Android, and sshing to the M1 from there.
+
+Follow the instructions at https://asahilinux.org/ to install Linux
+on the M1.
+
+Apply these patches to your AOSP tree to enable support for >4KB pages
+in host Bionic: https://github.com/AsahiLinux/docs/wiki/Broken-Software
+(under Cuttlefish).
+
+On the M1, run:
+
+sudo pacman -S docker
+git clone https://github.com/google/android-cuttlefish
+cd android-cuttlefish
+./build.sh
+ln -s $PWD/cf ~/bin # or another directory on $PATH
+cf docker_create
+
+On the host, in your AOSP tree:
+
+lunch aosp_cf_arm64_only_phone-userdebug
+m
+
+Then copy the built images into the docker container:
+
+ssh acf -- 'tar xzvf -' < out/host/linux_bionic-arm64/cvd-host_package.tar.gz
+(cd out/target/product/vsoc_arm64_only && scp $(cat required_images) acf:)
+
+This assumes that you've set up "acf" as an SSH alias for the
+docker container; you can set it up with something like this in
+your ~/.ssh/config:
+
+Host a
+  HostName <m1_ip>
+  LocalForward 6520 <docker_ip>:6520
+  LocalForward 2222 <docker_ip>:22
+
+Host acf
+  HostName localhost
+  User vsoc-01
+  Port 2222
+
+To get the value of <docker_ip>, run "cf get_ip cuttlefish" on the M1.
+
+To start Cuttlefish, run this command on the M1 after copying the
+images:
+
+cf start_cuttlefish
+
+If you're using the forwarding rules above, you can connect to it via adb
+like so:
+
+adb connect localhost:6520
+
+To see and interact with the display, publish the Cuttlefish web service
+with the following command:
+
+cf publish_cuttlefish
+
+In a web browser, open the URL: https://<m1_ip>:8443/ , click through
+the TLS warnings and click on the Connect button next to cvd-1. If you
+see a spinner, reload the page.
