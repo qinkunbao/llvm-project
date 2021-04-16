@@ -1,0 +1,64 @@
+diff --git a/build/core/default-build-commands.mk b/build/core/default-build-commands.mk
+index e9687f8b..8f4a6f0f 100644
+--- a/build/core/default-build-commands.mk
++++ b/build/core/default-build-commands.mk
+@@ -122,6 +122,8 @@ GLOBAL_CFLAGS += -D_FORTIFY_SOURCE=2
+ GLOBAL_LDFLAGS = \
+     -target $(LLVM_TRIPLE)$(TARGET_PLATFORM_LEVEL) \
+     -no-canonical-prefixes \
++    --rtlib=compiler-rt \
++    -ldl \
+ 
+ GLOBAL_CXXFLAGS = $(GLOBAL_CFLAGS) -fno-exceptions -fno-rtti
+ 
+diff --git a/build/core/toolchains/aarch64-linux-android-clang/setup.mk b/build/core/toolchains/aarch64-linux-android-clang/setup.mk
+index b3ce42c4..535a323c 100644
+--- a/build/core/toolchains/aarch64-linux-android-clang/setup.mk
++++ b/build/core/toolchains/aarch64-linux-android-clang/setup.mk
+@@ -25,6 +25,12 @@ TARGET_CFLAGS := -fpic
+ TARGET_arm64_release_CFLAGS := \
+     -O2 \
+     -DNDEBUG \
++    -march=armv8.3a \
++    -mbranch-protection=pac-ret+b-key \
++    -fptrauth-intrinsics \
++    -fptrauth-calls \
++    -fptrauth-auth-traps \
++    -fptrauth-function-pointer-type-discrimination \
+ 
+ TARGET_arm64_debug_CFLAGS := \
+     -O0 \
+diff --git a/ndk/checkbuild.py b/ndk/checkbuild.py
+index 9cd6bef9..43a22752 100755
+--- a/ndk/checkbuild.py
++++ b/ndk/checkbuild.py
+@@ -438,11 +438,6 @@ class Clang(ndk.builds.Module):
+                 for pyfile in python_bin_dir.glob(file_pattern):
+                     pyfile.unlink()
+ 
+-        # Remove lldb-argdumper in site-packages. libc++ is not available there.
+-        # People should use bin/lldb-argdumper instead.
+-        for pylib in (install_path / 'lib').glob('python*'):
+-            (pylib / f'site-packages/lldb/lldb-argdumper{bin_ext}').unlink()
+-
+         if self.host != Host.Linux:
+             # We don't build target binaries as part of the Darwin or Windows
+             # build. These toolchains need to get these from the Linux
+@@ -947,8 +942,6 @@ class Platforms(ndk.builds.Module):
+ 
+         if arch == ndk.abis.Arch('arm'):
+             args.append('-mfpu=vfpv3-d16')
+-        elif arch == ndk.abis.Arch('arm64'):
+-            args.append('-mbranch-protection=standard')
+ 
+         return args
+ 
+@@ -1831,7 +1824,7 @@ class NdkBuild(ndk.builds.PackageModule):
+                             'cmake/compiler_id.cmake')
+         clang_prebuilts = Path(self.get_dep('clang').get_build_host_install())
+         clang = clang_prebuilts / 'bin/clang'
+-        clang_version = self.get_clang_version(clang)
++        clang_version = "trunk"
+ 
+         compiler_id_file.write_text(textwrap.dedent(f"""\
+             # The file is automatically generated when the NDK is built.
