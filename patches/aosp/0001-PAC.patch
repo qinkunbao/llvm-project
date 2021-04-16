@@ -1,0 +1,3156 @@
+From 50995250a0b9044d8fb74189b2b6e3f6dc6f4d54 Mon Sep 17 00:00:00 2001
+From: Peter Collingbourne <pcc@google.com>
+Date: Wed, 26 May 2021 16:24:15 -0700
+Subject: [PATCH] PAC
+
+---
+ art/compiler/jni/quick/jni_compiler.cc        |   1 +
+ .../optimizing/code_generator_arm64.cc        |  19 +++-
+ art/compiler/utils/arm64/assembler_arm64.cc   |   6 +
+ art/compiler/utils/arm64/assembler_arm64.h    |  11 ++
+ .../utils/arm64/jni_macro_assembler_arm64.cc  |  12 ++
+ art/runtime/arch/arm64/fault_handler_arm64.cc |  15 ++-
+ .../arch/arm64/jni_entrypoints_arm64.S        |   8 ++
+ .../arch/arm64/quick_entrypoints_arm64.S      |  26 +++++
+ art/runtime/entrypoints/entrypoint_utils.cc   |  11 +-
+ .../entrypoints/quick/quick_entrypoints.h     |   2 +-
+ .../interpreter/interpreter_mterp_impl.h      |   2 +-
+ art/runtime/interpreter/mterp/arm64ng/main.S  |  21 ++++
+ .../interpreter/mterp/arm64ng/object.S        |   3 +
+ art/runtime/well_known_classes.cc             |   2 +-
+ bionic/libc/arch-common/bionic/crtbegin.c     |   8 +-
+ .../libc/bionic/__libc_init_main_thread.cpp   |   3 +
+ .../bionic/bionic_call_ifunc_resolver.cpp     |  35 +++++-
+ bionic/libc/bionic/fork.cpp                   |   2 +-
+ bionic/libc/bionic/libc_init_common.cpp       |  12 +-
+ bionic/libc/bionic/libc_init_common.h         |   6 +-
+ bionic/libc/bionic/libc_init_static.cpp       |  20 +++-
+ bionic/libc/bionic/pthread_create.cpp         |   4 +
+ bionic/libc/bionic/sigaction.cpp              |  34 ++++++
+ bionic/libc/bionic/vdso.cpp                   |   4 +-
+ bionic/libc/platform/bionic/pac.h             |  18 +++
+ bionic/libc/private/NetdClientDispatch.h      |   2 +-
+ .../libc/private/bionic_call_ifunc_resolver.h |   1 +
+ bionic/linker/Android.bp                      |   5 +-
+ bionic/linker/linker.cpp                      |  18 ++-
+ bionic/linker/linker_cfi.cpp                  |   6 +-
+ bionic/linker/linker_main.cpp                 |  32 +++++-
+ bionic/linker/linker_relocate.cpp             |  25 +++-
+ bionic/linker/linker_soinfo.cpp               |  21 ++--
+ bionic/linker/linker_soinfo.h                 |   7 +-
+ bionic/tests/signal_test.cpp                  |   4 +-
+ build/make/core/binary.mk                     |   5 +
+ build/make/core/board_config.mk               |   4 +
+ build/make/core/dex_preopt_odex_install.mk    |   1 +
+ build/soong/android/Android.bp                |   1 +
+ build/soong/android/env.go                    |  25 ++++
+ build/soong/cc/builder.go                     |   2 +-
+ build/soong/cc/compiler.go                    |  18 +++
+ build/soong/cc/config/arm64_device.go         |   4 +
+ build/soong/cc/config/global.go               |   1 -
+ build/soong/cc/linker.go                      |   2 +-
+ build/soong/cc/lto.go                         |  22 ++--
+ build/soong/cc/ndk_prebuilt.go                |   6 +-
+ build/soong/cc/sanitize.go                    |  16 ++-
+ build/soong/cmd/soong_build/main.go           |   2 +
+ build/soong/dexpreopt/dexpreopt.go            |  10 +-
+ build/soong/java/dexpreopt_bootjars.go        |   4 +
+ build/soong/ui/build/soong.go                 |   2 +-
+ .../goldfish-opengl/system/egl/egl.cpp        |   5 +-
+ .../hals/ril/reference-ril/reference-ril.c    |  12 +-
+ .../string/aarch64/memcmp.S                   |   1 -
+ .../string/aarch64/memrchr.S                  |   1 -
+ .../string/aarch64/strnlen.S                  |   1 -
+ .../boringssl/src/crypto/fipsmodule/bcm.c     |   4 +
+ external/libcxxabi/src/private_typeinfo.cpp   |  12 ++
+ .../drivers/freedreno/freedreno_screen.c      |   2 +-
+ external/skia/src/core/SkArenaAlloc.cpp       |  40 +++----
+ external/skia/src/core/SkArenaAlloc.h         |  16 ++-
+ external/strace/sysent.h                      |   4 +-
+ external/swiftshader/src/Reactor/LLVMJIT.cpp  |   3 +
+ .../vixl/src/aarch64/assembler-aarch64.cc     |  12 +-
+ external/vixl/src/aarch64/constants-aarch64.h |  20 ++--
+ .../av/media/libaudiohal/FactoryHalHidl.cpp   |   4 +-
+ frameworks/base/cmds/app_process/app_main.cpp |   9 ++
+ .../core/java/android/os/ZygoteProcess.java   | 107 ++++++++++++++----
+ .../com/android/internal/os/ZygoteInit.java   |  13 ++-
+ .../com/android/internal/os/ZygoteServer.java |  23 ++--
+ .../jni/com_android_internal_os_Zygote.cpp    |  12 +-
+ .../com_android_internal_os_ZygoteInit.cpp    |  27 +++++
+ frameworks/base/core/jni/fd_utils.cpp         |   2 +
+ frameworks/base/libs/hwui/jni/FontFamily.cpp  |  12 +-
+ frameworks/base/libs/hwui/jni/Typeface.cpp    |   4 +-
+ .../libs/hwui/jni/android_graphics_Matrix.cpp |   3 +-
+ frameworks/base/libs/hwui/jni/fonts/Font.cpp  |   4 +-
+ .../base/libs/hwui/jni/fonts/FontFamily.cpp   |   4 +-
+ .../base/libs/hwui/jni/text/LineBreaker.cpp   |   8 +-
+ .../base/libs/hwui/jni/text/MeasuredText.cpp  |   4 +-
+ frameworks/native/cmds/installd/dexopt.cpp    |   3 +
+ .../native/opengl/libs/EGL/getProcAddress.cpp |   7 ++
+ frameworks/native/opengl/libs/GLES2/gl2.cpp   |   7 ++
+ frameworks/native/opengl/libs/GLES_CM/gl.cpp  |   7 ++
+ frameworks/native/opengl/libs/hooks.h         |  20 +++-
+ .../cpu_ref/rsCpuIntrinsics_advsimd_3DLUT.S   |   2 +-
+ .../cpu_ref/rsCpuIntrinsics_advsimd_Blend.S   |   2 +-
+ .../rs/cpu_ref/rsCpuIntrinsics_advsimd_Blur.S |   2 +-
+ .../rsCpuIntrinsics_advsimd_ColorMatrix.S     |   2 +-
+ .../rsCpuIntrinsics_advsimd_Convolve.S        |   2 +-
+ .../cpu_ref/rsCpuIntrinsics_advsimd_Resize.S  |   2 +-
+ .../rsCpuIntrinsics_advsimd_YuvToRGB.S        |   2 +-
+ hardware/interfaces/usb/1.0/default/Usb.cpp   |   2 +-
+ .../main/java/dalvik/system/VMRuntime.java    |   1 +
+ libnativehelper/JniConstants.c                |   2 +-
+ .../StatsD/lib/libstatssocket/stats_event.c   |   2 +-
+ .../StatsD/lib/libstatssocket/statsd_writer.c |  18 +--
+ .../StatsD/lib/libstatssocket/statsd_writer.h |   6 +-
+ system/bt/osi/src/alarm.cc                    |   6 +-
+ system/core/libutils/Threads.cpp              |  47 ++++----
+ system/core/rootdir/init.zygote64_32.rc       |   2 +
+ .../libhidl/transport/ServiceManagement.cpp   |   5 +-
+ system/sepolicy/private/file_contexts         |   2 +
+ 104 files changed, 791 insertions(+), 260 deletions(-)
+ create mode 100644 build/soong/android/env.go
+
+diff --git a/art/compiler/jni/quick/jni_compiler.cc b/art/compiler/jni/quick/jni_compiler.cc
+index cdd0263729..40fbcab203 100644
+--- a/art/compiler/jni/quick/jni_compiler.cc
++++ b/art/compiler/jni/quick/jni_compiler.cc
+@@ -425,6 +425,7 @@ static JniCompiledMethod ArtJniCompileMethodInternal(const CompilerOptions& comp
+   }
+ 
+   // 9. Plant call to native code associated with method.
++  // XXX jni call here
+   MemberOffset jni_entrypoint_offset =
+       ArtMethod::EntryPointFromJniOffset(InstructionSetPointerSize(instruction_set));
+   if (UNLIKELY(is_critical_native)) {
+diff --git a/art/compiler/optimizing/code_generator_arm64.cc b/art/compiler/optimizing/code_generator_arm64.cc
+index e1a4718140..1298f58819 100644
+--- a/art/compiler/optimizing/code_generator_arm64.cc
++++ b/art/compiler/optimizing/code_generator_arm64.cc
+@@ -1158,6 +1158,9 @@ void CodeGeneratorARM64::MaybeIncrementHotness(bool is_frame_entry) {
+       __ Ldr(lr, MemOperand(tr, entrypoint_offset));
+       // Note: we don't record the call here (and therefore don't generate a stack
+       // map), as the entrypoint should never be suspended.
++      if (HasPAC()) {
++        __ Xpaci(lr);
++      }
+       __ Blr(lr);
+       if (HasEmptyFrame()) {
+         CHECK(is_frame_entry);
+@@ -1814,6 +1817,9 @@ void CodeGeneratorARM64::InvokeRuntime(QuickEntrypointEnum entrypoint,
+   // For JIT, thunk sharing is per-method, so the gains would be smaller or even negative.
+   if (slow_path == nullptr || GetCompilerOptions().IsJitCompiler()) {
+     __ Ldr(lr, MemOperand(tr, entrypoint_offset.Int32Value()));
++    if (HasPAC()) {
++      __ Xpaclri();
++    }
+     // Ensure the pc position is recorded immediately after the `blr` instruction.
+     ExactAssemblyScope eas(GetVIXLAssembler(), kInstructionSize, CodeBufferCheckScope::kExactSize);
+     __ blr(lr);
+@@ -1835,6 +1841,9 @@ void CodeGeneratorARM64::InvokeRuntimeWithoutRecordingPcInfo(int32_t entry_point
+                                                              SlowPathCode* slow_path) {
+   ValidateInvokeRuntimeWithoutRecordingPcInfo(instruction, slow_path);
+   __ Ldr(lr, MemOperand(tr, entry_point_offset));
++  if (HasPAC()) {
++    __ Xpaclri();
++  }
+   __ Blr(lr);
+ }
+ 
+@@ -4472,6 +4481,7 @@ void InstructionCodeGeneratorARM64::VisitInvokeInterface(HInvokeInterface* invok
+   }
+   // lr = temp->GetEntryPoint();
+   __ Ldr(lr, MemOperand(temp, entry_point.Int32Value()));
++  __ Xpaclri();
+ 
+   {
+     // Ensure the pc position is recorded immediately after the `blr` instruction.
+@@ -4625,6 +4635,7 @@ void CodeGeneratorARM64::GenerateStaticOrDirectCall(
+   }
+ 
+   auto call_lr = [&]() {
++    __ Xpaclri();
+     // Use a scope to help guarantee that `RecordPcInfo()` records the correct pc.
+     ExactAssemblyScope eas(GetVIXLAssembler(),
+                            kInstructionSize,
+@@ -4738,6 +4749,7 @@ void CodeGeneratorARM64::GenerateVirtualCall(
+   __ Ldr(temp, MemOperand(temp, method_offset));
+   // lr = temp->GetEntryPoint();
+   __ Ldr(lr, MemOperand(temp, entry_point.SizeValue()));
++  __ Xpaclri();
+   {
+     // Use a scope to help guarantee that `RecordPcInfo()` records the correct pc.
+     ExactAssemblyScope eas(GetVIXLAssembler(), kInstructionSize, CodeBufferCheckScope::kExactSize);
+@@ -6968,6 +6980,9 @@ static void LoadReadBarrierMarkIntrospectionEntrypoint(arm64::Arm64Assembler& as
+   const int32_t entry_point_offset =
+       Thread::ReadBarrierMarkEntryPointsOffset<kArm64PointerSize>(ip0.GetCode());
+   __ Ldr(entrypoint, MemOperand(tr, entry_point_offset));
++  if (HasPAC()) {
++    __ Xpaci(entrypoint);
++  }
+ }
+ 
+ void CodeGeneratorARM64::CompileBakerReadBarrierThunk(Arm64Assembler& assembler,
+@@ -7023,7 +7038,7 @@ void CodeGeneratorARM64::CompileBakerReadBarrierThunk(Arm64Assembler& assembler,
+         __ Ldar(ip0.W(), MemOperand(base_reg));
+       }
+       // Do not unpoison. With heap poisoning enabled, the entrypoint expects a poisoned reference.
+-      __ Br(ip1);                           // Jump to the entrypoint.
++      __ Br(ip1);
+       break;
+     }
+     case BakerReadBarrierKind::kArray: {
+@@ -7048,7 +7063,7 @@ void CodeGeneratorARM64::CompileBakerReadBarrierThunk(Arm64Assembler& assembler,
+       __ Bfi(ip1, ip0, 3, 6);               // Insert ip0 to the entrypoint address to create
+                                             // a switch case target based on the index register.
+       __ Mov(ip0, base_reg);                // Move the base register to ip0.
+-      __ Br(ip1);                           // Jump to the entrypoint's array switch case.
++      __ Br(ip1);
+       break;
+     }
+     case BakerReadBarrierKind::kGcRoot: {
+diff --git a/art/compiler/utils/arm64/assembler_arm64.cc b/art/compiler/utils/arm64/assembler_arm64.cc
+index 6100ed9855..298afe1728 100644
+--- a/art/compiler/utils/arm64/assembler_arm64.cc
++++ b/art/compiler/utils/arm64/assembler_arm64.cc
+@@ -58,6 +58,9 @@ static void SetVIXLCPUFeaturesFromART(vixl::aarch64::MacroAssembler* vixl_masm_,
+   if (art_features->HasSVE()) {
+     features->Combine(vixl::CPUFeatures::kSVE);
+   }
++  if (HasPAC()) {
++    features->Combine(vixl::CPUFeatures::kPAuth);
++  }
+ }
+ 
+ Arm64Assembler::Arm64Assembler(ArenaAllocator* allocator,
+@@ -105,6 +108,9 @@ void Arm64Assembler::JumpTo(ManagedRegister m_base, Offset offs, ManagedRegister
+   UseScratchRegisterScope temps(&vixl_masm_);
+   temps.Exclude(reg_x(base.AsXRegister()), reg_x(scratch.AsXRegister()));
+   ___ Ldr(reg_x(scratch.AsXRegister()), MEM_OP(reg_x(base.AsXRegister()), offs.Int32Value()));
++  if (HasPAC()) {
++    ___ Xpaci(reg_x(scratch.AsXRegister()));
++  }
+   ___ Br(reg_x(scratch.AsXRegister()));
+ }
+ 
+diff --git a/art/compiler/utils/arm64/assembler_arm64.h b/art/compiler/utils/arm64/assembler_arm64.h
+index b49a13a067..cc6a0acc66 100644
+--- a/art/compiler/utils/arm64/assembler_arm64.h
++++ b/art/compiler/utils/arm64/assembler_arm64.h
+@@ -44,6 +44,17 @@ class Arm64InstructionSetFeatures;
+ 
+ namespace arm64 {
+ 
++inline bool HasPAC() {
++#if !defined(__aarch64__)
++  static bool is_pac = getenv("TARGET_EXPERIMENTAL_PAC");
++  return is_pac;
++#elif defined(ANDROID_EXPERIMENTAL_PAC)
++  return true;
++#else
++  return false;
++#endif
++}
++
+ static inline dwarf::Reg DWARFReg(vixl::aarch64::CPURegister reg) {
+   if (reg.IsFPRegister()) {
+     return dwarf::Reg::Arm64Fp(reg.GetCode());
+diff --git a/art/compiler/utils/arm64/jni_macro_assembler_arm64.cc b/art/compiler/utils/arm64/jni_macro_assembler_arm64.cc
+index c4dbd3f48c..57e6e4f4cf 100644
+--- a/art/compiler/utils/arm64/jni_macro_assembler_arm64.cc
++++ b/art/compiler/utils/arm64/jni_macro_assembler_arm64.cc
+@@ -629,6 +629,9 @@ void Arm64JNIMacroAssembler::Jump(ManagedRegister m_base, Offset offs) {
+   UseScratchRegisterScope temps(asm_.GetVIXLAssembler());
+   Register scratch = temps.AcquireX();
+   ___ Ldr(scratch, MEM_OP(reg_x(base.AsXRegister()), offs.Int32Value()));
++  if (HasPAC()) {
++    ___ Xpaci(scratch);
++  }
+   ___ Br(scratch);
+ }
+ 
+@@ -636,6 +639,9 @@ void Arm64JNIMacroAssembler::Call(ManagedRegister m_base, Offset offs) {
+   Arm64ManagedRegister base = m_base.AsArm64();
+   CHECK(base.IsXRegister()) << base;
+   ___ Ldr(lr, MEM_OP(reg_x(base.AsXRegister()), offs.Int32Value()));
++  if (HasPAC()) {
++    ___ Xpaclri();
++  }
+   ___ Blr(lr);
+ }
+ 
+@@ -643,6 +649,9 @@ void Arm64JNIMacroAssembler::Call(FrameOffset base, Offset offs) {
+   // Call *(*(SP + base) + offset)
+   ___ Ldr(lr, MEM_OP(reg_x(SP), base.Int32Value()));
+   ___ Ldr(lr, MEM_OP(lr, offs.Int32Value()));
++  if (HasPAC()) {
++    ___ Xpaclri();
++  }
+   ___ Blr(lr);
+ }
+ 
+@@ -769,6 +778,9 @@ void Arm64JNIMacroAssembler::EmitExceptionPoll(Arm64Exception* exception) {
+           MEM_OP(reg_x(TR),
+                  QUICK_ENTRYPOINT_OFFSET(kArm64PointerSize, pDeliverException).Int32Value()));
+ 
++  if (HasPAC()) {
++    ___ Xpaclri();
++  }
+   ___ Blr(lr);
+   // Call should never return.
+   ___ Brk();
+diff --git a/art/runtime/arch/arm64/fault_handler_arm64.cc b/art/runtime/arch/arm64/fault_handler_arm64.cc
+index c139e21d05..a250d010ac 100644
+--- a/art/runtime/arch/arm64/fault_handler_arm64.cc
++++ b/art/runtime/arch/arm64/fault_handler_arm64.cc
+@@ -28,6 +28,12 @@
+ #include "runtime_globals.h"
+ #include "thread-current-inl.h"
+ 
++#ifdef __BIONIC__
++#include <bionic/pac.h>
++#else
++#define __bionic_clear_pac_bits(x) x
++#endif
++
+ extern "C" void art_quick_throw_stack_overflow();
+ extern "C" void art_quick_throw_null_pointer_exception_from_signal();
+ extern "C" void art_quick_implicit_suspend();
+@@ -90,7 +96,8 @@ bool NullPointerHandler::Action(int sig ATTRIBUTE_UNUSED, siginfo_t* info, void*
+   *reinterpret_cast<uintptr_t*>(sc->sp) = sc->pc + 4;
+   sc->regs[30] = reinterpret_cast<uintptr_t>(info->si_addr);
+ 
+-  sc->pc = reinterpret_cast<uintptr_t>(art_quick_throw_null_pointer_exception_from_signal);
++  sc->pc = __bionic_clear_pac_bits(reinterpret_cast<uintptr_t>(
++      art_quick_throw_null_pointer_exception_from_signal));
+   VLOG(signals) << "Generating null pointer exception";
+   return true;
+ }
+@@ -145,7 +152,8 @@ bool SuspensionHandler::Action(int sig ATTRIBUTE_UNUSED, siginfo_t* info ATTRIBU
+     // ldr x0,[x0,#0] instruction (r0 will be 0, set by the trigger).
+ 
+     sc->regs[30] = sc->pc + 4;
+-    sc->pc = reinterpret_cast<uintptr_t>(art_quick_implicit_suspend);
++    sc->pc = __bionic_clear_pac_bits(
++        reinterpret_cast<uintptr_t>(art_quick_implicit_suspend));
+ 
+     // Now remove the suspend trigger that caused this fault.
+     Thread::Current()->RemoveSuspendTrigger();
+@@ -184,7 +192,8 @@ bool StackOverflowHandler::Action(int sig ATTRIBUTE_UNUSED, siginfo_t* info ATTR
+   // The value of LR must be the same as it was when we entered the code that
+   // caused this fault.  This will be inserted into a callee save frame by
+   // the function to which this handler returns (art_quick_throw_stack_overflow).
+-  sc->pc = reinterpret_cast<uintptr_t>(art_quick_throw_stack_overflow);
++  sc->pc = __bionic_clear_pac_bits(
++      reinterpret_cast<uintptr_t>(art_quick_throw_stack_overflow));
+ 
+   // The kernel will now return to the address in sc->pc.
+   return true;
+diff --git a/art/runtime/arch/arm64/jni_entrypoints_arm64.S b/art/runtime/arch/arm64/jni_entrypoints_arm64.S
+index f72bc55e8e..9356d6db84 100644
+--- a/art/runtime/arch/arm64/jni_entrypoints_arm64.S
++++ b/art/runtime/arch/arm64/jni_entrypoints_arm64.S
+@@ -86,6 +86,10 @@ ENTRY art_jni_dlsym_lookup_stub
+     .cfi_restore x30
+ 
+     cbz   x17, 1f   // is method code null ?
++    // XXX jni call here
++#ifdef ANDROID_EXPERIMENTAL_PAC
++    xpaci x17
++#endif
+     br    x17       // if non-null, tail call to method's code.
+ 
+ 1:
+@@ -271,6 +275,10 @@ ENTRY art_jni_dlsym_lookup_critical_stub
+     DECREASE_FRAME FRAME_SIZE_SAVE_REFS_AND_ARGS
+ 
+     // Do the tail call.
++    // XXX jni call here
++#ifdef ANDROID_EXPERIMENTAL_PAC
++    xpaci x13
++#endif
+     br    x13
+     .cfi_restore_state
+     .cfi_def_cfa sp, FRAME_SIZE_SAVE_REFS_AND_ARGS
+diff --git a/art/runtime/arch/arm64/quick_entrypoints_arm64.S b/art/runtime/arch/arm64/quick_entrypoints_arm64.S
+index 022a0e4053..50834a4ac3 100644
+--- a/art/runtime/arch/arm64/quick_entrypoints_arm64.S
++++ b/art/runtime/arch/arm64/quick_entrypoints_arm64.S
+@@ -342,7 +342,13 @@ NO_ARG_RUNTIME_EXCEPTION art_quick_throw_stack_overflow, artThrowStackOverflowFr
+     RESTORE_SAVE_REFS_AND_ARGS_FRAME
+     REFRESH_MARKING_REGISTER
+     cbz    x0, 1f                         // did we find the target? if not go to exception delivery
++#ifdef ANDROID_EXPERIMENTAL_PAC
++    // braaz  xIP0                           // tail call to target
++    xpaci xIP0
+     br     xIP0                           // tail call to target
++#else
++    br     xIP0                           // tail call to target
++#endif
+ 1:
+     DELIVER_PENDING_EXCEPTION
+ .endm
+@@ -405,6 +411,9 @@ SAVE_SIZE=6*8   // x4, x5, x19, x20, FP, LR saved.
+     // load method-> METHOD_QUICK_CODE_OFFSET
+     ldr x9, [x0, #ART_METHOD_QUICK_CODE_OFFSET_64]
+     // Branch to method.
++#ifdef ANDROID_EXPERIMENTAL_PAC
++    xpaci x9
++#endif
+     blr x9
+ 
+     // Pop the ArtMethod* (null), arguments and alignment padding from the stack.
+@@ -878,6 +887,10 @@ ENTRY art_quick_do_long_jump
+ 
+     REFRESH_MARKING_REGISTER
+ 
++#ifdef ANDROID_EXPERIMENTAL_PAC
++    // this can go to art_quick_to_interpreter_bridge
++    xpaci xIP1
++#endif
+     br  xIP1
+ END art_quick_do_long_jump
+ 
+@@ -1722,6 +1735,9 @@ ENTRY art_quick_imt_conflict_trampoline
+     // and jump to it.
+     ldr x0, [xIP0, #__SIZEOF_POINTER__]
+     ldr xIP0, [x0, #ART_METHOD_QUICK_CODE_OFFSET_64]
++#ifdef ANDROID_EXPERIMENTAL_PAC
++    xpaci xIP0
++#endif
+     br xIP0
+ .Lconflict_trampoline:
+     // Call the runtime stub to populate the ImtConflictTable and jump to the
+@@ -1740,6 +1756,9 @@ ENTRY art_quick_resolution_trampoline
+     ldr x0, [sp, #0]        // artQuickResolutionTrampoline puts called method in *SP.
+     RESTORE_SAVE_REFS_AND_ARGS_FRAME
+     REFRESH_MARKING_REGISTER
++#ifdef ANDROID_EXPERIMENTAL_PAC
++    xpaci xIP0 // check this
++#endif
+     br xIP0
+ 1:
+     RESTORE_SAVE_REFS_AND_ARGS_FRAME
+@@ -1856,6 +1875,10 @@ ENTRY art_quick_generic_jni_trampoline
+     // Apply the new SP for out args, releasing unneeded reserved area.
+     mov sp, xIP1
+ 
++    // XXX jni call here
++#ifdef ANDROID_EXPERIMENTAL_PAC
++    xpaci xIP0
++#endif
+     blr xIP0        // native call.
+ 
+     // result sign extension is handled in C code
+@@ -2554,6 +2577,9 @@ ENTRY ExecuteSwitchImplAsm
+     SAVE_TWO_REGS_INCREASE_FRAME x19, xLR, 16
+     mov x19, x2                                   // x19 = DEX PC
+     CFI_DEFINE_DEX_PC_WITH_OFFSET(0 /* x0 */, 19 /* x19 */, 0)
++#ifdef ANDROID_EXPERIMENTAL_PAC
++    xpaci x1
++#endif
+     blr x1                                        // Call the wrapped method.
+     RESTORE_TWO_REGS_DECREASE_FRAME x19, xLR, 16
+     ret
+diff --git a/art/runtime/entrypoints/entrypoint_utils.cc b/art/runtime/entrypoints/entrypoint_utils.cc
+index 1c0127a519..bdcb686f7d 100644
+--- a/art/runtime/entrypoints/entrypoint_utils.cc
++++ b/art/runtime/entrypoints/entrypoint_utils.cc
+@@ -201,9 +201,18 @@ static inline ArtMethod* DoGetCalleeSaveMethodCaller(ArtMethod* outer_method,
+                                                      bool do_caller_check)
+     REQUIRES_SHARED(Locks::mutator_lock_) {
+   ArtMethod* caller = outer_method;
+-  if (LIKELY(caller_pc != reinterpret_cast<uintptr_t>(GetQuickInstrumentationExitPc()))) {
++  if (LIKELY(caller_pc !=
++             reinterpret_cast<uintptr_t>(GetQuickInstrumentationExitPc()))) {
+     if (outer_method != nullptr) {
+       const OatQuickMethodHeader* current_code = outer_method->GetOatQuickMethodHeader(caller_pc);
++#ifdef __aarch64__
++      if (current_code == nullptr) {
++        asm volatile(
++            "mov x0, %0; mov x1, %1" ::"r"(caller_pc),
++            "r"(reinterpret_cast<uintptr_t>(GetQuickInstrumentationExitPc())));
++        __builtin_trap();
++      }
++#endif
+       DCHECK(current_code != nullptr);
+       if (current_code->IsOptimized() &&
+           CodeInfo::HasInlineInfo(current_code->GetOptimizedCodeInfoPtr())) {
+diff --git a/art/runtime/entrypoints/quick/quick_entrypoints.h b/art/runtime/entrypoints/quick/quick_entrypoints.h
+index d41a276325..35c026315e 100644
+--- a/art/runtime/entrypoints/quick/quick_entrypoints.h
++++ b/art/runtime/entrypoints/quick/quick_entrypoints.h
+@@ -43,7 +43,7 @@ template<class MirrorType> class StackReference;
+ class Thread;
+ 
+ // Pointers to functions that are called by quick compiler generated code via thread-local storage.
+-struct PACKED(4) QuickEntryPoints {
++struct PACKED(sizeof(void*)) QuickEntryPoints {
+ #define ENTRYPOINT_ENUM(name, rettype, ...) rettype ( * p ## name )( __VA_ARGS__ );
+ #include "quick_entrypoints_list.h"
+   QUICK_ENTRYPOINT_LIST(ENTRYPOINT_ENUM)
+diff --git a/art/runtime/interpreter/interpreter_mterp_impl.h b/art/runtime/interpreter/interpreter_mterp_impl.h
+index 892790b118..03e6b6c74d 100644
+--- a/art/runtime/interpreter/interpreter_mterp_impl.h
++++ b/art/runtime/interpreter/interpreter_mterp_impl.h
+@@ -37,7 +37,7 @@ extern "C" bool ExecuteMterpImpl(Thread* self,
+                                  JValue* result_register) REQUIRES_SHARED(Locks::mutator_lock_);
+ 
+ // The entrypoint for nterp, which ArtMethods can directly point to.
+-extern "C" void ExecuteNterpImpl() REQUIRES_SHARED(Locks::mutator_lock_);
++extern "C" char ExecuteNterpImpl[];
+ 
+ }  // namespace interpreter
+ }  // namespace art
+diff --git a/art/runtime/interpreter/mterp/arm64ng/main.S b/art/runtime/interpreter/mterp/arm64ng/main.S
+index 627bb04f23..6e9b3bb6e6 100644
+--- a/art/runtime/interpreter/mterp/arm64ng/main.S
++++ b/art/runtime/interpreter/mterp/arm64ng/main.S
+@@ -920,6 +920,9 @@ END \name
+      mov ip2, x26
+      .endif
+      ldr lr, [x0, #ART_METHOD_QUICK_CODE_OFFSET_64]
++#ifdef ANDROID_EXPERIMENTAL_PAC
++     xpaclri
++#endif
+      blr lr
+      FETCH_ADVANCE_INST 3
+      GET_INST_OPCODE ip
+@@ -962,6 +965,9 @@ END \name
+      mov ip2, x26
+      .endif
+      ldr lr, [x0, #ART_METHOD_QUICK_CODE_OFFSET_64]
++#ifdef ANDROID_EXPERIMENTAL_PAC
++     xpaclri
++#endif
+      blr lr
+      # TODO: Use some other register for shorty and prefetch the instruction directly to wINST.
+      mov xINST, x27
+@@ -1025,6 +1031,9 @@ END \name
+       mov ip2, x26
+       .endif
+       ldr lr, [x0, #ART_METHOD_QUICK_CODE_OFFSET_64]
++#ifdef ANDROID_EXPERIMENTAL_PAC
++      xpaci lr
++#endif
+       blr lr
+    .endif
+    SETUP_RETURN_VALUE xINST
+@@ -1270,6 +1279,9 @@ END \name
+      mov ip2, x26
+      .endif
+      ldr lr, [x0, #ART_METHOD_QUICK_CODE_OFFSET_64]
++#ifdef ANDROID_EXPERIMENTAL_PAC
++     xpaclri
++#endif
+      blr lr
+      FETCH_ADVANCE_INST 3
+      GET_INST_OPCODE ip
+@@ -1307,6 +1319,9 @@ END \name
+      mov ip2, x26
+      .endif
+      ldr lr, [x0, #ART_METHOD_QUICK_CODE_OFFSET_64]
++#ifdef ANDROID_EXPERIMENTAL_PAC
++     xpaclri
++#endif
+      blr lr
+      mov xINST, x27
+      ADVANCE 3
+@@ -1380,6 +1395,9 @@ END \name
+       mov ip2, x26
+       .endif
+       ldr lr, [x0, #ART_METHOD_QUICK_CODE_OFFSET_64]
++#ifdef ANDROID_EXPERIMENTAL_PAC
++      xpaci lr
++#endif
+       blr lr
+    .endif
+    SETUP_RETURN_VALUE xINST
+@@ -1756,6 +1774,9 @@ NterpNewArray:
+    lsr     w1, wINST, #12              // w1<- B
+    GET_VREG w1, w1                     // w1<- vB (array length)
+    ldr lr, [xSELF, #THREAD_ALLOC_ARRAY_ENTRYPOINT_OFFSET]
++#ifdef ANDROID_EXPERIMENTAL_PAC
++   xpaci lr
++#endif
+    blr lr
+    ubfx    w1, wINST, #8, #4           // w1<- A
+    SET_VREG_OBJECT w0, w1
+diff --git a/art/runtime/interpreter/mterp/arm64ng/object.S b/art/runtime/interpreter/mterp/arm64ng/object.S
+index 00490a7bcd..4e50a29fe7 100644
+--- a/art/runtime/interpreter/mterp/arm64ng/object.S
++++ b/art/runtime/interpreter/mterp/arm64ng/object.S
+@@ -387,6 +387,9 @@
+    cbnz    wMR, 3f
+ 4:
+    ldr     lr, [xSELF, #THREAD_ALLOC_OBJECT_ENTRYPOINT_OFFSET]
++#ifdef ANDROID_EXPERIMENTAL_PAC
++   xpaci   lr
++#endif
+    blr     lr
+ 1:
+    lsr     w1, wINST, #8               // w1 <- A
+diff --git a/art/runtime/well_known_classes.cc b/art/runtime/well_known_classes.cc
+index 3b3a1a3f9f..6d13b509b6 100644
+--- a/art/runtime/well_known_classes.cc
++++ b/art/runtime/well_known_classes.cc
+@@ -295,7 +295,7 @@ void Thread::InitStringEntryPoints() {
+   #define SET_ENTRY_POINT(init_runtime_name, init_signature, new_runtime_name,              \
+                           new_java_name, new_signature, entry_point_name)                   \
+       DCHECK(!Runtime::Current()->IsStarted() || (new_runtime_name) != nullptr);            \
+-      qpoints->p ## entry_point_name = reinterpret_cast<void(*)()>(new_runtime_name);
++      *reinterpret_cast<ArtMethod**>(&qpoints->p ## entry_point_name) = new_runtime_name;
+       STRING_INIT_LIST(SET_ENTRY_POINT)
+   #undef SET_ENTRY_POINT
+ }
+diff --git a/bionic/libc/arch-common/bionic/crtbegin.c b/bionic/libc/arch-common/bionic/crtbegin.c
+index 9b8ad4e364..c2e6824114 100644
+--- a/bionic/libc/arch-common/bionic/crtbegin.c
++++ b/bionic/libc/arch-common/bionic/crtbegin.c
+@@ -31,9 +31,9 @@
+ #include <stdint.h>
+ 
+ #define SECTION(name) __attribute__((__section__(name)))
+-SECTION(".preinit_array") init_func_t* __PREINIT_ARRAY__ = (init_func_t*)-1;
+-SECTION(".init_array.0") init_func_t* __INIT_ARRAY__ = (init_func_t*)-1;
+-SECTION(".fini_array.0") fini_func_t* __FINI_ARRAY__ = (fini_func_t*)-1;
++SECTION(".preinit_array") void* __PREINIT_ARRAY__ = (void*)-1;
++SECTION(".init_array.0") void* __INIT_ARRAY__ = (void*)-1;
++SECTION(".fini_array.0") void* __FINI_ARRAY__ = (void*)-1;
+ #undef SECTION
+ 
+ __used static void _start_main(void* raw_args) {
+@@ -45,7 +45,7 @@ __used static void _start_main(void* raw_args) {
+   __libc_init(raw_args, NULL, &main, &array);
+ }
+ 
+-#define PRE ".text; .global _start; .type _start,%function; _start:"
++#define PRE ".text; .global _start; .hidden _start; .type _start,%function; _start:"
+ #define POST "; .size _start, .-_start"
+ 
+ #if defined(__aarch64__)
+diff --git a/bionic/libc/bionic/__libc_init_main_thread.cpp b/bionic/libc/bionic/__libc_init_main_thread.cpp
+index 95f46e9fad..88f5a5f79d 100644
+--- a/bionic/libc/bionic/__libc_init_main_thread.cpp
++++ b/bionic/libc/bionic/__libc_init_main_thread.cpp
+@@ -82,6 +82,9 @@ extern "C" void __libc_init_main_thread_early(const KernelArgumentBlock& args,
+   main_thread.tid = __getpid();
+   main_thread.set_cached_pid(main_thread.tid);
+   main_thread.stack_top = reinterpret_cast<uintptr_t>(args.argv);
++
++#define PR_PAC_SET_ENABLED_KEYS 60
++  // prctl(PR_PAC_SET_ENABLED_KEYS, PR_PAC_APIBKEY, 0, 0, 0);
+ }
+ 
+ // This code is used both by each new pthread and the code that initializes the main thread.
+diff --git a/bionic/libc/bionic/bionic_call_ifunc_resolver.cpp b/bionic/libc/bionic/bionic_call_ifunc_resolver.cpp
+index 437de78ce4..9923c486e2 100644
+--- a/bionic/libc/bionic/bionic_call_ifunc_resolver.cpp
++++ b/bionic/libc/bionic/bionic_call_ifunc_resolver.cpp
+@@ -30,6 +30,8 @@
+ #include <sys/auxv.h>
+ #include <sys/ifunc.h>
+ 
++#include <bionic/pac.h>
++
+ #include "private/bionic_auxv.h"
+ 
+ // This code is called in the linker before it has been relocated, so minimize calls into other
+@@ -47,7 +49,13 @@ ElfW(Addr) __bionic_call_ifunc_resolver(ElfW(Addr) resolver_addr) {
+     arg._hwcap = getauxval(AT_HWCAP);
+     arg._hwcap2 = getauxval(AT_HWCAP2);
+   }
+-  return reinterpret_cast<ifunc_resolver_t>(resolver_addr)(arg._hwcap | _IFUNC_ARG_HWCAP, &arg);
++  auto* resolver_fn = reinterpret_cast<ifunc_resolver_t>(
++      __bionic_sign_voidp(reinterpret_cast<void*>(resolver_addr)));
++  ElfW(Addr) addr = resolver_fn(arg._hwcap | _IFUNC_ARG_HWCAP, &arg);
++#ifdef ANDROID_EXPERIMENTAL_PAC
++  addr = __bionic_clear_pac_bits(addr);
++#endif
++  return addr;
+ #elif defined(__arm__)
+   typedef ElfW(Addr) (*ifunc_resolver_t)(unsigned long);
+   static unsigned long hwcap;
+@@ -62,3 +70,28 @@ ElfW(Addr) __bionic_call_ifunc_resolver(ElfW(Addr) resolver_addr) {
+   return reinterpret_cast<ifunc_resolver_t>(resolver_addr)();
+ #endif
+ }
++
++#ifdef ANDROID_EXPERIMENTAL_PAC
++ElfW(Addr) __bionic_pac_sign_ptr(ElfW(Addr) addr, ElfW(Addr)* place) {
++  uintptr_t data = *place;
++  uint64_t discriminator = data & 0xffff;
++  if (data & (1 << 16)) {
++    discriminator =
++        (discriminator << 48) | (reinterpret_cast<uintptr_t>(place) & ((1ULL << 48) - 1));
++  }
++  switch ((data >> 17) & 3) {
++    case 0:
++      return reinterpret_cast<uintptr_t>(
++          __builtin_ptrauth_sign_unauthenticated(reinterpret_cast<void*>(addr), 0, discriminator));
++    case 1:
++      return reinterpret_cast<uintptr_t>(
++          __builtin_ptrauth_sign_unauthenticated(reinterpret_cast<void*>(addr), 1, discriminator));
++    case 2:
++      return reinterpret_cast<uintptr_t>(
++          __builtin_ptrauth_sign_unauthenticated(reinterpret_cast<void*>(addr), 2, discriminator));
++    case 3:
++      return reinterpret_cast<uintptr_t>(
++          __builtin_ptrauth_sign_unauthenticated(reinterpret_cast<void*>(addr), 3, discriminator));
++  }
++}
++#endif
+diff --git a/bionic/libc/bionic/fork.cpp b/bionic/libc/bionic/fork.cpp
+index d432c6db73..ca931c2d07 100644
+--- a/bionic/libc/bionic/fork.cpp
++++ b/bionic/libc/bionic/fork.cpp
+@@ -34,7 +34,7 @@
+ #include "private/bionic_fdtrack.h"
+ #include "pthread_internal.h"
+ 
+-__BIONIC_WEAK_FOR_NATIVE_BRIDGE_INLINE
++__BIONIC_WEAK_FOR_NATIVE_BRIDGE
+ int __clone_for_fork() {
+   pthread_internal_t* self = __get_thread();
+ 
+diff --git a/bionic/libc/bionic/libc_init_common.cpp b/bionic/libc/bionic/libc_init_common.cpp
+index dd623a5293..12176e6be4 100644
+--- a/bionic/libc/bionic/libc_init_common.cpp
++++ b/bionic/libc/bionic/libc_init_common.cpp
+@@ -43,6 +43,7 @@
+ #include <unistd.h>
+ 
+ #include <async_safe/log.h>
++#include <bionic/pac.h>
+ 
+ #include "private/WriteProtected.h"
+ #include "private/bionic_defs.h"
+@@ -371,8 +372,8 @@ void __libc_init_AT_SECURE(char** env) {
+  */
+ void __libc_fini(void* array) {
+   typedef void (*Dtor)();
+-  Dtor* fini_array = reinterpret_cast<Dtor*>(array);
+-  const Dtor minus1 = reinterpret_cast<Dtor>(static_cast<uintptr_t>(-1));
++  void** fini_array = reinterpret_cast<void**>(array);
++  const void* minus1 = reinterpret_cast<void*>(static_cast<uintptr_t>(-1));
+ 
+   // Validity check: the first entry must be -1.
+   if (array == nullptr || fini_array[0] != minus1) return;
+@@ -388,7 +389,10 @@ void __libc_fini(void* array) {
+ 
+   // Now call each destructor in reverse order, ignoring any -1s.
+   while (count > 0) {
+-    Dtor dtor = fini_array[--count];
+-    if (dtor != minus1) dtor();
++    void* dtor = fini_array[--count];
++    if (dtor != minus1) {
++      Dtor dtor_fn = reinterpret_cast<Dtor>(__bionic_sign_voidp(dtor));
++      dtor_fn();
++    }
+   }
+ }
+diff --git a/bionic/libc/bionic/libc_init_common.h b/bionic/libc/bionic/libc_init_common.h
+index 15c747efef..cec86a045d 100644
+--- a/bionic/libc/bionic/libc_init_common.h
++++ b/bionic/libc/bionic/libc_init_common.h
+@@ -35,9 +35,9 @@ typedef void init_func_t(int, char*[], char*[]);
+ typedef void fini_func_t(void);
+ 
+ typedef struct {
+-  init_func_t** preinit_array;
+-  init_func_t** init_array;
+-  fini_func_t** fini_array;
++  void** preinit_array;
++  void** init_array;
++  void** fini_array;
+ } structors_array_t;
+ 
+ __BEGIN_DECLS
+diff --git a/bionic/libc/bionic/libc_init_static.cpp b/bionic/libc/bionic/libc_init_static.cpp
+index 069ebb0ab5..dd954a6fa8 100644
+--- a/bionic/libc/bionic/libc_init_static.cpp
++++ b/bionic/libc/bionic/libc_init_static.cpp
+@@ -41,6 +41,7 @@
+ 
+ #include "platform/bionic/macros.h"
+ #include "platform/bionic/mte.h"
++#include "platform/bionic/pac.h"
+ #include "platform/bionic/page.h"
+ #include "private/KernelArgumentBlock.h"
+ #include "private/bionic_asm.h"
+@@ -65,17 +66,30 @@ __LIBC_HIDDEN__ void* __libc_sysinfo;
+ extern "C" int __cxa_atexit(void (*)(void *), void *, void *);
+ extern "C" const char* __gnu_basename(const char* path);
+ 
+-static void call_array(init_func_t** list, int argc, char* argv[], char* envp[]) {
++static void call_array(void** list, int argc, char* argv[], char* envp[]) {
+   // First element is -1, list is null-terminated
+   while (*++list) {
+-    (*list)(argc, argv, envp);
++    void* fptr = __bionic_sign_voidp(*list);
++    reinterpret_cast<init_func_t*>(fptr)(argc, argv, envp);
+   }
+ }
+ 
+ #if defined(__aarch64__) || defined(__x86_64__)
+ extern __LIBC_HIDDEN__ __attribute__((weak)) ElfW(Rela) __rela_iplt_start[], __rela_iplt_end[];
+ 
++#ifdef ANDROID_EXPERIMENTAL_PAC
++extern __LIBC_HIDDEN__ ElfW(Rela) __rela_auth_start[], __rela_auth_end[];
++#endif
++
+ static void call_ifunc_resolvers() {
++#if defined(ANDROID_EXPERIMENTAL_PAC)
++  for (ElfW(Rela) *r = __rela_auth_start; r != __rela_auth_end; ++r) {
++    ElfW(Addr)* offset = reinterpret_cast<ElfW(Addr)*>(r->r_offset);
++    ElfW(Addr) resolver = r->r_addend;
++    *offset = __bionic_pac_sign_ptr(resolver, offset);
++  }
++#endif
++
+   if (__rela_iplt_start == nullptr || __rela_iplt_end == nullptr) {
+     // These symbols are not emitted by gold. Gold has code to do so, but for
+     // whatever reason it is not being run. In these cases ifuncs cannot be
+@@ -343,13 +357,13 @@ __noreturn static void __real_libc_init(void *raw_args,
+   __libc_init_AT_SECURE(args.envp);
+   layout_static_tls(args);
+   __libc_init_main_thread_final();
++  call_ifunc_resolvers();
+   __libc_init_common();
+   __libc_init_mte(reinterpret_cast<ElfW(Phdr)*>(getauxval(AT_PHDR)), getauxval(AT_PHNUM),
+                   /*load_bias = */ 0);
+   __libc_init_scudo();
+   __libc_init_fork_handler();
+ 
+-  call_ifunc_resolvers();
+   apply_gnu_relro();
+ 
+   // Several Linux ABIs don't pass the onexit pointer, and the ones that
+diff --git a/bionic/libc/bionic/pthread_create.cpp b/bionic/libc/bionic/pthread_create.cpp
+index 46d9e86724..2cfabb4460 100644
+--- a/bionic/libc/bionic/pthread_create.cpp
++++ b/bionic/libc/bionic/pthread_create.cpp
+@@ -352,7 +352,11 @@ static int __pthread_start(void* arg) {
+   // upgrading devices by checking for PAC support before issuing the prctl.
+   static const bool pac_supported = getauxval(AT_HWCAP) & HWCAP_PACA;
+   if (pac_supported && android_get_application_target_sdk_version() >= __ANDROID_API_S__) {
++#ifdef ANDROID_EXPERIMENTAL_PAC
++    prctl(PR_PAC_RESET_KEYS, PR_PAC_APIBKEY, 0, 0, 0);
++#else
+     prctl(PR_PAC_RESET_KEYS, PR_PAC_APIAKEY, 0, 0, 0);
++#endif
+   }
+ #endif
+ 
+diff --git a/bionic/libc/bionic/sigaction.cpp b/bionic/libc/bionic/sigaction.cpp
+index 1cdb021563..35b22eb437 100644
+--- a/bionic/libc/bionic/sigaction.cpp
++++ b/bionic/libc/bionic/sigaction.cpp
+@@ -48,6 +48,23 @@ int sigaction(int signal, const struct sigaction* bionic_new_action, struct siga
+ #if defined(SA_RESTORER)
+     kernel_new_action.sa_restorer = bionic_new_action->sa_restorer;
+ #if defined(__aarch64__)
++#ifdef ANDROID_EXPERIMENTAL_PAC
++    if (kernel_new_action.sa_handler != SIG_DFL && kernel_new_action.sa_handler != SIG_IGN &&
++        kernel_new_action.sa_handler != SIG_ERR) {
++      if (kernel_new_action.sa_flags & SA_SIGINFO) {
++        kernel_new_action.sa_handler = __builtin_ptrauth_auth(
++            kernel_new_action.sa_handler, 0,
++            __builtin_ptrauth_type_discriminator(void (*)(int, struct siginfo*, void*)));
++      } else {
++        kernel_new_action.sa_handler = __builtin_ptrauth_auth(
++            kernel_new_action.sa_handler, 0, __builtin_ptrauth_type_discriminator(__sighandler_t));
++      }
++    }
++    if (kernel_new_action.sa_restorer) {
++      kernel_new_action.sa_restorer = __builtin_ptrauth_auth(
++          kernel_new_action.sa_restorer, 0, __builtin_ptrauth_type_discriminator(__sigrestore_t));
++    }
++#endif
+     // arm64 has sa_restorer, but unwinding works best if you just let the
+     // kernel supply the default restorer from [vdso]. gdb doesn't care, but
+     // libgcc needs the nop that the kernel includes before the actual code.
+@@ -73,6 +90,23 @@ int sigaction(int signal, const struct sigaction* bionic_new_action, struct siga
+     bionic_old_action->sa_mask = kernel_old_action.sa_mask;
+ #if defined(SA_RESTORER)
+     bionic_old_action->sa_restorer = kernel_old_action.sa_restorer;
++#endif
++#if defined(__aarch64__) && defined(ANDROID_EXPERIMENTAL_PAC)
++    if (bionic_old_action->sa_handler != SIG_DFL && bionic_old_action->sa_handler != SIG_IGN &&
++        bionic_old_action->sa_handler != SIG_ERR) {
++      if (bionic_old_action->sa_flags & SA_SIGINFO) {
++        bionic_old_action->sa_sigaction = __builtin_ptrauth_sign_unauthenticated(
++            bionic_old_action->sa_sigaction, 0,
++            __builtin_ptrauth_type_discriminator(void (*)(int, struct siginfo*, void*)));
++      } else {
++        bionic_old_action->sa_handler = __builtin_ptrauth_sign_unauthenticated(
++            bionic_old_action->sa_handler, 0, __builtin_ptrauth_type_discriminator(__sighandler_t));
++      }
++    }
++    if (bionic_old_action->sa_restorer) {
++      bionic_old_action->sa_restorer = __builtin_ptrauth_sign_unauthenticated(
++          bionic_old_action->sa_restorer, 0, __builtin_ptrauth_type_discriminator(__sigrestore_t));
++    }
+ #endif
+   }
+ 
+diff --git a/bionic/libc/bionic/vdso.cpp b/bionic/libc/bionic/vdso.cpp
+index dbca9c0139..9f08cbe083 100644
+--- a/bionic/libc/bionic/vdso.cpp
++++ b/bionic/libc/bionic/vdso.cpp
+@@ -26,6 +26,8 @@
+ #include <time.h>
+ #include <unistd.h>
+ 
++#include <bionic/pac.h>
++
+ static inline int vdso_return(int result) {
+   if (__predict_true(result == 0)) return 0;
+ 
+@@ -132,7 +134,7 @@ void __libc_init_vdso(libc_globals* globals) {
+   for (size_t i = 0; i < symbol_count; ++i) {
+     for (size_t j = 0; j < VDSO_END; ++j) {
+       if (strcmp(vdso[j].name, strtab + symtab[i].st_name) == 0) {
+-        vdso[j].fn = reinterpret_cast<void*>(vdso_addr + symtab[i].st_value);
++        vdso[j].fn = __bionic_sign_voidp(reinterpret_cast<void*>(vdso_addr + symtab[i].st_value));
+       }
+     }
+   }
+diff --git a/bionic/libc/platform/bionic/pac.h b/bionic/libc/platform/bionic/pac.h
+index 34efc48aea..60cf7d24d6 100644
+--- a/bionic/libc/platform/bionic/pac.h
++++ b/bionic/libc/platform/bionic/pac.h
+@@ -40,3 +40,21 @@ inline uintptr_t __bionic_clear_pac_bits(uintptr_t ptr) {
+   return ptr;
+ #endif
+ }
++
++template <typename T>
++T* __bionic_clear_pac_bits(T* ptr) {
++#ifdef ANDROID_EXPERIMENTAL_PAC
++  return __builtin_ptrauth_strip(ptr, 0);
++#else
++  return reinterpret_cast<T*>(__bionic_clear_pac_bits(reinterpret_cast<uintptr_t>(ptr)));
++#endif
++}
++
++inline void* __bionic_sign_voidp(void* ptr) {
++#ifdef ANDROID_EXPERIMENTAL_PAC
++  if (ptr) {
++    ptr = __builtin_ptrauth_sign_unauthenticated(ptr, 0, 0);
++  }
++#endif
++  return ptr;
++}
+diff --git a/bionic/libc/private/NetdClientDispatch.h b/bionic/libc/private/NetdClientDispatch.h
+index 7ebbe0c025..0bb229ad0b 100644
+--- a/bionic/libc/private/NetdClientDispatch.h
++++ b/bionic/libc/private/NetdClientDispatch.h
+@@ -29,7 +29,7 @@ struct NetdClientDispatch {
+     int (*sendto)(int, const void*, size_t, int, const struct sockaddr*, socklen_t);
+     int (*socket)(int, int, int);
+     unsigned (*netIdForResolv)(unsigned);
+-    int (*dnsOpenProxy)();
++    int (*dnsOpenProxy)(void);
+ };
+ 
+ extern __LIBC_HIDDEN__ struct NetdClientDispatch __netdClientDispatch;
+diff --git a/bionic/libc/private/bionic_call_ifunc_resolver.h b/bionic/libc/private/bionic_call_ifunc_resolver.h
+index e0ea35bba5..b92de0620c 100644
+--- a/bionic/libc/private/bionic_call_ifunc_resolver.h
++++ b/bionic/libc/private/bionic_call_ifunc_resolver.h
+@@ -32,3 +32,4 @@
+ #include <sys/cdefs.h>
+ 
+ __LIBC_HIDDEN__ ElfW(Addr) __bionic_call_ifunc_resolver(ElfW(Addr) resolver_addr);
++__LIBC_HIDDEN__ ElfW(Addr) __bionic_pac_sign_ptr(ElfW(Addr) addr, ElfW(Addr)* place);
+diff --git a/bionic/linker/Android.bp b/bionic/linker/Android.bp
+index 4a5bf44a60..0590486b7f 100644
+--- a/bionic/linker/Android.bp
++++ b/bionic/linker/Android.bp
+@@ -129,7 +129,10 @@ cc_defaults {
+     ],
+ 
+     // We need to access Bionic private headers in the linker.
+-    include_dirs: ["bionic/libc"],
++    include_dirs: [
++        "bionic/libc",
++        "bionic/libc/platform",
++    ],
+ }
+ 
+ // ========================================================
+diff --git a/bionic/linker/linker.cpp b/bionic/linker/linker.cpp
+index 3488f5cc71..770c5786ce 100644
+--- a/bionic/linker/linker.cpp
++++ b/bionic/linker/linker.cpp
+@@ -47,6 +47,7 @@
+ #include <android-base/properties.h>
+ #include <android-base/scopeguard.h>
+ #include <async_safe/log.h>
++#include <bionic/pac.h>
+ #include <bionic/pthread_internal.h>
+ 
+ // Private C library headers.
+@@ -2291,6 +2292,11 @@ bool do_dlsym(void* handle,
+       } else {
+         *symbol = reinterpret_cast<void*>(found->resolve_symbol_address(sym));
+       }
++#ifdef ANDROID_EXPERIMENTAL_PAC
++      if (type == STT_FUNC || type == STT_GNU_IFUNC) {
++        *symbol = __builtin_ptrauth_sign_unauthenticated(*symbol, 0, 0);
++      }
++#endif
+       failure_guard.Disable();
+       LD_LOG(kLogDlsym,
+              "... dlsym successful: sym_name=\"%s\", sym_ver=\"%s\", found in=\"%s\", address=%p",
+@@ -3028,17 +3034,19 @@ bool soinfo::prelink_image() {
+         break;
+ 
+       case DT_INIT:
+-        init_func_ = reinterpret_cast<linker_ctor_function_t>(load_bias + d->d_un.d_ptr);
++        init_func_ = reinterpret_cast<linker_ctor_function_t>(
++            __bionic_sign_voidp(reinterpret_cast<void*>(load_bias + d->d_un.d_ptr)));
+         DEBUG("%s constructors (DT_INIT) found at %p", get_realpath(), init_func_);
+         break;
+ 
+       case DT_FINI:
+-        fini_func_ = reinterpret_cast<linker_dtor_function_t>(load_bias + d->d_un.d_ptr);
++        fini_func_ = reinterpret_cast<linker_dtor_function_t>(
++            __bionic_sign_voidp(reinterpret_cast<void*>(load_bias + d->d_un.d_ptr)));
+         DEBUG("%s destructors (DT_FINI) found at %p", get_realpath(), fini_func_);
+         break;
+ 
+       case DT_INIT_ARRAY:
+-        init_array_ = reinterpret_cast<linker_ctor_function_t*>(load_bias + d->d_un.d_ptr);
++        init_array_ = reinterpret_cast<void**>(load_bias + d->d_un.d_ptr);
+         DEBUG("%s constructors (DT_INIT_ARRAY) found at %p", get_realpath(), init_array_);
+         break;
+ 
+@@ -3047,7 +3055,7 @@ bool soinfo::prelink_image() {
+         break;
+ 
+       case DT_FINI_ARRAY:
+-        fini_array_ = reinterpret_cast<linker_dtor_function_t*>(load_bias + d->d_un.d_ptr);
++        fini_array_ = reinterpret_cast<void**>(load_bias + d->d_un.d_ptr);
+         DEBUG("%s destructors (DT_FINI_ARRAY) found at %p", get_realpath(), fini_array_);
+         break;
+ 
+@@ -3056,7 +3064,7 @@ bool soinfo::prelink_image() {
+         break;
+ 
+       case DT_PREINIT_ARRAY:
+-        preinit_array_ = reinterpret_cast<linker_ctor_function_t*>(load_bias + d->d_un.d_ptr);
++        preinit_array_ = reinterpret_cast<void**>(load_bias + d->d_un.d_ptr);
+         DEBUG("%s constructors (DT_PREINIT_ARRAY) found at %p", get_realpath(), preinit_array_);
+         break;
+ 
+diff --git a/bionic/linker/linker_cfi.cpp b/bionic/linker/linker_cfi.cpp
+index 6bc2615458..8274ce48fa 100644
+--- a/bionic/linker/linker_cfi.cpp
++++ b/bionic/linker/linker_cfi.cpp
+@@ -30,6 +30,7 @@
+ 
+ #include "linker_debug.h"
+ #include "linker_globals.h"
++#include "platform/bionic/pac.h"
+ #include "platform/bionic/page.h"
+ 
+ #include <sys/mman.h>
+@@ -199,9 +200,10 @@ bool CFIShadowWriter::NotifyLibDl(soinfo* solist, uintptr_t p) {
+     return false;
+   }
+ 
+-  uintptr_t cfi_init = soinfo_find_symbol(libdl, "__cfi_init");
++  auto cfi_init_sym = reinterpret_cast<void*>(soinfo_find_symbol(libdl, "__cfi_init"));
++  auto cfi_init = reinterpret_cast<uintptr_t* (*)(uintptr_t)>(__bionic_sign_voidp(cfi_init_sym));
+   CHECK(cfi_init != 0);
+-  shadow_start = reinterpret_cast<uintptr_t* (*)(uintptr_t)>(cfi_init)(p);
++  shadow_start = cfi_init(p);
+   CHECK(shadow_start != nullptr);
+   CHECK(*shadow_start == p);
+   mprotect(shadow_start, PAGE_SIZE, PROT_READ);
+diff --git a/bionic/linker/linker_main.cpp b/bionic/linker/linker_main.cpp
+index 2a690e9a08..283b419a89 100644
+--- a/bionic/linker/linker_main.cpp
++++ b/bionic/linker/linker_main.cpp
+@@ -58,7 +58,7 @@
+ 
+ #include <vector>
+ 
+-__LIBC_HIDDEN__ extern "C" void _start();
++__LIBC_HIDDEN__ extern "C" char _start[];
+ 
+ static ElfW(Addr) get_elf_exec_load_bias(const ElfW(Ehdr)* elf);
+ 
+@@ -650,6 +650,16 @@ __attribute__((constructor(1))) static void detect_self_exec() {
+ static ElfW(Addr) __attribute__((noinline))
+ __linker_init_post_relocation(KernelArgumentBlock& args, soinfo& linker_so);
+ 
++#ifdef ANDROID_EXPERIMENTAL_PAC
++static void disable_pac() {
++#define PR_PAC_SET_ENABLED_KEYS 60
++  prctl(PR_PAC_SET_ENABLED_KEYS, PR_PAC_APIAKEY | PR_PAC_APIBKEY | PR_PAC_APDAKEY | PR_PAC_APDBKEY,
++        PR_PAC_APIBKEY, 0, 0);
++}
++#endif
++
++int __clone_for_fork();
++
+ /*
+  * This is the entry point for the linker, called from begin.S. This
+  * method is responsible for fixing the linker's own relocations, and
+@@ -685,6 +695,24 @@ extern "C" ElfW(Addr) __linker_init(void* raw_args) {
+   const ElfW(Addr) load_bias = get_elf_exec_load_bias(elf_hdr);
+   call_ifunc_resolvers(load_bias);
+ 
++#ifdef ANDROID_EXPERIMENTAL_PAC
++  // Rust code generator doesn't know about PAC.
++  // Android emulator has /vendor/bin/ip which is a prebuilt.
++  // lldb-server is also a prebuilt.
++  if (strcmp(args.argv[0], "/system/bin/keystore2") == 0 ||
++      strcmp(args.argv[0], "/system/bin/profcollectd") == 0 ||
++      strcmp(args.argv[0], "/vendor/bin/ip") == 0 ||
++      strcmp(args.argv[0], "/data/local/tmp/arm64-lldb-server") == 0) {
++    disable_pac();
++  }
++
++  if (strcmp(args.argv[0], "/system/bin/app_process64") == 0) {
++    if (__clone_for_fork() == 0) {
++      disable_pac();
++    }
++  }
++#endif
++
+   soinfo tmp_linker_so(nullptr, nullptr, nullptr, 0, 0);
+ 
+   tmp_linker_so.base = linker_addr;
+@@ -738,7 +766,7 @@ __linker_init_post_relocation(KernelArgumentBlock& args, soinfo& tmp_linker_so)
+   // as PT_INTERP, AT_ENTRY will refer to the loaded executable rather than the
+   // linker's _start.
+   const char* exe_to_load = nullptr;
+-  if (getauxval(AT_ENTRY) == reinterpret_cast<uintptr_t>(&_start)) {
++  if (getauxval(AT_ENTRY) == reinterpret_cast<uintptr_t>(_start)) {
+     if (args.argc == 3 && !strcmp(args.argv[1], "--list")) {
+       // We're being asked to behave like ldd(1).
+       g_is_ldd = true;
+diff --git a/bionic/linker/linker_relocate.cpp b/bionic/linker/linker_relocate.cpp
+index 72be5f74c8..a99ba72d50 100644
+--- a/bionic/linker/linker_relocate.cpp
++++ b/bionic/linker/linker_relocate.cpp
+@@ -42,8 +42,11 @@
+ #include "linker_reloc_iterators.h"
+ #include "linker_sleb128.h"
+ #include "linker_soinfo.h"
++#include "private/bionic_call_ifunc_resolver.h"
+ #include "private/bionic_globals.h"
+ 
++#include "platform/bionic/pac.h"
++
+ static bool is_tls_reloc(ElfW(Word) type) {
+   switch (type) {
+     case R_GENERIC_TLS_DTPMOD:
+@@ -430,7 +433,7 @@ static bool process_relocation_impl(Relocator& relocator, const rel_t& reloc) {
+         TlsDescriptor* desc = static_cast<TlsDescriptor*>(rel_target);
+         if (found_in == nullptr) {
+           // Unresolved weak relocation.
+-          desc->func = tlsdesc_resolver_unresolved_weak;
++          desc->func = __bionic_clear_pac_bits(tlsdesc_resolver_unresolved_weak);
+           desc->arg = addend;
+           trace_reloc("RELO TLSDESC %16p <- unresolved weak, addend 0x%zx %s",
+                       rel_target, static_cast<size_t>(addend), sym_name);
+@@ -439,7 +442,7 @@ static bool process_relocation_impl(Relocator& relocator, const rel_t& reloc) {
+           size_t module_id = found_in->get_tls()->module_id;
+           const TlsModule& mod = get_tls_module(module_id);
+           if (mod.static_offset != SIZE_MAX) {
+-            desc->func = tlsdesc_resolver_static;
++            desc->func = __bionic_clear_pac_bits(tlsdesc_resolver_static);
+             desc->arg = mod.static_offset - relocator.tls_tp_base + sym_addr + addend;
+             trace_reloc("RELO TLSDESC %16p <- static (0x%zx - 0x%zx + 0x%zx + 0x%zx) %s",
+                         rel_target, mod.static_offset, relocator.tls_tp_base,
+@@ -464,6 +467,22 @@ static bool process_relocation_impl(Relocator& relocator, const rel_t& reloc) {
+         }
+       }
+       break;
++#define R_AARCH64_AUTH64 0x1ff
++#define R_AARCH64_AUTH_RELATIVE 0x4ff
++#if defined(ANDROID_EXPERIMENTAL_PAC)
++    case R_AARCH64_AUTH64: {
++      ElfW(Addr) result = sym_addr + get_addend_rel();
++      if (result) result = __bionic_pac_sign_ptr(result, static_cast<ElfW(Addr)*>(rel_target));
++      *static_cast<ElfW(Addr)*>(rel_target) = result;
++      break;
++    }
++    case R_AARCH64_AUTH_RELATIVE: {
++      const ElfW(Addr) result = __bionic_pac_sign_ptr(relocator.si->load_bias + get_addend_rel(),
++                                                      static_cast<ElfW(Addr)*>(rel_target));
++      *static_cast<ElfW(Addr)*>(rel_target) = result;
++      break;
++    }
++#endif  // defined(ANDROID_EXPERIMENTAL_PAC)
+ #endif  // defined(__aarch64__)
+ 
+ #if defined(__x86_64__)
+@@ -649,7 +668,7 @@ bool soinfo::relocate(const SymbolLookupList& lookup_list) {
+   // Bionic currently only implements TLSDESC for arm64.
+   for (const std::pair<TlsDescriptor*, size_t>& pair : relocator.deferred_tlsdesc_relocs) {
+     TlsDescriptor* desc = pair.first;
+-    desc->func = tlsdesc_resolver_dynamic;
++    desc->func = __bionic_clear_pac_bits(tlsdesc_resolver_dynamic);
+     desc->arg = reinterpret_cast<size_t>(&tlsdesc_args_[pair.second]);
+   }
+ #endif
+diff --git a/bionic/linker/linker_soinfo.cpp b/bionic/linker/linker_soinfo.cpp
+index 287e757a9f..aa13b66309 100644
+--- a/bionic/linker/linker_soinfo.cpp
++++ b/bionic/linker/linker_soinfo.cpp
+@@ -35,6 +35,7 @@
+ #include <unistd.h>
+ 
+ #include <async_safe/log.h>
++#include <bionic/pac.h>
+ 
+ #include "linker.h"
+ #include "linker_config.h"
+@@ -463,7 +464,7 @@ ElfW(Sym)* soinfo::elf_addr_lookup(const void* addr) {
+ static void call_function(const char* function_name __unused,
+                           linker_ctor_function_t function,
+                           const char* realpath __unused) {
+-  if (function == nullptr || reinterpret_cast<uintptr_t>(function) == static_cast<uintptr_t>(-1)) {
++  if (function == nullptr) {
+     return;
+   }
+ 
+@@ -475,7 +476,7 @@ static void call_function(const char* function_name __unused,
+ static void call_function(const char* function_name __unused,
+                           linker_dtor_function_t function,
+                           const char* realpath __unused) {
+-  if (function == nullptr || reinterpret_cast<uintptr_t>(function) == static_cast<uintptr_t>(-1)) {
++  if (function == nullptr) {
+     return;
+   }
+ 
+@@ -485,7 +486,7 @@ static void call_function(const char* function_name __unused,
+ }
+ 
+ template <typename F>
+-static inline void call_array(const char* array_name __unused, F* functions, size_t count,
++static inline void call_array(const char* array_name __unused, void** functions, size_t count,
+                               bool reverse, const char* realpath) {
+   if (functions == nullptr) {
+     return;
+@@ -499,7 +500,10 @@ static inline void call_array(const char* array_name __unused, F* functions, siz
+ 
+   for (int i = begin; i != end; i += step) {
+     TRACE("[ %s[%d] == %p ]", array_name, i, functions[i]);
+-    call_function("function", functions[i], realpath);
++    if (reinterpret_cast<uintptr_t>(functions[i]) == static_cast<uintptr_t>(-1)) {
++      continue;
++    }
++    call_function("function", reinterpret_cast<F>(__bionic_sign_voidp(functions[i])), realpath);
+   }
+ 
+   TRACE("[ Done calling %s for '%s' ]", array_name, realpath);
+@@ -510,7 +514,8 @@ void soinfo::call_pre_init_constructors() {
+ 
+   // DT_PREINIT_ARRAY functions are called before any other constructors for executables,
+   // but ignored in a shared library.
+-  call_array("DT_PREINIT_ARRAY", preinit_array_, preinit_array_count_, false, get_realpath());
++  call_array<linker_ctor_function_t>("DT_PREINIT_ARRAY", preinit_array_, preinit_array_count_,
++                                     false, get_realpath());
+ }
+ 
+ void soinfo::call_constructors() {
+@@ -545,7 +550,8 @@ void soinfo::call_constructors() {
+ 
+   // DT_INIT should be called before DT_INIT_ARRAY if both are present.
+   call_function("DT_INIT", init_func_, get_realpath());
+-  call_array("DT_INIT_ARRAY", init_array_, init_array_count_, false, get_realpath());
++  call_array<linker_ctor_function_t>("DT_INIT_ARRAY", init_array_, init_array_count_, false,
++                                     get_realpath());
+ 
+   if (!is_linker()) {
+     bionic_trace_end();
+@@ -560,7 +566,8 @@ void soinfo::call_destructors() {
+   ScopedTrace trace((std::string("calling destructors: ") + get_realpath()).c_str());
+ 
+   // DT_FINI_ARRAY must be parsed in reverse order.
+-  call_array("DT_FINI_ARRAY", fini_array_, fini_array_count_, true, get_realpath());
++  call_array<linker_dtor_function_t>("DT_FINI_ARRAY", fini_array_, fini_array_count_, true,
++                                     get_realpath());
+ 
+   // DT_FINI should be called after DT_FINI_ARRAY if both are present.
+   call_function("DT_FINI", fini_func_, get_realpath());
+diff --git a/bionic/linker/linker_soinfo.h b/bionic/linker/linker_soinfo.h
+index 9c589d608f..21994a4222 100644
+--- a/bionic/linker/linker_soinfo.h
++++ b/bionic/linker/linker_soinfo.h
+@@ -180,7 +180,6 @@ struct soinfo {
+ #endif
+ 
+   soinfo* next;
+- private:
+   uint32_t flags_;
+ 
+   const char* strtab_;
+@@ -209,12 +208,12 @@ struct soinfo {
+   size_t rel_count_;
+ #endif
+ 
+-  linker_ctor_function_t* preinit_array_;
++  void** preinit_array_;
+   size_t preinit_array_count_;
+ 
+-  linker_ctor_function_t* init_array_;
++  void** init_array_;
+   size_t init_array_count_;
+-  linker_dtor_function_t* fini_array_;
++  void** fini_array_;
+   size_t fini_array_count_;
+ 
+   linker_ctor_function_t init_func_;
+diff --git a/bionic/tests/signal_test.cpp b/bionic/tests/signal_test.cpp
+index ffbb667e03..6606d41a78 100644
+--- a/bionic/tests/signal_test.cpp
++++ b/bionic/tests/signal_test.cpp
+@@ -269,7 +269,7 @@ static void TestSigAction(int (sigaction_fn)(int, const SigActionT*, SigActionT*
+   sa = {};
+   ASSERT_EQ(0, sigaction_fn(sig, nullptr, &sa));
+   ASSERT_TRUE(sa.sa_handler == no_op_signal_handler);
+-  ASSERT_TRUE((void*) sa.sa_sigaction == (void*) sa.sa_handler);
++  ASSERT_TRUE((void**) &sa.sa_sigaction == (void**) &sa.sa_handler);
+   ASSERT_EQ(static_cast<unsigned>(SA_ONSTACK), sa.sa_flags & ~sa_restorer);
+ #ifdef SA_RESTORER
+   ASSERT_EQ(bool(sa.sa_flags & sa_restorer), bool(sa.sa_restorer));
+@@ -287,7 +287,7 @@ static void TestSigAction(int (sigaction_fn)(int, const SigActionT*, SigActionT*
+   sa = {};
+   ASSERT_EQ(0, sigaction_fn(sig, nullptr, &sa));
+   ASSERT_TRUE(sa.sa_sigaction == no_op_sigaction);
+-  ASSERT_TRUE((void*) sa.sa_sigaction == (void*) sa.sa_handler);
++  ASSERT_TRUE((void**) &sa.sa_sigaction == (void**) &sa.sa_handler);
+   ASSERT_EQ(static_cast<unsigned>(SA_ONSTACK | SA_SIGINFO), sa.sa_flags & ~sa_restorer);
+ #ifdef SA_RESTORER
+   ASSERT_EQ(bool(sa.sa_flags & sa_restorer), bool(sa.sa_restorer));
+diff --git a/build/make/core/binary.mk b/build/make/core/binary.mk
+index cf47374b5e..80d5a9dfe6 100644
+--- a/build/make/core/binary.mk
++++ b/build/make/core/binary.mk
+@@ -231,6 +231,11 @@ ifneq ($(LOCAL_SDK_VERSION),)
+   my_ndk_stl_shared_lib_fullpath :=
+   my_ndk_stl_static_lib :=
+   my_cpu_variant := $(TARGET_$(LOCAL_2ND_ARCH_VAR_PREFIX)CPU_ABI)
++  ifneq (,$(TARGET_EXPERIMENTAL_PAC))
++    ifeq (arm64-v8a,$(my_cpu_variant))
++      my_cpu_variant := arm64-v9a
++    endif
++  endif
+   LOCAL_NDK_STL_VARIANT := $(strip $(LOCAL_NDK_STL_VARIANT))
+   ifeq (,$(LOCAL_NDK_STL_VARIANT))
+     LOCAL_NDK_STL_VARIANT := system
+diff --git a/build/make/core/board_config.mk b/build/make/core/board_config.mk
+index 53dbb92c19..fe0d763556 100644
+--- a/build/make/core/board_config.mk
++++ b/build/make/core/board_config.mk
+@@ -270,6 +270,10 @@ ifeq (,$(TARGET_CPU_ABI_LIST_64_BIT))
+   endif
+ endif
+ 
++ifneq (,$(TARGET_EXPERIMENTAL_PAC))
++  TARGET_CPU_ABI_LIST_64_BIT := arm64-v9a $(TARGET_CPU_ABI_LIST_64_BIT)
++endif
++
+ # "arm64-v8a-hwasan", the ABI for libraries compiled with HWASAN, is supported
+ # in all builds with SANITIZE_TARGET=hwaddress.
+ ifneq ($(filter hwaddress,$(SANITIZE_TARGET)),)
+diff --git a/build/make/core/dex_preopt_odex_install.mk b/build/make/core/dex_preopt_odex_install.mk
+index f365347f1b..81358ad642 100644
+--- a/build/make/core/dex_preopt_odex_install.mk
++++ b/build/make/core/dex_preopt_odex_install.mk
+@@ -421,6 +421,7 @@ ifdef LOCAL_DEX_PREOPT
+   $(my_dexpreopt_script): $(DEXPREOPT_GEN)
+   $(my_dexpreopt_script): $(my_dexpreopt_config) $(DEX_PREOPT_SOONG_CONFIG_FOR_MAKE) $(DEX_PREOPT_CONFIG_FOR_MAKE)
+ 	@echo "$(PRIVATE_MODULE) dexpreopt gen"
++	TARGET_EXPERIMENTAL_PAC=$(TARGET_EXPERIMENTAL_PAC) \
+ 	$(DEXPREOPT_GEN) \
+ 	-global_soong $(PRIVATE_GLOBAL_SOONG_CONFIG) \
+ 	-global $(PRIVATE_GLOBAL_CONFIG) \
+diff --git a/build/soong/android/Android.bp b/build/soong/android/Android.bp
+index 5d0f2b941d..89ff3070cc 100644
+--- a/build/soong/android/Android.bp
++++ b/build/soong/android/Android.bp
+@@ -35,6 +35,7 @@ bootstrap_go_package {
+         "depset_generic.go",
+         "depset_paths.go",
+         "deptag.go",
++        "env.go",
+         "expand.go",
+         "filegroup.go",
+         "fixture.go",
+diff --git a/build/soong/android/env.go b/build/soong/android/env.go
+new file mode 100644
+index 0000000000..4229af5e60
+--- /dev/null
++++ b/build/soong/android/env.go
+@@ -0,0 +1,25 @@
++// Copyright 2015 Google Inc. All rights reserved.
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//     http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++
++package android
++
++import (
++	"os"
++)
++
++var TargetExperimentalPac string
++
++func init() {
++	TargetExperimentalPac = os.Getenv("TARGET_EXPERIMENTAL_PAC")
++}
+diff --git a/build/soong/cc/builder.go b/build/soong/cc/builder.go
+index 51c8a0bdfc..9bd9957d3c 100644
+--- a/build/soong/cc/builder.go
++++ b/build/soong/cc/builder.go
+@@ -237,7 +237,7 @@ var (
+ 	// -w has been added since header-abi-dumper does not need to produce any sort of diagnostic information.
+ 	sAbiDump, sAbiDumpRE = pctx.RemoteStaticRules("sAbiDump",
+ 		blueprint.RuleParams{
+-			Command:     "rm -f $out && $reTemplate$sAbiDumper -o ${out} $in $exportDirs -- $cFlags -w -isystem prebuilts/clang-tools/${config.HostPrebuiltTag}/clang-headers",
++			Command:     "rm -f $out && $reTemplate$sAbiDumper -o ${out} $in $exportDirs -- $cFlags -UANDROID_EXPERIMENTAL_PAC -w -isystem prebuilts/clang-tools/${config.HostPrebuiltTag}/clang-headers",
+ 			CommandDeps: []string{"$sAbiDumper"},
+ 		}, &remoteexec.REParams{
+ 			Labels:       map[string]string{"type": "abi-dump", "tool": "header-abi-dumper"},
+diff --git a/build/soong/cc/compiler.go b/build/soong/cc/compiler.go
+index 78a5a5da33..ef5fa375d9 100644
+--- a/build/soong/cc/compiler.go
++++ b/build/soong/cc/compiler.go
+@@ -412,6 +412,24 @@ func (compiler *baseCompiler) compilerFlags(ctx ModuleContext, flags Flags, deps
+ 	flags.Local.ConlyFlags = config.ClangFilterUnknownCflags(flags.Local.ConlyFlags)
+ 	flags.Local.LdFlags = config.ClangFilterUnknownCflags(flags.Local.LdFlags)
+ 
++	if ctx.Config().Getenv("TARGET_EXPERIMENTAL_PAC") != "" {
++		var cflags []string
++		for _, f := range flags.Local.CFlags {
++			if f != "-fwhole-program-vtables" {
++				cflags = append(cflags, f)
++			}
++		}
++		flags.Local.CFlags = cflags
++
++		var cppflags []string
++		for _, f := range flags.Local.CppFlags {
++			if f != "-fwhole-program-vtables" {
++				cppflags = append(cppflags, f)
++			}
++		}
++		flags.Local.CppFlags = cppflags
++	}
++
+ 	target := "-target " + tc.ClangTriple()
+ 	if ctx.Os().Class == android.Device {
+ 		version := ctx.minSdkVersion()
+diff --git a/build/soong/cc/config/arm64_device.go b/build/soong/cc/config/arm64_device.go
+index 864fba1009..0412994af0 100644
+--- a/build/soong/cc/config/arm64_device.go
++++ b/build/soong/cc/config/arm64_device.go
+@@ -219,6 +219,10 @@ func arm64ToolchainFactory(arch android.Arch) Toolchain {
+ 	toolchainClangCflags = append(toolchainClangCflags,
+ 		variantOrDefault(arm64ClangCpuVariantCflagsVar, arch.CpuVariant))
+ 
++	if android.TargetExperimentalPac != "" {
++		toolchainClangCflags = append(toolchainClangCflags, "-DANDROID_EXPERIMENTAL_PAC", "-mbranch-protection=pac-ret+b-key", "-fptrauth-intrinsics", "-fptrauth-calls", "-fptrauth-auth-traps", "-fptrauth-function-pointer-type-discrimination", "-march=armv8.3a")
++	}
++
+ 	var extraLdflags string
+ 	switch arch.CpuVariant {
+ 	case "cortex-a53", "cortex-a72", "cortex-a73", "kryo", "exynos-m1", "exynos-m2":
+diff --git a/build/soong/cc/config/global.go b/build/soong/cc/config/global.go
+index d458311eea..c3911a245d 100644
+--- a/build/soong/cc/config/global.go
++++ b/build/soong/cc/config/global.go
+@@ -90,7 +90,6 @@ var (
+ 		"-Wl,--build-id=md5",
+ 		"-Wl,--warn-shared-textrel",
+ 		"-Wl,--fatal-warnings",
+-		"-Wl,--no-undefined-version",
+ 		// TODO: Eventually we should link against a libunwind.a with hidden symbols, and then these
+ 		// --exclude-libs arguments can be removed.
+ 		"-Wl,--exclude-libs,libgcc.a",
+diff --git a/build/soong/cc/linker.go b/build/soong/cc/linker.go
+index 5bd21eda3c..4f09e16a5e 100644
+--- a/build/soong/cc/linker.go
++++ b/build/soong/cc/linker.go
+@@ -417,7 +417,7 @@ func (linker *baseLinker) linkerFlags(ctx ModuleContext, flags Flags) Flags {
+ 
+ 	if linker.useClangLld(ctx) {
+ 		flags.Global.LdFlags = append(flags.Global.LdFlags, fmt.Sprintf("${config.%sGlobalLldflags}", hod))
+-		if !BoolDefault(linker.Properties.Pack_relocations, true) {
++		if !BoolDefault(linker.Properties.Pack_relocations, !ctx.static()) {
+ 			flags.Global.LdFlags = append(flags.Global.LdFlags, "-Wl,--pack-dyn-relocs=none")
+ 		} else if ctx.Device() {
+ 			// SHT_RELR relocations are only supported at API level >= 30.
+diff --git a/build/soong/cc/lto.go b/build/soong/cc/lto.go
+index a3b28d9a2d..5bfbdee54b 100644
+--- a/build/soong/cc/lto.go
++++ b/build/soong/cc/lto.go
+@@ -99,18 +99,20 @@ func (lto *lto) flags(ctx BaseModuleContext, flags Flags) Flags {
+ 	}
+ 
+ 	if lto.LTO() {
+-		var ltoFlag string
+-		if lto.ThinLTO() {
+-			ltoFlag = "-flto=thin -fsplit-lto-unit"
+-		} else {
+-			ltoFlag = "-flto"
+-		}
++		if ctx.Config().Getenv("TARGET_EXPERIMENTAL_PAC") == "" {
++			var ltoFlag string
++			if lto.ThinLTO() {
++				ltoFlag = "-flto=thin -fsplit-lto-unit"
++			} else {
++				ltoFlag = "-flto"
++			}
+ 
+-		flags.Local.CFlags = append(flags.Local.CFlags, ltoFlag)
+-		flags.Local.LdFlags = append(flags.Local.LdFlags, ltoFlag)
++			flags.Local.CFlags = append(flags.Local.CFlags, ltoFlag)
++			flags.Local.LdFlags = append(flags.Local.LdFlags, ltoFlag)
+ 
+-		if Bool(lto.Properties.Whole_program_vtables) {
+-			flags.Local.CFlags = append(flags.Local.CFlags, "-fwhole-program-vtables")
++			if Bool(lto.Properties.Whole_program_vtables) {
++				flags.Local.CFlags = append(flags.Local.CFlags, "-fwhole-program-vtables")
++			}
+ 		}
+ 
+ 		if lto.ThinLTO() && ctx.Config().IsEnvTrue("USE_THINLTO_CACHE") && lto.useClangLld(ctx) {
+diff --git a/build/soong/cc/ndk_prebuilt.go b/build/soong/cc/ndk_prebuilt.go
+index b91c73722a..df42e4b9fc 100644
+--- a/build/soong/cc/ndk_prebuilt.go
++++ b/build/soong/cc/ndk_prebuilt.go
+@@ -154,7 +154,11 @@ func NdkPrebuiltStaticStlFactory() android.Module {
+ 
+ func getNdkStlLibDir(ctx android.ModuleContext) android.SourcePath {
+ 	libDir := "prebuilts/ndk/current/sources/cxx-stl/llvm-libc++/libs"
+-	return android.PathForSource(ctx, libDir).Join(ctx, ctx.Arch().Abi[0])
++	abi := ctx.Arch().Abi[0]
++	if abi == "arm64-v8a" && ctx.Config().Getenv("TARGET_EXPERIMENTAL_PAC") != "" {
++		abi = "arm64-v9a"
++	}
++	return android.PathForSource(ctx, libDir).Join(ctx, abi)
+ }
+ 
+ func (ndk *ndkPrebuiltStlLinker) link(ctx ModuleContext, flags Flags,
+diff --git a/build/soong/cc/sanitize.go b/build/soong/cc/sanitize.go
+index f486ee470d..73fff86c97 100644
+--- a/build/soong/cc/sanitize.go
++++ b/build/soong/cc/sanitize.go
+@@ -623,7 +623,7 @@ func (sanitize *sanitize) flags(ctx ModuleContext, flags Flags) Flags {
+ 		flags.Local.LdFlags = append(flags.Local.LdFlags, `-Wl,-rpath,\$$ORIGIN`)
+ 	}
+ 
+-	if Bool(sanitize.Properties.Sanitize.Cfi) {
++	if Bool(sanitize.Properties.Sanitize.Cfi) && ctx.Config().Getenv("TARGET_EXPERIMENTAL_PAC") == "" {
+ 		if ctx.Arch().ArchType == android.Arm {
+ 			// __cfi_check needs to be built as Thumb (see the code in linker_cfi.cpp). LLVM is not set up
+ 			// to do this on a function basis, so force Thumb on the entire module.
+@@ -652,8 +652,18 @@ func (sanitize *sanitize) flags(ctx ModuleContext, flags Flags) Flags {
+ 		flags.Local.CFlags = append(flags.Local.CFlags, intOverflowCflags...)
+ 	}
+ 
+-	if len(sanitize.Properties.Sanitizers) > 0 {
+-		sanitizeArg := "-fsanitize=" + strings.Join(sanitize.Properties.Sanitizers, ",")
++	sanitizers := sanitize.Properties.Sanitizers
++	if ctx.Config().Getenv("TARGET_EXPERIMENTAL_PAC") != "" {
++		sanitizers = nil
++		for _, s := range sanitize.Properties.Sanitizers {
++			if !strings.HasPrefix(s, "cfi") {
++				sanitizers = append(sanitizers, s)
++			}
++		}
++	}
++
++	if len(sanitizers) > 0 {
++		sanitizeArg := "-fsanitize=" + strings.Join(sanitizers, ",")
+ 
+ 		flags.Local.CFlags = append(flags.Local.CFlags, sanitizeArg)
+ 		flags.Local.AsFlags = append(flags.Local.AsFlags, sanitizeArg)
+diff --git a/build/soong/cmd/soong_build/main.go b/build/soong/cmd/soong_build/main.go
+index 7abb67f29c..ed4a79ab2e 100644
+--- a/build/soong/cmd/soong_build/main.go
++++ b/build/soong/cmd/soong_build/main.go
+@@ -269,6 +269,8 @@ func main() {
+ 		configuration.SetAllowMissingDependencies()
+ 	}
+ 
++	android.TargetExperimentalPac = configuration.Getenv("TARGET_EXPERIMENTAL_PAC")
++
+ 	if shared.IsDebugging() {
+ 		// Add a non-existent file to the dependencies so that soong_build will rerun when the debugger is
+ 		// enabled even if it completed successfully.
+diff --git a/build/soong/dexpreopt/dexpreopt.go b/build/soong/dexpreopt/dexpreopt.go
+index da015a389e..5d0f08abab 100644
+--- a/build/soong/dexpreopt/dexpreopt.go
++++ b/build/soong/dexpreopt/dexpreopt.go
+@@ -319,9 +319,13 @@ func dexpreoptCommand(ctx android.PathContext, globalSoong *GlobalSoongConfig, g
+ 		dexLocationArg = strings.TrimPrefix(dexLocationArg, "/system")
+ 	}
+ 
+-	cmd := rule.Command().
+-		Text(`ANDROID_LOG_TAGS="*:e"`).
+-		Tool(globalSoong.Dex2oat).
++	cmd := rule.Command().Text(`ANDROID_LOG_TAGS="*:e"`)
++
++	if android.TargetExperimentalPac != "" {
++		cmd = cmd.Text("TARGET_EXPERIMENTAL_PAC=" + android.TargetExperimentalPac)
++	}
++
++	cmd = cmd.Tool(globalSoong.Dex2oat).
+ 		Flag("--avoid-storing-invocation").
+ 		FlagWithOutput("--write-invocation-to=", invocationPath).ImplicitOutput(invocationPath).
+ 		Flag("--runtime-arg").FlagWithArg("-Xms", global.Dex2oatXms).
+diff --git a/build/soong/java/dexpreopt_bootjars.go b/build/soong/java/dexpreopt_bootjars.go
+index e1a36507a8..bc5b6ce1a6 100644
+--- a/build/soong/java/dexpreopt_bootjars.go
++++ b/build/soong/java/dexpreopt_bootjars.go
+@@ -562,6 +562,10 @@ func buildBootImageVariant(ctx android.ModuleContext, image *bootImageVariant, p
+ 		cmd.Text(`ANDROID_LOG_TAGS="*:v"`)
+ 	}
+ 
++	if ctx.Config().Getenv("TARGET_EXPERIMENTAL_PAC") != "" {
++		cmd.Text("TARGET_EXPERIMENTAL_PAC=" + ctx.Config().Getenv("TARGET_EXPERIMENTAL_PAC"))
++	}
++
+ 	invocationPath := outputPath.ReplaceExtension(ctx, "invocation")
+ 
+ 	cmd.Tool(globalSoong.Dex2oat).
+diff --git a/build/soong/ui/build/soong.go b/build/soong/ui/build/soong.go
+index cd645eb413..48402bfa6e 100644
+--- a/build/soong/ui/build/soong.go
++++ b/build/soong/ui/build/soong.go
+@@ -110,7 +110,7 @@ func bootstrapBlueprint(ctx Context, config Config, integratedBp2Build bool) {
+ 	bootstrapGlobFile := shared.JoinPath(config.SoongOutDir(), ".bootstrap/build-globs.ninja")
+ 	bootstrapDepFile := shared.JoinPath(config.SoongOutDir(), ".bootstrap/build.ninja.d")
+ 
+-	args.RunGoTests = !config.skipSoongTests
++	args.RunGoTests = false
+ 	args.UseValidations = true // Use validations to depend on tests
+ 	args.BuildDir = config.SoongOutDir()
+ 	args.NinjaBuildDir = config.OutDir()
+diff --git a/device/generic/goldfish-opengl/system/egl/egl.cpp b/device/generic/goldfish-opengl/system/egl/egl.cpp
+index c204899356..90e7fd8df0 100644
+--- a/device/generic/goldfish-opengl/system/egl/egl.cpp
++++ b/device/generic/goldfish-opengl/system/egl/egl.cpp
+@@ -1571,7 +1571,8 @@ EGLBoolean eglWaitClient()
+ }
+ 
+ // We may need to trigger this directly from the TLS destructor.
+-static EGLBoolean s_eglReleaseThreadImpl(EGLThreadInfo* tInfo) {
++static bool s_eglReleaseThreadImpl(void* ptr) {
++    auto* tInfo = reinterpret_cast<EGLThreadInfo*>(ptr);
+     if (!tInfo) return EGL_TRUE;
+ 
+     tInfo->eglError = EGL_SUCCESS;
+@@ -1926,7 +1927,7 @@ EGLBoolean eglMakeCurrent(EGLDisplay dpy, EGLSurface draw, EGLSurface read, EGLC
+ 
+     // Only place to initialize the TLS destructor; any
+     // thread can suddenly jump in any eglMakeCurrent
+-    setTlsDestructor((tlsDtorCallback)s_eglReleaseThreadImpl);
++    setTlsDestructor(s_eglReleaseThreadImpl);
+ 
+     if ((read == EGL_NO_SURFACE && draw == EGL_NO_SURFACE) && (ctx != EGL_NO_CONTEXT))
+         setErrorReturn(EGL_BAD_MATCH, EGL_FALSE);
+diff --git a/device/google/cuttlefish/guest/hals/ril/reference-ril/reference-ril.c b/device/google/cuttlefish/guest/hals/ril/reference-ril/reference-ril.c
+index f47640b5ae..77dc19b197 100644
+--- a/device/google/cuttlefish/guest/hals/ril/reference-ril/reference-ril.c
++++ b/device/google/cuttlefish/guest/hals/ril/reference-ril/reference-ril.c
+@@ -290,12 +290,12 @@ typedef enum {
+ } SIM_Status;
+ 
+ static void onRequest (int request, void *data, size_t datalen, RIL_Token t);
+-static RIL_RadioState currentState();
++static RIL_RadioState currentState(void);
+ static int onSupports (int requestCode);
+ static void onCancel (RIL_Token t);
+-static const char *getVersion();
+-static int isRadioOn();
+-static SIM_Status getSIMStatus();
++static const char *getVersion(void);
++static int isRadioOn(void);
++static SIM_Status getSIMStatus(void);
+ static int getCardStatus(RIL_CardStatus_v1_5 **pp_card_status);
+ static void freeCardStatus(RIL_CardStatus_v1_5 *p_card_status);
+ static void onDataCallListChanged(void *param);
+@@ -5132,7 +5132,7 @@ done:
+ 
+ /** Returns SIM_NOT_READY on error */
+ static SIM_Status
+-getSIMStatus()
++getSIMStatus(void)
+ {
+     ATResponse *p_response = NULL;
+     int err;
+@@ -5389,7 +5389,7 @@ static void pollSIMState (void *param __unused)
+ }
+ 
+ /** returns 1 if on, 0 if off, and -1 on error */
+-static int isRadioOn()
++static int isRadioOn(void)
+ {
+     ATResponse *p_response = NULL;
+     int err;
+diff --git a/external/arm-optimized-routines/string/aarch64/memcmp.S b/external/arm-optimized-routines/string/aarch64/memcmp.S
+index 3b1026642e..1de75cffae 100644
+--- a/external/arm-optimized-routines/string/aarch64/memcmp.S
++++ b/external/arm-optimized-routines/string/aarch64/memcmp.S
+@@ -134,4 +134,3 @@ L(byte_loop):
+ 	ret
+ 
+ END (__memcmp_aarch64)
+-
+diff --git a/external/arm-optimized-routines/string/aarch64/memrchr.S b/external/arm-optimized-routines/string/aarch64/memrchr.S
+index 7b4be847ce..114810e72d 100644
+--- a/external/arm-optimized-routines/string/aarch64/memrchr.S
++++ b/external/arm-optimized-routines/string/aarch64/memrchr.S
+@@ -114,4 +114,3 @@ L(nomatch):
+ 	ret
+ 
+ END (__memrchr_aarch64)
+-
+diff --git a/external/arm-optimized-routines/string/aarch64/strnlen.S b/external/arm-optimized-routines/string/aarch64/strnlen.S
+index 48d2495d20..ae7a57c85b 100644
+--- a/external/arm-optimized-routines/string/aarch64/strnlen.S
++++ b/external/arm-optimized-routines/string/aarch64/strnlen.S
+@@ -109,4 +109,3 @@ L(nomatch):
+ 	ret
+ 
+ END (__strnlen_aarch64)
+-
+diff --git a/external/boringssl/src/crypto/fipsmodule/bcm.c b/external/boringssl/src/crypto/fipsmodule/bcm.c
+index 601c4a8909..ed857d228b 100644
+--- a/external/boringssl/src/crypto/fipsmodule/bcm.c
++++ b/external/boringssl/src/crypto/fipsmodule/bcm.c
+@@ -125,6 +125,10 @@ extern const uint8_t BORINGSSL_bcm_rodata_end[];
+ // aborts otherwise.
+ static void assert_within(const void *start, const void *symbol,
+                           const void *end) {
++#ifdef ANDROID_EXPERIMENTAL_PAC
++  symbol = __builtin_ptrauth_strip(symbol, 0);
++#endif
++
+   const uintptr_t start_val = (uintptr_t) start;
+   const uintptr_t symbol_val = (uintptr_t) symbol;
+   const uintptr_t end_val = (uintptr_t) end;
+diff --git a/external/libcxxabi/src/private_typeinfo.cpp b/external/libcxxabi/src/private_typeinfo.cpp
+index 30340a173c..d28fe478a3 100644
+--- a/external/libcxxabi/src/private_typeinfo.cpp
++++ b/external/libcxxabi/src/private_typeinfo.cpp
+@@ -69,6 +69,14 @@ is_equal(const std::type_info* x, const std::type_info* y, bool use_strcmp)
+ #endif
+ }
+ 
++template <typename T>
++static inline T *maybe_authenticate_vtable(T *ptr) {
++#ifdef ANDROID_EXPERIMENTAL_PAC
++  ptr = __builtin_ptrauth_auth(ptr, 2, 0);
++#endif
++  return ptr;
++}
++
+ namespace __cxxabiv1
+ {
+ 
+@@ -305,6 +313,7 @@ __base_class_type_info::has_unambiguous_public_base(__dynamic_cast_info* info,
+         if (__offset_flags & __virtual_mask)
+         {
+             const char* vtable = *static_cast<const char*const*>(adjustedPtr);
++            vtable = maybe_authenticate_vtable(vtable);
+             offset_to_base = *reinterpret_cast<const ptrdiff_t*>(vtable + offset_to_base);
+         }
+     }
+@@ -625,6 +634,7 @@ __dynamic_cast(const void *static_ptr, const __class_type_info *static_type,
+ 
+     // Get (dynamic_ptr, dynamic_type) from static_ptr
+     void **vtable = *static_cast<void ** const *>(static_ptr);
++    vtable = maybe_authenticate_vtable(vtable);
+     ptrdiff_t offset_to_derived = reinterpret_cast<ptrdiff_t>(vtable[-2]);
+     const void* dynamic_ptr = static_cast<const char*>(static_ptr) + offset_to_derived;
+     const __class_type_info* dynamic_type = static_cast<const __class_type_info*>(vtable[-1]);
+@@ -1268,6 +1278,7 @@ __base_class_type_info::search_above_dst(__dynamic_cast_info* info,
+     if (__offset_flags & __virtual_mask)
+     {
+         const char* vtable = *static_cast<const char*const*>(current_ptr);
++        vtable = maybe_authenticate_vtable(vtable);
+         offset_to_base = *reinterpret_cast<const ptrdiff_t*>(vtable + offset_to_base);
+     }
+     __base_type->search_above_dst(info, dst_ptr,
+@@ -1288,6 +1299,7 @@ __base_class_type_info::search_below_dst(__dynamic_cast_info* info,
+     if (__offset_flags & __virtual_mask)
+     {
+         const char* vtable = *static_cast<const char*const*>(current_ptr);
++        vtable = maybe_authenticate_vtable(vtable);
+         offset_to_base = *reinterpret_cast<const ptrdiff_t*>(vtable + offset_to_base);
+     }
+     __base_type->search_below_dst(info,
+diff --git a/external/mesa3d/src/gallium/drivers/freedreno/freedreno_screen.c b/external/mesa3d/src/gallium/drivers/freedreno/freedreno_screen.c
+index 6af394d8c9..6fe5e61815 100644
+--- a/external/mesa3d/src/gallium/drivers/freedreno/freedreno_screen.c
++++ b/external/mesa3d/src/gallium/drivers/freedreno/freedreno_screen.c
+@@ -721,7 +721,7 @@ fd_get_compute_param(struct pipe_screen *pscreen, enum pipe_shader_ir ir_type,
+ 
+ static const void *
+ fd_get_compiler_options(struct pipe_screen *pscreen,
+-		enum pipe_shader_ir ir, unsigned shader)
++		enum pipe_shader_ir ir, enum pipe_shader_type shader)
+ {
+ 	struct fd_screen *screen = fd_screen(pscreen);
+ 
+diff --git a/external/skia/src/core/SkArenaAlloc.cpp b/external/skia/src/core/SkArenaAlloc.cpp
+index 6765c3cdf0..72eabae8b5 100644
+--- a/external/skia/src/core/SkArenaAlloc.cpp
++++ b/external/skia/src/core/SkArenaAlloc.cpp
+@@ -43,23 +43,12 @@ void SkArenaAlloc::reset() {
+ }
+ 
+ void SkArenaAlloc::installFooter(FooterAction* action, uint32_t padding) {
+-    assert(padding < 64);
+-    int64_t actionInt = (int64_t)(intptr_t)action;
+-
+-    // The top 14 bits should be either all 0s or all 1s. Check this.
+-    assert((actionInt << 6) >> 6 == actionInt);
+-    Footer encodedFooter = (actionInt << 6) | padding;
+-    memmove(fCursor, &encodedFooter, sizeof(Footer));
+-    fCursor += sizeof(Footer);
++    assert(SkTFitsIn<uint8_t>(padding));
++    this->installRaw(action);
++    this->installRaw((uint8_t)padding);
+     fDtorCursor = fCursor;
+ }
+ 
+-void SkArenaAlloc::installPtrFooter(FooterAction* action, char* ptr, uint32_t padding) {
+-    memmove(fCursor, &ptr, sizeof(char*));
+-    fCursor += sizeof(char*);
+-    this->installFooter(action, padding);
+-}
+-
+ char* SkArenaAlloc::SkipPod(char* footerEnd) {
+     char* objEnd = footerEnd - (sizeof(Footer) + sizeof(int32_t));
+     int32_t skip;
+@@ -69,18 +58,18 @@ char* SkArenaAlloc::SkipPod(char* footerEnd) {
+ 
+ void SkArenaAlloc::RunDtorsOnBlock(char* footerEnd) {
+     while (footerEnd != nullptr) {
+-        Footer footer;
+-        memcpy(&footer, footerEnd - sizeof(Footer), sizeof(Footer));
++        FooterAction* action;
++        uint8_t       padding;
+ 
+-        FooterAction* action = (FooterAction*)(footer >> 6);
+-        ptrdiff_t padding = footer & 63;
++        memcpy(&action,  footerEnd - sizeof( Footer), sizeof( action));
++        memcpy(&padding, footerEnd - sizeof(padding), sizeof(padding));
+ 
+-        footerEnd = action(footerEnd) - padding;
++        footerEnd = action(footerEnd) - (ptrdiff_t)padding;
+     }
+ }
+ 
+ char* SkArenaAlloc::NextBlock(char* footerEnd) {
+-    char* objEnd = footerEnd - (sizeof(Footer) + sizeof(char*));
++    char* objEnd = footerEnd - (sizeof(char*) + sizeof(Footer));
+     char* next;
+     memmove(&next, objEnd, sizeof(char*));
+     RunDtorsOnBlock(next);
+@@ -88,11 +77,6 @@ char* SkArenaAlloc::NextBlock(char* footerEnd) {
+     return nullptr;
+ }
+ 
+-void SkArenaAlloc::installUint32Footer(FooterAction* action, uint32_t value, uint32_t padding) {
+-    memmove(fCursor, &value, sizeof(uint32_t));
+-    fCursor += sizeof(uint32_t);
+-    this->installFooter(action, padding);
+-}
+ 
+ void SkArenaAlloc::ensureSpace(uint32_t size, uint32_t alignment) {
+     constexpr uint32_t headerSize = sizeof(Footer) + sizeof(ptrdiff_t);
+@@ -134,7 +118,8 @@ void SkArenaAlloc::ensureSpace(uint32_t size, uint32_t alignment) {
+     fCursor = newBlock;
+     fDtorCursor = newBlock;
+     fEnd = fCursor + allocationSize;
+-    this->installPtrFooter(NextBlock, previousDtor, 0);
++    this->installRaw(previousDtor);
++    this->installFooter(NextBlock, 0);
+ }
+ 
+ char* SkArenaAlloc::allocObjectWithFooter(uint32_t sizeIncludingFooter, uint32_t alignment) {
+@@ -167,7 +152,8 @@ restart:
+     // Install a skip footer if needed, thus terminating a run of POD data. The calling code is
+     // responsible for installing the footer after the object.
+     if (needsSkipFooter) {
+-        this->installUint32Footer(SkipPod, ToU32(fCursor - fDtorCursor), 0);
++        this->installRaw(ToU32(fCursor - fDtorCursor));
++        this->installFooter(SkipPod, 0);
+     }
+ 
+     return objStart;
+diff --git a/external/skia/src/core/SkArenaAlloc.h b/external/skia/src/core/SkArenaAlloc.h
+index 6ff7c6be9f..b4b0142507 100644
+--- a/external/skia/src/core/SkArenaAlloc.h
++++ b/external/skia/src/core/SkArenaAlloc.h
+@@ -144,16 +144,22 @@ private:
+         return (uint32_t)v;
+     }
+ 
+-    using Footer = int64_t;
+     using FooterAction = char* (char*);
++    struct Footer {
++        uint8_t unaligned_action[sizeof(FooterAction*)];
++        uint8_t padding;
++    };
+ 
+     static char* SkipPod(char* footerEnd);
+     static void RunDtorsOnBlock(char* footerEnd);
+     static char* NextBlock(char* footerEnd);
+ 
++    template <typename T>
++    void installRaw(const T& val) {
++        memcpy(fCursor, &val, sizeof(val));
++        fCursor += sizeof(val);
++    }
+     void installFooter(FooterAction* releaser, uint32_t padding);
+-    void installUint32Footer(FooterAction* action, uint32_t value, uint32_t padding);
+-    void installPtrFooter(FooterAction* action, char* ptr, uint32_t padding);
+ 
+     void ensureSpace(uint32_t size, uint32_t alignment);
+ 
+@@ -192,7 +198,8 @@ private:
+ 
+             // Advance to end of array to install footer.?
+             fCursor = objStart + arraySize;
+-            this->installUint32Footer(
++            this->installRaw(ToU32(count));
++            this->installFooter(
+                 [](char* footerEnd) {
+                     char* objEnd = footerEnd - (sizeof(Footer) + sizeof(uint32_t));
+                     uint32_t count;
+@@ -204,7 +211,6 @@ private:
+                     }
+                     return objStart;
+                 },
+-                ToU32(count),
+                 padding);
+         }
+ 
+diff --git a/external/strace/sysent.h b/external/strace/sysent.h
+index cf2daed1be..d3ffb2f14f 100644
+--- a/external/strace/sysent.h
++++ b/external/strace/sysent.h
+@@ -1,11 +1,13 @@
+ #ifndef STRACE_SYSENT_H
+ #define STRACE_SYSENT_H
+ 
++struct tcb;
++
+ typedef struct sysent {
+ 	unsigned nargs;
+ 	int	sys_flags;
+ 	int	sen;
+-	int	(*sys_func)();
++	int	(*sys_func)(struct tcb *);
+ 	const char *sys_name;
+ } struct_sysent;
+ 
+diff --git a/external/swiftshader/src/Reactor/LLVMJIT.cpp b/external/swiftshader/src/Reactor/LLVMJIT.cpp
+index 2d9a801461..6aa15a18e2 100644
+--- a/external/swiftshader/src/Reactor/LLVMJIT.cpp
++++ b/external/swiftshader/src/Reactor/LLVMJIT.cpp
+@@ -777,6 +777,9 @@ public:
+ 			else  // Successful compilation
+ 			{
+ 				addresses[i] = reinterpret_cast<void *>(static_cast<intptr_t>(symbol->getAddress()));
++#ifdef ANDROID_EXPERIMENTAL_PAC
++				addresses[i] = __builtin_ptrauth_sign_unauthenticated(addresses[i], 0, 0);
++#endif
+ 			}
+ 		}
+ 
+diff --git a/external/vixl/src/aarch64/assembler-aarch64.cc b/external/vixl/src/aarch64/assembler-aarch64.cc
+index e98de89b8a..24de5f683b 100644
+--- a/external/vixl/src/aarch64/assembler-aarch64.cc
++++ b/external/vixl/src/aarch64/assembler-aarch64.cc
+@@ -196,7 +196,7 @@ void Assembler::ret(const Register& xn) {
+ 
+ 
+ void Assembler::braaz(const Register& xn) {
+-  VIXL_ASSERT(CPUHas(CPUFeatures::kPAuth));
++  // VIXL_ASSERT(CPUHas(CPUFeatures::kPAuth));
+   VIXL_ASSERT(xn.Is64Bits());
+   Emit(BRAAZ | Rn(xn) | Rd_mask);
+ }
+@@ -208,7 +208,7 @@ void Assembler::brabz(const Register& xn) {
+ }
+ 
+ void Assembler::blraaz(const Register& xn) {
+-  VIXL_ASSERT(CPUHas(CPUFeatures::kPAuth));
++  // VIXL_ASSERT(CPUHas(CPUFeatures::kPAuth));
+   VIXL_ASSERT(xn.Is64Bits());
+   Emit(BLRAAZ | Rn(xn) | Rd_mask);
+ }
+@@ -1046,25 +1046,21 @@ void Assembler::cls(const Register& rd, const Register& rn) {
+ 
+ #define VIXL_DEFINE_ASM_FUNC(PRE, OP)                              \
+   void Assembler::PRE##a(const Register& xd, const Register& xn) { \
+-    VIXL_ASSERT(CPUHas(CPUFeatures::kPAuth));                      \
+     VIXL_ASSERT(xd.Is64Bits() && xn.Is64Bits());                   \
+     Emit(SF(xd) | OP##A | Rd(xd) | RnSP(xn));                      \
+   }                                                                \
+                                                                    \
+   void Assembler::PRE##za(const Register& xd) {                    \
+-    VIXL_ASSERT(CPUHas(CPUFeatures::kPAuth));                      \
+     VIXL_ASSERT(xd.Is64Bits());                                    \
+     Emit(SF(xd) | OP##ZA | Rd(xd));                                \
+   }                                                                \
+                                                                    \
+   void Assembler::PRE##b(const Register& xd, const Register& xn) { \
+-    VIXL_ASSERT(CPUHas(CPUFeatures::kPAuth));                      \
+     VIXL_ASSERT(xd.Is64Bits() && xn.Is64Bits());                   \
+     Emit(SF(xd) | OP##B | Rd(xd) | RnSP(xn));                      \
+   }                                                                \
+                                                                    \
+   void Assembler::PRE##zb(const Register& xd) {                    \
+-    VIXL_ASSERT(CPUHas(CPUFeatures::kPAuth));                      \
+     VIXL_ASSERT(xd.Is64Bits());                                    \
+     Emit(SF(xd) | OP##ZB | Rd(xd));                                \
+   }
+@@ -1081,7 +1077,7 @@ void Assembler::pacga(const Register& xd,
+ }
+ 
+ void Assembler::xpaci(const Register& xd) {
+-  VIXL_ASSERT(CPUHas(CPUFeatures::kPAuth));
++  // VIXL_ASSERT(CPUHas(CPUFeatures::kPAuth));
+   VIXL_ASSERT(xd.Is64Bits());
+   Emit(SF(xd) | XPACI | Rd(xd));
+ }
+@@ -2580,7 +2576,7 @@ void Assembler::mov(const Register& rd, const Register& rm) {
+ }
+ 
+ void Assembler::xpaclri() {
+-  VIXL_ASSERT(CPUHas(CPUFeatures::kPAuth));
++  // VIXL_ASSERT(CPUHas(CPUFeatures::kPAuth));
+   Emit(XPACLRI);
+ }
+ 
+diff --git a/external/vixl/src/aarch64/constants-aarch64.h b/external/vixl/src/aarch64/constants-aarch64.h
+index d17c88943c..a307f96f7e 100644
+--- a/external/vixl/src/aarch64/constants-aarch64.h
++++ b/external/vixl/src/aarch64/constants-aarch64.h
+@@ -1433,16 +1433,16 @@ enum DataProcessing1SourceOp {
+   AUTIB  = DataProcessing1SourceFixed | 0x80011400,
+   AUTDA  = DataProcessing1SourceFixed | 0x80011800,
+   AUTDB  = DataProcessing1SourceFixed | 0x80011C00,
+-  PACIZA = DataProcessing1SourceFixed | 0x80012000,
+-  PACIZB = DataProcessing1SourceFixed | 0x80012400,
+-  PACDZA = DataProcessing1SourceFixed | 0x80012800,
+-  PACDZB = DataProcessing1SourceFixed | 0x80012C00,
+-  AUTIZA = DataProcessing1SourceFixed | 0x80013000,
+-  AUTIZB = DataProcessing1SourceFixed | 0x80013400,
+-  AUTDZA = DataProcessing1SourceFixed | 0x80013800,
+-  AUTDZB = DataProcessing1SourceFixed | 0x80013C00,
+-  XPACI  = DataProcessing1SourceFixed | 0x80014000,
+-  XPACD  = DataProcessing1SourceFixed | 0x80014400
++  PACIZA = DataProcessing1SourceFixed | 0x800123E0,
++  PACIZB = DataProcessing1SourceFixed | 0x800127E0,
++  PACDZA = DataProcessing1SourceFixed | 0x80012BE0,
++  PACDZB = DataProcessing1SourceFixed | 0x80012FE0,
++  AUTIZA = DataProcessing1SourceFixed | 0x800133E0,
++  AUTIZB = DataProcessing1SourceFixed | 0x800137E0,
++  AUTDZA = DataProcessing1SourceFixed | 0x80013BE0,
++  AUTDZB = DataProcessing1SourceFixed | 0x80013FE0,
++  XPACI  = DataProcessing1SourceFixed | 0x800143E0,
++  XPACD  = DataProcessing1SourceFixed | 0x800147E0
+ };
+ 
+ // Data processing 2 source.
+diff --git a/frameworks/av/media/libaudiohal/FactoryHalHidl.cpp b/frameworks/av/media/libaudiohal/FactoryHalHidl.cpp
+index e420d079b8..746f40fb5d 100644
+--- a/frameworks/av/media/libaudiohal/FactoryHalHidl.cpp
++++ b/frameworks/av/media/libaudiohal/FactoryHalHidl.cpp
+@@ -52,8 +52,8 @@ bool createHalService(const std::string& version, const std::string& interface,
+                 error != nullptr ? error : "unknown error");
+         return false;
+     }
+-    void* (*factoryFunction)();
+-    *(void **)(&factoryFunction) = dlsym(handle, factoryFunctionName.c_str());
++    auto* factoryFunction = reinterpret_cast<void* (*)()>(
++        dlsym(handle, factoryFunctionName.c_str()));
+     if (!factoryFunction) {
+         const char* error = dlerror();
+         ALOGE("Factory function %s not found in library %s: %s",
+diff --git a/frameworks/base/cmds/app_process/app_main.cpp b/frameworks/base/cmds/app_process/app_main.cpp
+index 12083b6fe2..7539e48ed3 100644
+--- a/frameworks/base/cmds/app_process/app_main.cpp
++++ b/frameworks/base/cmds/app_process/app_main.cpp
+@@ -310,12 +310,21 @@ int main(int argc, char* const argv[])
+             args.add(String8("start-system-server"));
+         }
+ 
++#ifdef ANDROID_EXPERIMENTAL_PAC
++        const char *prop;
++        if (getppid() == 1) {
++            prop = "arm64-v9a";
++        } else {
++            prop = "arm64-v8a";
++        }
++#else
+         char prop[PROP_VALUE_MAX];
+         if (property_get(ABI_LIST_PROPERTY, prop, NULL) == 0) {
+             LOG_ALWAYS_FATAL("app_process: Unable to determine ABI list from property %s.",
+                 ABI_LIST_PROPERTY);
+             return 11;
+         }
++#endif
+ 
+         String8 abiFlag("--abi-list=");
+         abiFlag.append(prop);
+diff --git a/frameworks/base/core/java/android/os/ZygoteProcess.java b/frameworks/base/core/java/android/os/ZygoteProcess.java
+index bf28981379..7f76f0e45c 100644
+--- a/frameworks/base/core/java/android/os/ZygoteProcess.java
++++ b/frameworks/base/core/java/android/os/ZygoteProcess.java
+@@ -98,6 +98,8 @@ public class ZygoteProcess {
+      */
+     private final LocalSocketAddress mZygoteSecondarySocketAddress;
+ 
++    private final LocalSocketAddress mZygoteV8aSocketAddress;
++
+     /**
+      * The name of the socket used to communicate with the primary USAP pool.
+      */
+@@ -108,6 +110,8 @@ public class ZygoteProcess {
+      */
+     private final LocalSocketAddress mUsapPoolSecondarySocketAddress;
+ 
++    private final LocalSocketAddress mUsapPoolV8aSocketAddress;
++
+     public ZygoteProcess() {
+         mZygoteSocketAddress =
+                 new LocalSocketAddress(Zygote.PRIMARY_SOCKET_NAME,
+@@ -115,6 +119,9 @@ public class ZygoteProcess {
+         mZygoteSecondarySocketAddress =
+                 new LocalSocketAddress(Zygote.SECONDARY_SOCKET_NAME,
+                                        LocalSocketAddress.Namespace.RESERVED);
++        mZygoteV8aSocketAddress =
++                new LocalSocketAddress("zygote_arm64_v8a",
++                                       LocalSocketAddress.Namespace.RESERVED);
+ 
+         mUsapPoolSocketAddress =
+                 new LocalSocketAddress(Zygote.USAP_POOL_PRIMARY_SOCKET_NAME,
+@@ -122,6 +129,9 @@ public class ZygoteProcess {
+         mUsapPoolSecondarySocketAddress =
+                 new LocalSocketAddress(Zygote.USAP_POOL_SECONDARY_SOCKET_NAME,
+                                        LocalSocketAddress.Namespace.RESERVED);
++        mUsapPoolV8aSocketAddress =
++                new LocalSocketAddress("usap_pool_arm64_v8a",
++                                       LocalSocketAddress.Namespace.RESERVED);
+ 
+         // This constructor is used to create the primary and secondary Zygotes, which can support
+         // Unspecialized App Process Pools.
+@@ -132,9 +142,11 @@ public class ZygoteProcess {
+                          LocalSocketAddress secondarySocketAddress) {
+         mZygoteSocketAddress = primarySocketAddress;
+         mZygoteSecondarySocketAddress = secondarySocketAddress;
++        mZygoteV8aSocketAddress = null;
+ 
+         mUsapPoolSocketAddress = null;
+         mUsapPoolSecondarySocketAddress = null;
++        mUsapPoolV8aSocketAddress = null;
+ 
+         // This constructor is used to create the primary and secondary Zygotes, which CAN NOT
+         // support Unspecialized App Process Pools.
+@@ -277,6 +289,8 @@ public class ZygoteProcess {
+      */
+     private ZygoteState secondaryZygoteState;
+ 
++    private ZygoteState v8aZygoteState;
++
+     /**
+      * If this Zygote supports the creation and maintenance of a USAP pool.
+      *
+@@ -841,6 +855,9 @@ public class ZygoteProcess {
+         if (secondaryZygoteState != null) {
+             secondaryZygoteState.close();
+         }
++        if (v8aZygoteState != null) {
++            v8aZygoteState.close();
++        }
+     }
+ 
+     /**
+@@ -929,6 +946,9 @@ public class ZygoteProcess {
+             if (ok) {
+                 ok = maybeSetApiDenylistExemptions(secondaryZygoteState, true);
+             }
++            if (ok) {
++                ok = maybeSetApiDenylistExemptions(v8aZygoteState, true);
++            }
+             return ok;
+         }
+     }
+@@ -945,6 +965,7 @@ public class ZygoteProcess {
+             mHiddenApiAccessLogSampleRate = rate;
+             maybeSetHiddenApiAccessLogSampleRate(primaryZygoteState);
+             maybeSetHiddenApiAccessLogSampleRate(secondaryZygoteState);
++            maybeSetHiddenApiAccessLogSampleRate(v8aZygoteState);
+         }
+     }
+ 
+@@ -960,6 +981,7 @@ public class ZygoteProcess {
+             mHiddenApiAccessStatslogSampleRate = rate;
+             maybeSetHiddenApiAccessStatslogSampleRate(primaryZygoteState);
+             maybeSetHiddenApiAccessStatslogSampleRate(secondaryZygoteState);
++            maybeSetHiddenApiAccessStatslogSampleRate(v8aZygoteState);
+         }
+     }
+ 
+@@ -1055,14 +1077,34 @@ public class ZygoteProcess {
+      * Creates a ZygoteState for the secondary zygote if it doesn't exist or has been disconnected.
+      */
+     @GuardedBy("mLock")
+-    private void attemptConnectionToSecondaryZygote() throws IOException {
+-        if (secondaryZygoteState == null || secondaryZygoteState.isClosed()) {
+-            secondaryZygoteState =
+-                    ZygoteState.connect(mZygoteSecondarySocketAddress,
+-                            mUsapPoolSecondarySocketAddress);
++    private void attemptConnectionToSecondaryZygote() {
++        try {
++           if (secondaryZygoteState == null || secondaryZygoteState.isClosed()) {
++               secondaryZygoteState =
++                       ZygoteState.connect(mZygoteSecondarySocketAddress,
++                               mUsapPoolSecondarySocketAddress);
++
++               maybeSetApiDenylistExemptions(secondaryZygoteState, false);
++               maybeSetHiddenApiAccessLogSampleRate(secondaryZygoteState);
++           }
++        } catch (IOException e) {
++            // No secondary zygote present.  This is expected on some devices.
++        }
++    }
+ 
+-            maybeSetApiDenylistExemptions(secondaryZygoteState, false);
+-            maybeSetHiddenApiAccessLogSampleRate(secondaryZygoteState);
++    @GuardedBy("mLock")
++    private void attemptConnectionToV8aZygote() {
++        try {
++            if (v8aZygoteState == null || v8aZygoteState.isClosed()) {
++                v8aZygoteState =
++                        ZygoteState.connect(mZygoteV8aSocketAddress,
++                                mUsapPoolV8aSocketAddress);
++
++                maybeSetApiDenylistExemptions(v8aZygoteState, false);
++                maybeSetHiddenApiAccessLogSampleRate(v8aZygoteState);
++            }
++        } catch (IOException e) {
++            // No v8a zygote present.  This is expected on some devices.
+         }
+     }
+ 
+@@ -1085,10 +1127,19 @@ public class ZygoteProcess {
+                 // The primary zygote didn't match. Try the secondary.
+                 attemptConnectionToSecondaryZygote();
+ 
+-                if (secondaryZygoteState.matches(abi)) {
++                if (secondaryZygoteState != null && secondaryZygoteState.matches(abi)) {
+                     return secondaryZygoteState;
+                 }
+             }
++
++            if (mZygoteV8aSocketAddress != null) {
++                // The primary zygote didn't match. Try the secondary.
++                attemptConnectionToV8aZygote();
++
++                if (v8aZygoteState != null && v8aZygoteState.matches(abi)) {
++                    return v8aZygoteState;
++                }
++            }
+         } catch (IOException ioe) {
+             throw new ZygoteStartFailedEx("Error connecting to zygote", ioe);
+         }
+@@ -1235,22 +1286,34 @@ public class ZygoteProcess {
+             }
+ 
+             if (mZygoteSecondarySocketAddress != null) {
++                attemptConnectionToSecondaryZygote();
++
+                 try {
+-                    attemptConnectionToSecondaryZygote();
+-
+-                    try {
+-                        secondaryZygoteState.mZygoteOutputWriter.write(command);
+-                        secondaryZygoteState.mZygoteOutputWriter.flush();
+-
+-                        // Wait for the secondary Zygote to finish its work.
+-                        secondaryZygoteState.mZygoteInputStream.readInt();
+-                    } catch (IOException ioe) {
+-                        throw new IllegalStateException(
+-                                "USAP pool state change cause an irrecoverable error",
+-                                ioe);
+-                    }
++                    secondaryZygoteState.mZygoteOutputWriter.write(command);
++                    secondaryZygoteState.mZygoteOutputWriter.flush();
++
++                    // Wait for the secondary Zygote to finish its work.
++                    secondaryZygoteState.mZygoteInputStream.readInt();
++                } catch (IOException ioe) {
++                    throw new IllegalStateException(
++                            "USAP pool state change cause an irrecoverable error",
++                            ioe);
++                }
++            }
++
++            if (mZygoteV8aSocketAddress != null) {
++                attemptConnectionToV8aZygote();
++
++                try {
++                    v8aZygoteState.mZygoteOutputWriter.write(command);
++                    v8aZygoteState.mZygoteOutputWriter.flush();
++
++                    // Wait for the v8a Zygote to finish its work.
++                    v8aZygoteState.mZygoteInputStream.readInt();
+                 } catch (IOException ioe) {
+-                    // No secondary zygote present.  This is expected on some devices.
++                    throw new IllegalStateException(
++                            "USAP pool state change cause an irrecoverable error",
++                            ioe);
+                 }
+             }
+ 
+diff --git a/frameworks/base/core/java/com/android/internal/os/ZygoteInit.java b/frameworks/base/core/java/com/android/internal/os/ZygoteInit.java
+index cb6008bfa9..f371b613fb 100644
+--- a/frameworks/base/core/java/com/android/internal/os/ZygoteInit.java
++++ b/frameworks/base/core/java/com/android/internal/os/ZygoteInit.java
+@@ -907,6 +907,9 @@ public class ZygoteInit {
+                     abiList = argv[i].substring(ABI_LIST_ARG.length());
+                 } else if (argv[i].startsWith(SOCKET_NAME_ARG)) {
+                     zygoteSocketName = argv[i].substring(SOCKET_NAME_ARG.length());
++                    if (Os.getppid() != 1) {
++                        zygoteSocketName += "_arm64_v8a";
++                    }
+                 } else {
+                     throw new RuntimeException("Unknown command line argument: " + argv[i]);
+                 }
+@@ -952,9 +955,9 @@ public class ZygoteInit {
+ 
+             ZygoteHooks.stopZygoteNoThreadCreation();
+ 
+-            zygoteServer = new ZygoteServer(isPrimaryZygote);
++            zygoteServer = new ZygoteServer(zygoteSocketName);
+ 
+-            if (startSystemServer) {
++            if (startSystemServer && Os.getppid() == 1) {
+                 Runnable r = forkSystemServer(abiList, zygoteSocketName, zygoteServer);
+ 
+                 // {@code r == null} in the parent (zygote) process, and {@code r != null} in the
+@@ -965,6 +968,8 @@ public class ZygoteInit {
+                 }
+             }
+ 
++            nativeMarkPagesMergeable();
++
+             Log.i(TAG, "Accepting command socket connections");
+ 
+             // The select loop returns early in the child process after a fork and
+@@ -986,6 +991,8 @@ public class ZygoteInit {
+         }
+     }
+ 
++    private native static void nativeMarkPagesMergeable();
++
+     /**
+      * Return {@code true} if this device configuration has another zygote.
+      *
+@@ -993,7 +1000,7 @@ public class ZygoteInit {
+      * supports all ABIs this device supports, there won't be another zygote.
+      */
+     private static boolean hasSecondZygote(String abiList) {
+-        return !SystemProperties.get("ro.product.cpu.abilist").equals(abiList);
++        return !SystemProperties.get("ro.product.cpu.abilist32").isEmpty();
+     }
+ 
+     private static void waitForSecondaryZygote(String socketName) {
+diff --git a/frameworks/base/core/java/com/android/internal/os/ZygoteServer.java b/frameworks/base/core/java/com/android/internal/os/ZygoteServer.java
+index 4d2266b2eb..5e8dc098fc 100644
+--- a/frameworks/base/core/java/com/android/internal/os/ZygoteServer.java
++++ b/frameworks/base/core/java/com/android/internal/os/ZygoteServer.java
+@@ -169,20 +169,19 @@ class ZygoteServer {
+      *
+      * @param isPrimaryZygote  If this is the primary Zygote or not.
+      */
+-    ZygoteServer(boolean isPrimaryZygote) {
++    ZygoteServer(String zygoteSocketName) {
+         mUsapPoolEventFD = Zygote.getUsapPoolEventFD();
+-
+-        if (isPrimaryZygote) {
+-            mZygoteSocket = Zygote.createManagedSocketFromInitSocket(Zygote.PRIMARY_SOCKET_NAME);
+-            mUsapPoolSocket =
+-                    Zygote.createManagedSocketFromInitSocket(
+-                            Zygote.USAP_POOL_PRIMARY_SOCKET_NAME);
+-        } else {
+-            mZygoteSocket = Zygote.createManagedSocketFromInitSocket(Zygote.SECONDARY_SOCKET_NAME);
+-            mUsapPoolSocket =
+-                    Zygote.createManagedSocketFromInitSocket(
+-                            Zygote.USAP_POOL_SECONDARY_SOCKET_NAME);
++        mZygoteSocket = Zygote.createManagedSocketFromInitSocket(zygoteSocketName);
++
++        String usapSocketName = null;
++        if (zygoteSocketName.equals(Zygote.PRIMARY_SOCKET_NAME)) {
++            usapSocketName = Zygote.USAP_POOL_PRIMARY_SOCKET_NAME;
++        } else if (zygoteSocketName.equals(Zygote.SECONDARY_SOCKET_NAME)) {
++            usapSocketName = Zygote.USAP_POOL_SECONDARY_SOCKET_NAME;
++        } else if (zygoteSocketName.equals("zygote_arm64_v8a")) {
++            usapSocketName = "usap_pool_arm64_v8a";
+         }
++        mUsapPoolSocket = Zygote.createManagedSocketFromInitSocket(usapSocketName);
+ 
+         mUsapPoolSupported = true;
+         fetchUsapPoolPolicyProps();
+diff --git a/frameworks/base/core/jni/com_android_internal_os_Zygote.cpp b/frameworks/base/core/jni/com_android_internal_os_Zygote.cpp
+index 96fc0866a3..f56e2b705a 100644
+--- a/frameworks/base/core/jni/com_android_internal_os_Zygote.cpp
++++ b/frameworks/base/core/jni/com_android_internal_os_Zygote.cpp
+@@ -872,6 +872,9 @@ static void DetachDescriptors(JNIEnv* env,
+     }
+ 
+     for (int fd : fds_to_close) {
++      if (fd == -1) {
++        continue;
++      }
+       ALOGV("Switching descriptor %d to /dev/null", fd);
+       if (dup3(devnull_fd, fd, O_CLOEXEC) == -1) {
+         fail_fn(StringPrintf("Failed dup3() on descriptor %d: %s", fd, strerror(errno)));
+@@ -2314,16 +2317,17 @@ static void com_android_internal_os_Zygote_nativeInitNativeState(JNIEnv* env, jc
+    * Obtain file descriptors created by init from the environment.
+    */
+ 
+-  gZygoteSocketFD =
+-      android_get_control_socket(is_primary ? "zygote" : "zygote_secondary");
++  gZygoteSocketFD = android_get_control_socket(
++          is_primary ? (getppid() == 1 ? "zygote" : "zygote_arm64_v8a") : "zygote_secondary");
+   if (gZygoteSocketFD >= 0) {
+     ALOGV("Zygote:zygoteSocketFD = %d", gZygoteSocketFD);
+   } else {
+     ALOGE("Unable to fetch Zygote socket file descriptor");
+   }
+ 
+-  gUsapPoolSocketFD =
+-      android_get_control_socket(is_primary ? "usap_pool_primary" : "usap_pool_secondary");
++  gUsapPoolSocketFD = android_get_control_socket(
++          is_primary ? (getppid() == 1 ? "usap_pool_primary" : "usap_pool_arm64_v8a")
++                     : "usap_pool_secondary");
+   if (gUsapPoolSocketFD >= 0) {
+     ALOGV("Zygote:usapPoolSocketFD = %d", gUsapPoolSocketFD);
+   } else {
+diff --git a/frameworks/base/core/jni/com_android_internal_os_ZygoteInit.cpp b/frameworks/base/core/jni/com_android_internal_os_ZygoteInit.cpp
+index a5152b6e68..6a6fef1bae 100644
+--- a/frameworks/base/core/jni/com_android_internal_os_ZygoteInit.cpp
++++ b/frameworks/base/core/jni/com_android_internal_os_ZygoteInit.cpp
+@@ -63,11 +63,38 @@ void android_internal_os_ZygoteInit_nativePreloadGraphicsDriver(JNIEnv* env, jcl
+     zygote_preload_graphics();
+ }
+ 
++void android_internal_os_ZygoteInit_nativeMarkPagesMergeable(JNIEnv* env) {
++#ifdef __LP64__
++   FILE *maps = fopen("/proc/self/maps", "r");
++   if (!maps) {
++       return;
++   }
++
++   char *line = nullptr;
++   size_t size = 0;
++   while (getline(&line, &size, maps) > 0) {
++       unsigned long start, end;
++       if (sscanf(line, "%lx-%lx", &start, &end) != 2) {
++           return;
++       }
++
++       madvise(reinterpret_cast<void*>(start), end - start, MADV_MERGEABLE);
++   }
++
++   free(line);
++   fclose(maps);
++
++   // kill(getpid(), SIGSTOP);
++#endif
++}
++
+ const JNINativeMethod gMethods[] = {
+     { "nativePreloadAppProcessHALs", "()V",
+       (void*)android_internal_os_ZygoteInit_nativePreloadAppProcessHALs },
+     { "nativePreloadGraphicsDriver", "()V",
+       (void*)android_internal_os_ZygoteInit_nativePreloadGraphicsDriver },
++    { "nativeMarkPagesMergeable", "()V",
++      (void*)android_internal_os_ZygoteInit_nativeMarkPagesMergeable },
+ };
+ 
+ }  // anonymous namespace
+diff --git a/frameworks/base/core/jni/fd_utils.cpp b/frameworks/base/core/jni/fd_utils.cpp
+index eac1d9922c..613ee65f44 100644
+--- a/frameworks/base/core/jni/fd_utils.cpp
++++ b/frameworks/base/core/jni/fd_utils.cpp
+@@ -35,7 +35,9 @@
+ static const char* kPathAllowlist[] = {
+         "/dev/null",
+         "/dev/socket/zygote",
++        "/dev/socket/zygote_arm64_v8a",
+         "/dev/socket/zygote_secondary",
++        "/dev/socket/usap_pool_arm64_v8a",
+         "/dev/socket/usap_pool_primary",
+         "/dev/socket/usap_pool_secondary",
+         "/dev/socket/webview_zygote",
+diff --git a/frameworks/base/libs/hwui/jni/FontFamily.cpp b/frameworks/base/libs/hwui/jni/FontFamily.cpp
+index a2fef1e193..ae0aed6878 100644
+--- a/frameworks/base/libs/hwui/jni/FontFamily.cpp
++++ b/frameworks/base/libs/hwui/jni/FontFamily.cpp
+@@ -50,10 +50,6 @@ static inline NativeFamilyBuilder* toNativeBuilder(jlong ptr) {
+     return reinterpret_cast<NativeFamilyBuilder*>(ptr);
+ }
+ 
+-static inline FontFamilyWrapper* toFamily(jlong ptr) {
+-    return reinterpret_cast<FontFamilyWrapper*>(ptr);
+-}
+-
+ template<typename Ptr> static inline jlong toJLong(Ptr ptr) {
+     return reinterpret_cast<jlong>(ptr);
+ }
+@@ -86,16 +82,16 @@ static jlong FontFamily_create(CRITICAL_JNI_PARAMS_COMMA jlong builderPtr) {
+     return toJLong(new FontFamilyWrapper(std::move(family)));
+ }
+ 
+-static void releaseBuilder(jlong builderPtr) {
+-    delete toNativeBuilder(builderPtr);
++static void releaseBuilder(NativeFamilyBuilder* builderPtr) {
++    delete builderPtr;
+ }
+ 
+ static jlong FontFamily_getBuilderReleaseFunc(CRITICAL_JNI_PARAMS) {
+     return toJLong(&releaseBuilder);
+ }
+ 
+-static void releaseFamily(jlong familyPtr) {
+-    delete toFamily(familyPtr);
++static void releaseFamily(FontFamilyWrapper* familyPtr) {
++    delete familyPtr;
+ }
+ 
+ static jlong FontFamily_getFamilyReleaseFunc(CRITICAL_JNI_PARAMS) {
+diff --git a/frameworks/base/libs/hwui/jni/Typeface.cpp b/frameworks/base/libs/hwui/jni/Typeface.cpp
+index 2a5f402a4f..3a87caecb9 100644
+--- a/frameworks/base/libs/hwui/jni/Typeface.cpp
++++ b/frameworks/base/libs/hwui/jni/Typeface.cpp
+@@ -71,8 +71,8 @@ static jlong Typeface_createWeightAlias(JNIEnv* env, jobject, jlong familyHandle
+     return toJLong(Typeface::createWithDifferentBaseWeight(toTypeface(familyHandle), weight));
+ }
+ 
+-static void releaseFunc(jlong ptr) {
+-    delete toTypeface(ptr);
++static void releaseFunc(Typeface* ptr) {
++    delete ptr;
+ }
+ 
+ // CriticalNative
+diff --git a/frameworks/base/libs/hwui/jni/android_graphics_Matrix.cpp b/frameworks/base/libs/hwui/jni/android_graphics_Matrix.cpp
+index 7338ef24cb..040bf781f7 100644
+--- a/frameworks/base/libs/hwui/jni/android_graphics_Matrix.cpp
++++ b/frameworks/base/libs/hwui/jni/android_graphics_Matrix.cpp
+@@ -31,8 +31,7 @@ public:
+ 
+     // ---------------- Regular JNI -----------------------------
+ 
+-    static void finalizer(jlong objHandle) {
+-        SkMatrix* obj = reinterpret_cast<SkMatrix*>(objHandle);
++    static void finalizer(SkMatrix* obj) {
+         delete obj;
+     }
+ 
+diff --git a/frameworks/base/libs/hwui/jni/fonts/Font.cpp b/frameworks/base/libs/hwui/jni/fonts/Font.cpp
+index 5714cd1d03..1289c0aaea 100644
+--- a/frameworks/base/libs/hwui/jni/fonts/Font.cpp
++++ b/frameworks/base/libs/hwui/jni/fonts/Font.cpp
+@@ -43,8 +43,8 @@ static inline NativeFontBuilder* toBuilder(jlong ptr) {
+     return reinterpret_cast<NativeFontBuilder*>(ptr);
+ }
+ 
+-static void releaseFont(jlong font) {
+-    delete reinterpret_cast<FontWrapper*>(font);
++static void releaseFont(FontWrapper* font) {
++    delete font;
+ }
+ 
+ static void release_global_ref(const void* /*data*/, void* context) {
+diff --git a/frameworks/base/libs/hwui/jni/fonts/FontFamily.cpp b/frameworks/base/libs/hwui/jni/fonts/FontFamily.cpp
+index df619d9f14..2799109df9 100644
+--- a/frameworks/base/libs/hwui/jni/fonts/FontFamily.cpp
++++ b/frameworks/base/libs/hwui/jni/fonts/FontFamily.cpp
+@@ -41,8 +41,8 @@ static inline FontWrapper* toFontWrapper(jlong ptr) {
+     return reinterpret_cast<FontWrapper*>(ptr);
+ }
+ 
+-static void releaseFontFamily(jlong family) {
+-    delete reinterpret_cast<FontFamilyWrapper*>(family);
++static void releaseFontFamily(FontFamilyWrapper* family) {
++    delete family;
+ }
+ 
+ // Regular JNI
+diff --git a/frameworks/base/libs/hwui/jni/text/LineBreaker.cpp b/frameworks/base/libs/hwui/jni/text/LineBreaker.cpp
+index 69865171a0..249623923e 100644
+--- a/frameworks/base/libs/hwui/jni/text/LineBreaker.cpp
++++ b/frameworks/base/libs/hwui/jni/text/LineBreaker.cpp
+@@ -63,8 +63,8 @@ static jlong nInit(JNIEnv* env, jclass /* unused */,
+             jintArrayToFloatVector(env, indents)));
+ }
+ 
+-static void nFinish(jlong nativePtr) {
+-    delete toNative(nativePtr);
++static void nFinish(minikin::android::StaticLayoutNative* nativePtr) {
++    delete nativePtr;
+ }
+ 
+ // CriticalNative
+@@ -122,8 +122,8 @@ static jint nGetLineFlag(CRITICAL_JNI_PARAMS_COMMA jlong ptr, jint i) {
+     return reinterpret_cast<minikin::LineBreakResult*>(ptr)->flags[i];
+ }
+ 
+-static void nReleaseResult(jlong ptr) {
+-    delete reinterpret_cast<minikin::LineBreakResult*>(ptr);
++static void nReleaseResult(minikin::LineBreakResult* ptr) {
++    delete ptr;
+ }
+ 
+ static jlong nGetReleaseResultFunc(CRITICAL_JNI_PARAMS) {
+diff --git a/frameworks/base/libs/hwui/jni/text/MeasuredText.cpp b/frameworks/base/libs/hwui/jni/text/MeasuredText.cpp
+index 7793746ee2..3c0dc657b8 100644
+--- a/frameworks/base/libs/hwui/jni/text/MeasuredText.cpp
++++ b/frameworks/base/libs/hwui/jni/text/MeasuredText.cpp
+@@ -54,8 +54,8 @@ template<typename Ptr> static inline jlong toJLong(Ptr ptr) {
+     return reinterpret_cast<jlong>(ptr);
+ }
+ 
+-static void releaseMeasuredParagraph(jlong measuredTextPtr) {
+-    delete toMeasuredParagraph(measuredTextPtr);
++static void releaseMeasuredParagraph(minikin::MeasuredText* measuredTextPtr) {
++    delete measuredTextPtr;
+ }
+ 
+ // Regular JNI
+diff --git a/frameworks/native/cmds/installd/dexopt.cpp b/frameworks/native/cmds/installd/dexopt.cpp
+index 204953cd07..1924643721 100644
+--- a/frameworks/native/cmds/installd/dexopt.cpp
++++ b/frameworks/native/cmds/installd/dexopt.cpp
+@@ -1774,6 +1774,9 @@ int dexopt(const char* dex_path, uid_t uid, const char* pkgname, const char* ins
+     if (!GetProperty("ro.product.cpu.abilist64", "").empty()) {
+       use_dex2oat64 = GetBoolProperty("dalvik.vm.dex2oat64.enabled", false);
+     }
++#ifdef ANDROID_EXPERIMENTAL_PAC
++    use_dex2oat64 = true;
++#endif
+     const char* dex2oat_bin = select_execution_binary(
+         (use_dex2oat64 ? kDex2oat64Path : kDex2oat32Path),
+         (use_dex2oat64 ? kDex2oatDebug64Path : kDex2oatDebug32Path),
+diff --git a/frameworks/native/opengl/libs/EGL/getProcAddress.cpp b/frameworks/native/opengl/libs/EGL/getProcAddress.cpp
+index fedc7893db..021a906174 100644
+--- a/frameworks/native/opengl/libs/EGL/getProcAddress.cpp
++++ b/frameworks/native/opengl/libs/EGL/getProcAddress.cpp
+@@ -62,6 +62,12 @@ namespace android {
+ 
+     #define API_ENTRY(_api) __attribute__((noinline)) _api
+ 
++    #ifdef ANDROID_EXPERIMENTAL_PAC
++        #define MAYBE_XPACI_X16 "xpaci x16\n"
++    #else
++        #define MAYBE_XPACI_X16 ""
++    #endif
++
+     #define CALL_GL_EXTENSION_API(_api)                             \
+         asm volatile(                                               \
+             "mrs x16, tpidr_el0\n"                                  \
+@@ -69,6 +75,7 @@ namespace android {
+             "cbz x16, 1f\n"                                         \
+             "ldr x16, [x16, %[api]]\n"                              \
+             "cbz x16, 1f\n"                                         \
++            MAYBE_XPACI_X16                                         \
+             "br  x16\n"                                             \
+             "1:\n"                                                  \
+             :                                                       \
+diff --git a/frameworks/native/opengl/libs/GLES2/gl2.cpp b/frameworks/native/opengl/libs/GLES2/gl2.cpp
+index 65f50f54fb..f4ab842f15 100644
+--- a/frameworks/native/opengl/libs/GLES2/gl2.cpp
++++ b/frameworks/native/opengl/libs/GLES2/gl2.cpp
+@@ -91,12 +91,19 @@ using namespace android;
+ 
+     #define API_ENTRY(_api) __attribute__((naked,noinline)) _api
+ 
++    #ifdef ANDROID_EXPERIMENTAL_PAC
++        #define MAYBE_XPACI_X16 "xpaci x16\n"
++    #else
++        #define MAYBE_XPACI_X16 ""
++    #endif
++
+     #define CALL_GL_API_INTERNAL_CALL(_api, ...)                    \
+         asm volatile(                                               \
+             "mrs x16, tpidr_el0\n"                                  \
+             "ldr x16, [x16, %[tls]]\n"                              \
+             "cbz x16, 1f\n"                                         \
+             "ldr x16, [x16, %[api]]\n"                              \
++            MAYBE_XPACI_X16                                         \
+             "br  x16\n"                                             \
+             "1:\n"                                                  \
+             :                                                       \
+diff --git a/frameworks/native/opengl/libs/GLES_CM/gl.cpp b/frameworks/native/opengl/libs/GLES_CM/gl.cpp
+index bacd4b4bc8..5f835d6153 100644
+--- a/frameworks/native/opengl/libs/GLES_CM/gl.cpp
++++ b/frameworks/native/opengl/libs/GLES_CM/gl.cpp
+@@ -147,12 +147,19 @@ GL_API void GL_APIENTRY glWeightPointerOESBounds(GLint size, GLenum type,
+ 
+     #define API_ENTRY(_api) __attribute__((naked,noinline)) _api
+ 
++    #ifdef ANDROID_EXPERIMENTAL_PAC
++        #define MAYBE_XPACI_X16 "xpaci x16\n"
++    #else
++        #define MAYBE_XPACI_X16 ""
++    #endif
++
+     #define CALL_GL_API_INTERNAL_CALL(_api, ...)                    \
+         asm volatile(                                               \
+             "mrs x16, tpidr_el0\n"                                  \
+             "ldr x16, [x16, %[tls]]\n"                              \
+             "cbz x16, 1f\n"                                         \
+             "ldr x16, [x16, %[api]]\n"                              \
++            MAYBE_XPACI_X16                                         \
+             "br  x16\n"                                             \
+             "1:\n"                                                  \
+             :                                                       \
+diff --git a/frameworks/native/opengl/libs/hooks.h b/frameworks/native/opengl/libs/hooks.h
+index 86fec21bae..fe0f74d335 100644
+--- a/frameworks/native/opengl/libs/hooks.h
++++ b/frameworks/native/opengl/libs/hooks.h
+@@ -54,10 +54,26 @@ namespace android {
+ 
+ // GL / EGL hooks
+ 
++// The pointers in the platform_impl_t/egl_t/gl_hooks_t data structures need to
++// be of type __eglMustCastToProperFunctionPointerType so that SetupFuncMaps can
++// initialize them via type punning to an array of element type
++// __eglMustCastToProperFunctionPointerType. This struct allows them to be
++// called via their correct types.
++template <typename ReturnT, typename FnPtrT>
++struct gl_ptr_t {
++    __eglMustCastToProperFunctionPointerType ptr;
++
++    template <typename... T>
++    ReturnT operator()(T... args) const {
++        return reinterpret_cast<FnPtrT>(ptr)(args...);
++    }
++    operator FnPtrT() const { return reinterpret_cast<FnPtrT>(ptr); }
++};
++
+ #undef GL_ENTRY
+ #undef EGL_ENTRY
+-#define GL_ENTRY(_r, _api, ...) _r (*(_api))(__VA_ARGS__);
+-#define EGL_ENTRY(_r, _api, ...) _r (*(_api))(__VA_ARGS__);
++#define GL_ENTRY(_r, _api, ...) gl_ptr_t<_r, _r(*)(__VA_ARGS__)> _api;
++#define EGL_ENTRY(_r, _api, ...) gl_ptr_t<_r, _r(*)(__VA_ARGS__)> _api;
+ 
+ struct platform_impl_t {
+     #include "platform_entries.in"
+diff --git a/frameworks/rs/cpu_ref/rsCpuIntrinsics_advsimd_3DLUT.S b/frameworks/rs/cpu_ref/rsCpuIntrinsics_advsimd_3DLUT.S
+index edcb03813d..475ad3e920 100644
+--- a/frameworks/rs/cpu_ref/rsCpuIntrinsics_advsimd_3DLUT.S
++++ b/frameworks/rs/cpu_ref/rsCpuIntrinsics_advsimd_3DLUT.S
+@@ -14,7 +14,7 @@
+  * limitations under the License.
+  */
+ 
+-#define ENTRY(f) .text; .align 4; .globl f; .type f,#function; f:
++#define ENTRY(f) .text; .align 4; .globl f; .hidden f; .type f,#function; f:
+ #define END(f) .size f, .-f;
+ 
+ 
+diff --git a/frameworks/rs/cpu_ref/rsCpuIntrinsics_advsimd_Blend.S b/frameworks/rs/cpu_ref/rsCpuIntrinsics_advsimd_Blend.S
+index b4a2b7c41b..39cbb72c40 100644
+--- a/frameworks/rs/cpu_ref/rsCpuIntrinsics_advsimd_Blend.S
++++ b/frameworks/rs/cpu_ref/rsCpuIntrinsics_advsimd_Blend.S
+@@ -14,7 +14,7 @@
+  * limitations under the License.
+  */
+ 
+-#define ENTRY(f) .text; .align 4; .globl f; .type f,#function; f:
++#define ENTRY(f) .text; .align 4; .globl f; .hidden f; .type f,#function; f:
+ #define END(f) .size f, .-f;
+ 
+ #define BLEND_LIST(X) \
+diff --git a/frameworks/rs/cpu_ref/rsCpuIntrinsics_advsimd_Blur.S b/frameworks/rs/cpu_ref/rsCpuIntrinsics_advsimd_Blur.S
+index f341385102..362ee7e23a 100644
+--- a/frameworks/rs/cpu_ref/rsCpuIntrinsics_advsimd_Blur.S
++++ b/frameworks/rs/cpu_ref/rsCpuIntrinsics_advsimd_Blur.S
+@@ -14,7 +14,7 @@
+  * limitations under the License.
+  */
+ 
+-#define ENTRY(f) .text; .align 4; .globl f; .type f,#function; f:
++#define ENTRY(f) .text; .align 4; .globl f; .hidden f; .type f,#function; f:
+ #define PRIVATE(f) .text; .align 4; .type f,#function; f:
+ #define END(f) .size f, .-f;
+ 
+diff --git a/frameworks/rs/cpu_ref/rsCpuIntrinsics_advsimd_ColorMatrix.S b/frameworks/rs/cpu_ref/rsCpuIntrinsics_advsimd_ColorMatrix.S
+index 55b0029883..0288f95a4f 100644
+--- a/frameworks/rs/cpu_ref/rsCpuIntrinsics_advsimd_ColorMatrix.S
++++ b/frameworks/rs/cpu_ref/rsCpuIntrinsics_advsimd_ColorMatrix.S
+@@ -14,7 +14,7 @@
+  * limitations under the License.
+  */
+ 
+-#define ENTRY(f) .text; .align 4; .globl f; .type f,#function; f:
++#define ENTRY(f) .text; .align 4; .globl f; .hidden f; .type f,#function; f:
+ #define END(f) .size f, .-f;
+ 
+ 
+diff --git a/frameworks/rs/cpu_ref/rsCpuIntrinsics_advsimd_Convolve.S b/frameworks/rs/cpu_ref/rsCpuIntrinsics_advsimd_Convolve.S
+index 0daa0c5a9d..c2d08a6de5 100644
+--- a/frameworks/rs/cpu_ref/rsCpuIntrinsics_advsimd_Convolve.S
++++ b/frameworks/rs/cpu_ref/rsCpuIntrinsics_advsimd_Convolve.S
+@@ -23,7 +23,7 @@
+         x5 = length / 2
+ */
+ 
+-#define ENTRY(f) .text; .align 2; .globl f; .type f,#function; f:
++#define ENTRY(f) .text; .align 4; .globl f; .hidden f; .type f,#function; f:
+ #define END(f) .size f, .-f;
+ 
+ ENTRY(rsdIntrinsicConvolve3x3_K)
+diff --git a/frameworks/rs/cpu_ref/rsCpuIntrinsics_advsimd_Resize.S b/frameworks/rs/cpu_ref/rsCpuIntrinsics_advsimd_Resize.S
+index 59e735c201..c11b20e183 100644
+--- a/frameworks/rs/cpu_ref/rsCpuIntrinsics_advsimd_Resize.S
++++ b/frameworks/rs/cpu_ref/rsCpuIntrinsics_advsimd_Resize.S
+@@ -14,7 +14,7 @@
+  * limitations under the License.
+  */
+ 
+-#define ENTRY(f) .text; .align 4; .globl f; .type f,#function; f:
++#define ENTRY(f) .text; .align 4; .globl f; .hidden f; .type f,#function; f:
+ #define END(f) .size f, .-f;
+ 
+ /* Fixed-point precision after vertical pass -- 16 bit data minus 1 sign and 1
+diff --git a/frameworks/rs/cpu_ref/rsCpuIntrinsics_advsimd_YuvToRGB.S b/frameworks/rs/cpu_ref/rsCpuIntrinsics_advsimd_YuvToRGB.S
+index bb4b7ae3ac..6f3e3b38da 100644
+--- a/frameworks/rs/cpu_ref/rsCpuIntrinsics_advsimd_YuvToRGB.S
++++ b/frameworks/rs/cpu_ref/rsCpuIntrinsics_advsimd_YuvToRGB.S
+@@ -14,7 +14,7 @@
+  * limitations under the License.
+  */
+ 
+-#define ENTRY(f) .text; .align 4; .globl f; .type f,#function; f:
++#define ENTRY(f) .text; .align 4; .globl f; .hidden f; .type f,#function; f:
+ #define END(f) .size f, .-f;
+ 
+ /* Perform the actual YuvToRGB conversion in a macro, from register to
+diff --git a/hardware/interfaces/usb/1.0/default/Usb.cpp b/hardware/interfaces/usb/1.0/default/Usb.cpp
+index 6eb88428c9..0ffda39cb4 100644
+--- a/hardware/interfaces/usb/1.0/default/Usb.cpp
++++ b/hardware/interfaces/usb/1.0/default/Usb.cpp
+@@ -396,7 +396,7 @@ void* work(void* param) {
+ 
+         for (int n = 0; n < nevents; ++n) {
+             if (events[n].data.ptr)
+-                (*(void (*)(int, struct data *payload))events[n].data.ptr)
++                (*(void (*)(uint32_t, struct data *payload))events[n].data.ptr)
+                     (events[n].events, &payload);
+         }
+     }
+diff --git a/libcore/libart/src/main/java/dalvik/system/VMRuntime.java b/libcore/libart/src/main/java/dalvik/system/VMRuntime.java
+index 0c8b375f56..3edce0a676 100644
+--- a/libcore/libart/src/main/java/dalvik/system/VMRuntime.java
++++ b/libcore/libart/src/main/java/dalvik/system/VMRuntime.java
+@@ -64,6 +64,7 @@ public final class VMRuntime {
+         ABI_TO_INSTRUCTION_SET_MAP.put("x86_64", "x86_64");
+         ABI_TO_INSTRUCTION_SET_MAP.put("arm64-v8a", "arm64");
+         ABI_TO_INSTRUCTION_SET_MAP.put("arm64-v8a-hwasan", "arm64");
++        ABI_TO_INSTRUCTION_SET_MAP.put("arm64-v9a", "arm64");
+     }
+ 
+     /**
+diff --git a/libnativehelper/JniConstants.c b/libnativehelper/JniConstants.c
+index 177298e1b8..d4b89f6885 100644
+--- a/libnativehelper/JniConstants.c
++++ b/libnativehelper/JniConstants.c
+@@ -113,7 +113,7 @@ static jfieldID FindField(JNIEnv* env, jclass cls,
+ static pthread_once_t g_initialized = PTHREAD_ONCE_INIT;
+ static JNIEnv* g_init_env;
+ 
+-static void InitializeConstants() {
++static void InitializeConstants(void) {
+     // Initialize cached classes.
+ #define JCLASS_INITIALIZE(cls, signature, androidOnly)                      \
+     CLASS_NAME(cls) = FindClass(g_init_env, signature, androidOnly);
+diff --git a/packages/modules/StatsD/lib/libstatssocket/stats_event.c b/packages/modules/StatsD/lib/libstatssocket/stats_event.c
+index dcd34aaa86..b41509b3c3 100644
+--- a/packages/modules/StatsD/lib/libstatssocket/stats_event.c
++++ b/packages/modules/StatsD/lib/libstatssocket/stats_event.c
+@@ -87,7 +87,7 @@ static int64_t get_elapsed_realtime_ns() {
+     return (int64_t)t.tv_sec * 1000000000LL + t.tv_nsec;
+ }
+ 
+-AStatsEvent* AStatsEvent_obtain() {
++AStatsEvent* AStatsEvent_obtain(void) {
+     AStatsEvent* event = malloc(sizeof(AStatsEvent));
+     event->lastFieldPos = 0;
+     event->numBytesWritten = 2;  // reserve first 2 bytes for root event type and number of elements
+diff --git a/packages/modules/StatsD/lib/libstatssocket/statsd_writer.c b/packages/modules/StatsD/lib/libstatssocket/statsd_writer.c
+index c00c9783a6..7343d517ee 100644
+--- a/packages/modules/StatsD/lib/libstatssocket/statsd_writer.c
++++ b/packages/modules/StatsD/lib/libstatssocket/statsd_writer.c
+@@ -72,12 +72,12 @@ void statsd_writer_init_unlock() {
+     pthread_mutex_unlock(&log_init_lock);
+ }
+ 
+-static int statsdAvailable();
+-static int statsdOpen();
+-static void statsdClose();
++static int statsdAvailable(void);
++static int statsdOpen(void);
++static void statsdClose(void);
+ static int statsdWrite(struct timespec* ts, struct iovec* vec, size_t nr);
+-static void statsdNoteDrop();
+-static int statsdIsClosed();
++static void statsdNoteDrop(int, int);
++static int statsdIsClosed(void);
+ 
+ struct android_log_transport_write statsdLoggerWrite = {
+         .name = "statsd",
+@@ -91,7 +91,7 @@ struct android_log_transport_write statsdLoggerWrite = {
+ };
+ 
+ /* log_init_lock assumed */
+-static int statsdOpen() {
++static int statsdOpen(void) {
+     int i, ret = 0;
+ 
+     i = atomic_load(&statsdLoggerWrite.sock);
+@@ -150,11 +150,11 @@ static void __statsdClose(int negative_errno) {
+     }
+ }
+ 
+-static void statsdClose() {
++static void statsdClose(void) {
+     __statsdClose(-EBADF);
+ }
+ 
+-static int statsdAvailable() {
++static int statsdAvailable(void) {
+     if (atomic_load(&statsdLoggerWrite.sock) < 0) {
+         if (access("/dev/socket/statsdw", W_OK) == 0) {
+             return 0;
+@@ -170,7 +170,7 @@ static void statsdNoteDrop(int error, int tag) {
+     atomic_exchange_explicit(&atom_tag, tag, memory_order_relaxed);
+ }
+ 
+-static int statsdIsClosed() {
++static int statsdIsClosed(void) {
+     if (atomic_load(&statsdLoggerWrite.sock) < 0) {
+         return 1;
+     }
+diff --git a/packages/modules/StatsD/lib/libstatssocket/statsd_writer.h b/packages/modules/StatsD/lib/libstatssocket/statsd_writer.h
+index 562bda5df3..52032ac21e 100644
+--- a/packages/modules/StatsD/lib/libstatssocket/statsd_writer.h
++++ b/packages/modules/StatsD/lib/libstatssocket/statsd_writer.h
+@@ -33,9 +33,9 @@ void statsd_writer_init_unlock();
+ struct android_log_transport_write {
+     const char* name; /* human name to describe the transport */
+     atomic_int sock;
+-    int (*available)(); /* Does not cause resources to be taken */
+-    int (*open)();      /* can be called multiple times, reusing current resources */
+-    void (*close)();    /* free up resources */
++    int (*available)(void); /* Does not cause resources to be taken */
++    int (*open)(void);      /* can be called multiple times, reusing current resources */
++    void (*close)(void);    /* free up resources */
+     /* write log to transport, returns number of bytes propagated, or -errno */
+     int (*write)(struct timespec* ts, struct iovec* vec, size_t nr);
+     /* note one log drop */
+diff --git a/system/bt/osi/src/alarm.cc b/system/bt/osi/src/alarm.cc
+index 6e5d22f43e..d77e20cfce 100644
+--- a/system/bt/osi/src/alarm.cc
++++ b/system/bt/osi/src/alarm.cc
+@@ -141,7 +141,7 @@ static void remove_pending_alarm(alarm_t* alarm);
+ static void schedule_next_instance(alarm_t* alarm);
+ static void reschedule_root_alarm(void);
+ static void alarm_queue_ready(fixed_queue_t* queue, void* context);
+-static void timer_callback(void* data);
++static UNUSED_ATTR void timer_callback(void* data);
+ static void callback_dispatch(void* context);
+ static bool timer_create_internal(const clockid_t clock_id, timer_t* timer);
+ static void update_scheduling_stats(alarm_stats_t* stats, uint64_t now_ms,
+@@ -609,7 +609,7 @@ static void alarm_queue_ready(fixed_queue_t* queue, UNUSED_ATTR void* context) {
+ }
+ 
+ // Callback function for wake alarms and our posix timer
+-static void timer_callback(UNUSED_ATTR void* ptr) {
++static void timer_callback(UNUSED_ATTR sigval_t sigval) {
+   semaphore_post(alarm_expired);
+ }
+ 
+@@ -676,7 +676,7 @@ static bool timer_create_internal(const clockid_t clock_id, timer_t* timer) {
+ 
+   memset(&sigevent, 0, sizeof(sigevent));
+   sigevent.sigev_notify = SIGEV_THREAD;
+-  sigevent.sigev_notify_function = (void (*)(union sigval))timer_callback;
++  sigevent.sigev_notify_function = timer_callback;
+   sigevent.sigev_notify_attributes = &thread_attr;
+   if (timer_create(clock_id, &sigevent, timer) == -1) {
+     LOG_ERROR("%s unable to create timer with clock %d: %s", __func__, clock_id,
+diff --git a/system/core/libutils/Threads.cpp b/system/core/libutils/Threads.cpp
+index 540dcf49db..88dd4f6e21 100644
+--- a/system/core/libutils/Threads.cpp
++++ b/system/core/libutils/Threads.cpp
+@@ -65,23 +65,24 @@ using namespace android;
+  * We create it "detached", so it cleans up after itself.
+  */
+ 
+-typedef void* (*android_pthread_entry)(void*);
+-
+-#if defined(__ANDROID__)
+ struct thread_data_t {
+     thread_func_t   entryFunction;
+     void*           userData;
++#if defined(__ANDROID__)
+     int             priority;
+     char *          threadName;
++#endif
+ 
+-    // we use this trampoline when we need to set the priority with
+-    // nice/setpriority, and name with prctl.
+-    static int trampoline(const thread_data_t* t) {
++    // We use this trampoline to align the calling convention between Android threads (int (void*))
++    // and pthreads (void*(void*)). We also use it to set the priority with nice/setpriority, and
++    // name with prctl.
++    static void* trampoline(void* arg) {
++        auto* t = reinterpret_cast<const thread_data_t*>(arg);
+         thread_func_t f = t->entryFunction;
+         void* u = t->userData;
++#if defined(__ANDROID__)
+         int prio = t->priority;
+         char * name = t->threadName;
+-        delete t;
+         setpriority(PRIO_PROCESS, 0, prio);
+ 
+         // A new thread will be in its parent's sched group by default,
+@@ -94,10 +95,11 @@ struct thread_data_t {
+             androidSetThreadName(name);
+             free(name);
+         }
+-        return f(u);
++#endif
++        delete t;
++        return reinterpret_cast<void*>(f(u));
+     }
+ };
+-#endif
+ 
+ void androidSetThreadName(const char* name) {
+ #if defined(__linux__)
+@@ -131,24 +133,13 @@ int androidCreateRawThreadEtc(android_thread_func_t entryFunction,
+     pthread_attr_init(&attr);
+     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+ 
+-#if defined(__ANDROID__)  /* valgrind is rejecting RT-priority create reqs */
+-    if (threadPriority != PRIORITY_DEFAULT || threadName != NULL) {
+-        // Now that the pthread_t has a method to find the associated
+-        // android_thread_id_t (pid) from pthread_t, it would be possible to avoid
+-        // this trampoline in some cases as the parent could set the properties
+-        // for the child.  However, there would be a race condition because the
+-        // child becomes ready immediately, and it doesn't work for the name.
+-        // prctl(PR_SET_NAME) only works for self; prctl(PR_SET_THREAD_NAME) was
+-        // proposed but not yet accepted.
+-        thread_data_t* t = new thread_data_t;
+-        t->priority = threadPriority;
+-        t->threadName = threadName ? strdup(threadName) : NULL;
+-        t->entryFunction = entryFunction;
+-        t->userData = userData;
+-        entryFunction = (android_thread_func_t)&thread_data_t::trampoline;
+-        userData = t;
+-    }
++    thread_data_t* t = new thread_data_t;
++#if defined(__ANDROID__)
++    t->priority = threadPriority;
++    t->threadName = threadName ? strdup(threadName) : NULL;
+ #endif
++    t->entryFunction = entryFunction;
++    t->userData = userData;
+ 
+     if (threadStackSize) {
+         pthread_attr_setstacksize(&attr, threadStackSize);
+@@ -156,8 +147,8 @@ int androidCreateRawThreadEtc(android_thread_func_t entryFunction,
+ 
+     errno = 0;
+     pthread_t thread;
+-    int result = pthread_create(&thread, &attr,
+-                    (android_pthread_entry)entryFunction, userData);
++    int result =
++            pthread_create(&thread, &attr, thread_data_t::trampoline, reinterpret_cast<void*>(t));
+     pthread_attr_destroy(&attr);
+     if (result != 0) {
+         ALOGE("androidCreateRawThreadEtc failed (entry=%p, res=%d, %s)\n"
+diff --git a/system/core/rootdir/init.zygote64_32.rc b/system/core/rootdir/init.zygote64_32.rc
+index 3eee180ba0..b297a325ad 100644
+--- a/system/core/rootdir/init.zygote64_32.rc
++++ b/system/core/rootdir/init.zygote64_32.rc
+@@ -5,6 +5,8 @@ service zygote /system/bin/app_process64 -Xzygote /system/bin --zygote --start-s
+     group root readproc reserved_disk
+     socket zygote stream 660 root system
+     socket usap_pool_primary stream 660 root system
++    socket zygote_arm64_v8a stream 660 root system
++    socket usap_pool_arm64_v8a stream 660 root system
+     onrestart exec_background - system system -- /system/bin/vdc volume abort_fuse
+     onrestart write /sys/power/state on
+     onrestart restart audioserver
+diff --git a/system/libhidl/transport/ServiceManagement.cpp b/system/libhidl/transport/ServiceManagement.cpp
+index c63827998c..96ef8a1d71 100644
+--- a/system/libhidl/transport/ServiceManagement.cpp
++++ b/system/libhidl/transport/ServiceManagement.cpp
+@@ -411,9 +411,8 @@ struct PassthroughServiceManager : IServiceManager1_1 {
+                           const hidl_string& name) override {
+         sp<IBase> ret = nullptr;
+ 
+-        openLibs(fqName, [&](void* handle, const std::string &lib, const std::string &sym) {
+-            IBase* (*generator)(const char* name);
+-            *(void **)(&generator) = dlsym(handle, sym.c_str());
++        openLibs(fqName, [&](void* handle, const std::string& lib, const std::string& sym) {
++            auto* generator = reinterpret_cast<IBase* (*)(const char*)>(dlsym(handle, sym.c_str()));
+             if(!generator) {
+                 const char* error = dlerror();
+                 LOG(ERROR) << "Passthrough lookup opened " << lib << " but could not find symbol "
+diff --git a/system/sepolicy/private/file_contexts b/system/sepolicy/private/file_contexts
+index 60a94b36d7..4a54e61866 100644
+--- a/system/sepolicy/private/file_contexts
++++ b/system/sepolicy/private/file_contexts
+@@ -174,8 +174,10 @@
+ /dev/socket/wpa_wlan[0-9] u:object_r:wpa_socket:s0
+ /dev/socket/zygote	u:object_r:zygote_socket:s0
+ /dev/socket/zygote_secondary	u:object_r:zygote_socket:s0
++/dev/socket/zygote_arm64_v8a	u:object_r:zygote_socket:s0
+ /dev/socket/usap_pool_primary	u:object_r:zygote_socket:s0
+ /dev/socket/usap_pool_secondary	u:object_r:zygote_socket:s0
++/dev/socket/usap_pool_arm64_v8a	u:object_r:zygote_socket:s0
+ /dev/spdif_out.*	u:object_r:audio_device:s0
+ /dev/sys/block/by-name/userdata(/.*)?	u:object_r:userdata_sysdev:s0
+ /dev/sys/fs/by-name/userdata(/.*)?	u:object_r:userdata_sysdev:s0
+-- 
+2.32.0.93.g670b81a890-goog
+
