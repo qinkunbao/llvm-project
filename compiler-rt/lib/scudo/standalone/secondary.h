@@ -141,7 +141,7 @@ public:
     Entry.BlockBegin = reinterpret_cast<uptr>(H + 1);
     Entry.Data = H->Data;
     Entry.Time = Time;
-    if (useMemoryTagging<Config>(Options)) {
+    if (1) {
       if (Interval == 0 && !SCUDO_FUCHSIA) {
         // Release the memory and make it inaccessible at the same time by
         // creating a new MAP_NOACCESS mapping on top of the existing mapping.
@@ -243,7 +243,7 @@ public:
       *H = reinterpret_cast<LargeBlock::Header *>(
           LargeBlock::addHeaderTag<Config>(HeaderPos));
       *Zeroed = Entry.Time == 0;
-      if (useMemoryTagging<Config>(Options))
+      if (1)
         setMemoryPermission(Entry.CommitBase, Entry.CommitSize, 0, &Entry.Data);
       uptr NewBlockBegin = reinterpret_cast<uptr>(*H + 1);
       if (useMemoryTagging<Config>(Options)) {
