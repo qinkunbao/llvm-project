@@ -14,12 +14,14 @@
 #ifndef LLVM_CLANG_LIB_CODEGEN_CGVALUE_H
 #define LLVM_CLANG_LIB_CODEGEN_CGVALUE_H
 
+#include "Address.h"
+#include "CGPointerAuthInfo.h"
+#include "CodeGenTBAA.h"
+#include "EHScopeStack.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/Type.h"
-#include "llvm/IR/Value.h"
 #include "llvm/IR/Type.h"
-#include "Address.h"
-#include "CodeGenTBAA.h"
+#include "llvm/IR/Value.h"
 
 namespace llvm {
   class Constant;
@@ -28,55 +30,72 @@ namespace llvm {
 
 namespace clang {
 namespace CodeGen {
-  class AggValueSlot;
-  class CodeGenFunction;
-  struct CGBitFieldInfo;
+class AggValueSlot;
+class CGBuilderTy;
+class CodeGenFunction;
+struct CGBitFieldInfo;
 
 /// RValue - This trivial value class is used to represent the result of an
 /// expression that is evaluated.  It can be one of three things: either a
 /// simple LLVM SSA value, a pair of SSA values for complex numbers, or the
 /// address of an aggregate value in memory.
 class RValue {
-  enum Flavor { Scalar, Complex, Aggregate };
+  friend struct DominatingValue<RValue>;
 
-  // The shift to make to an aggregate's alignment to make it look
-  // like a pointer.
-  enum { AggAlignShift = 4 };
+  enum FlavorEnum { Scalar, Complex, Aggregate };
 
-  // Stores first value and flavor.
-  llvm::PointerIntPair<llvm::Value *, 2, Flavor> V1;
-  // Stores second value and volatility.
-  llvm::PointerIntPair<llvm::Value *, 1, bool> V2;
+  union {
+    // Stores first and second value.
+    std::pair<llvm::Value *, llvm::Value *> Vals;
+
+    // Stores aggregate address.
+    Address AggregateAddr;
+  };
+
+  unsigned IsVolatile : 1;
+  unsigned Flavor : 2;
 
 public:
-  bool isScalar() const { return V1.getInt() == Scalar; }
-  bool isComplex() const { return V1.getInt() == Complex; }
-  bool isAggregate() const { return V1.getInt() == Aggregate; }
+  RValue() : Vals(std::make_pair(nullptr, nullptr)), Flavor(Scalar) {}
 
-  bool isVolatileQualified() const { return V2.getInt(); }
+  RValue &operator=(const RValue &Other) {
+    if (Other.Flavor == Aggregate)
+      AggregateAddr = Other.AggregateAddr;
+    else
+      Vals = Other.Vals;
+    IsVolatile = Other.IsVolatile;
+    Flavor = Other.Flavor;
+    return *this;
+  }
+
+  bool isScalar() const { return Flavor == Scalar; }
+  bool isComplex() const { return Flavor == Complex; }
+  bool isAggregate() const { return Flavor == Aggregate; }
+
+  bool isVolatileQualified() const { return IsVolatile; }
 
   /// getScalarVal() - Return the Value* of this scalar value.
   llvm::Value *getScalarVal() const {
     assert(isScalar() && "Not a scalar!");
-    return V1.getPointer();
+    return Vals.first;
   }
 
   /// getComplexVal - Return the real/imag components of this complex value.
   ///
   std::pair<llvm::Value *, llvm::Value *> getComplexVal() const {
-    return std::make_pair(V1.getPointer(), V2.getPointer());
+    return std::make_pair(Vals.first, Vals.second);
   }
+
+  bool isSignedAggregate() const { return AggregateAddr.isSigned(); }
 
   /// getAggregateAddr() - Return the Value* of the address of the aggregate.
   Address getAggregateAddress() const {
     assert(isAggregate() && "Not an aggregate!");
-    auto align = reinterpret_cast<uintptr_t>(V2.getPointer()) >> AggAlignShift;
-    return Address(V1.getPointer(), CharUnits::fromQuantity(align));
+    return AggregateAddr;
   }
-  llvm::Value *getAggregatePointer() const {
-    assert(isAggregate() && "Not an aggregate!");
-    return V1.getPointer();
-  }
+
+  llvm::Value *getAggregatePointer(QualType PointeeType,
+                                   CodeGenFunction &CGF) const;
 
   static RValue getIgnored() {
     // FIXME: should we make this a more explicit state?
@@ -85,17 +104,19 @@ public:
 
   static RValue get(llvm::Value *V) {
     RValue ER;
-    ER.V1.setPointer(V);
-    ER.V1.setInt(Scalar);
-    ER.V2.setInt(false);
+    ER.Vals.first = V;
+    ER.Flavor = Scalar;
+    ER.IsVolatile = false;
     return ER;
+  }
+  static RValue get(Address Addr, CodeGenFunction &CGF) {
+    return RValue::get(Addr.getRawPointer(CGF));
   }
   static RValue getComplex(llvm::Value *V1, llvm::Value *V2) {
     RValue ER;
-    ER.V1.setPointer(V1);
-    ER.V2.setPointer(V2);
-    ER.V1.setInt(Complex);
-    ER.V2.setInt(false);
+    ER.Vals = {V1, V2};
+    ER.Flavor = Complex;
+    ER.IsVolatile = false;
     return ER;
   }
   static RValue getComplex(const std::pair<llvm::Value *, llvm::Value *> &C) {
@@ -104,14 +125,15 @@ public:
   // FIXME: Aggregate rvalues need to retain information about whether they are
   // volatile or not.  Remove default to find all places that probably get this
   // wrong.
+
+  /// Convert an Address to an RValue. If the Address is not
+  /// signed, create an RValue using the unsigned address. Otherwise, resign the
+  /// address using the provided type.
   static RValue getAggregate(Address addr, bool isVolatile = false) {
     RValue ER;
-    ER.V1.setPointer(addr.getPointer());
-    ER.V1.setInt(Aggregate);
-
-    auto align = static_cast<uintptr_t>(addr.getAlignment().getQuantity());
-    ER.V2.setPointer(reinterpret_cast<llvm::Value*>(align << AggAlignShift));
-    ER.V2.setInt(isVolatile);
+    ER.AggregateAddr = addr;
+    ER.Flavor = Aggregate;
+    ER.IsVolatile = isVolatile;
     return ER;
   }
 };
@@ -174,7 +196,7 @@ class LValue {
     MatrixElt     // This is a matrix element, use getVector*
   } LVType;
 
-  llvm::Value *V;
+  Address Addr = Address::invalid();
 
   union {
     // Index into a vector subscript: V[i]
@@ -191,10 +213,6 @@ class LValue {
 
   // 'const' is unused here
   Qualifiers Quals;
-
-  // The alignment to use when accessing this lvalue.  (For vector elements,
-  // this is the alignment of the whole vector.)
-  unsigned Alignment;
 
   // objective-c's ivar
   bool Ivar:1;
@@ -226,18 +244,19 @@ class LValue {
   Expr *BaseIvarExp;
 
 private:
-  void Initialize(QualType Type, Qualifiers Quals, CharUnits Alignment,
+  void Initialize(QualType Type, Qualifiers Quals, Address Addr,
                   LValueBaseInfo BaseInfo, TBAAAccessInfo TBAAInfo) {
-    assert((!Alignment.isZero() || Type->isIncompleteType()) &&
-           "initializing l-value with zero alignment!");
     this->Type = Type;
     this->Quals = Quals;
     const unsigned MaxAlign = 1U << 31;
-    this->Alignment = Alignment.getQuantity() <= MaxAlign
-                          ? Alignment.getQuantity()
-                          : MaxAlign;
-    assert(this->Alignment == Alignment.getQuantity() &&
-           "Alignment exceeds allowed max!");
+    CharUnits Alignment = Addr.getAlignment();
+    assert((!Alignment.isZero() || Type->isIncompleteType()) &&
+           "initializing l-value with zero alignment!");
+    if (Alignment.getQuantity() > MaxAlign) {
+      assert(false && "Alignment exceeds allowed max!");
+      Alignment = CharUnits::fromQuantity(MaxAlign);
+    }
+    Addr = Address(Addr.getBasePointer(), Alignment);
     this->BaseInfo = BaseInfo;
     this->TBAAInfo = TBAAInfo;
 
@@ -247,6 +266,16 @@ private:
     this->Nontemporal = false;
     this->ThreadLocalRef = false;
     this->BaseIvarExp = nullptr;
+  }
+
+  void initializeSimpleLValue(Address Addr, QualType Type,
+                              LValueBaseInfo BaseInfo, TBAAAccessInfo TBAAInfo,
+                              ASTContext &Context) {
+    Qualifiers QS = Type.getQualifiers();
+    QS.setObjCGCAttr(Context.getObjCGCAttrKind(Type));
+    LVType = Simple;
+    Initialize(Type, QS, Addr, BaseInfo, TBAAInfo);
+    assert(Addr.getBasePointer()->getType()->isPointerTy());
   }
 
 public:
@@ -293,6 +322,8 @@ public:
   bool isNontemporal() const { return Nontemporal; }
   void setNontemporal(bool Value) { Nontemporal = Value; }
 
+  bool isPointerSigned() const { return Addr.isSigned(); }
+
   bool isObjCWeak() const {
     return Quals.getObjCGCAttr() == Qualifiers::Weak;
   }
@@ -315,45 +346,48 @@ public:
 
   LangAS getAddressSpace() const { return Quals.getAddressSpace(); }
 
-  CharUnits getAlignment() const { return CharUnits::fromQuantity(Alignment); }
-  void setAlignment(CharUnits A) { Alignment = A.getQuantity(); }
+  CharUnits getAlignment() const { return Addr.getAlignment(); }
+  void setAlignment(CharUnits A) { Addr.setAlignment(A); }
 
   LValueBaseInfo getBaseInfo() const { return BaseInfo; }
   void setBaseInfo(LValueBaseInfo Info) { BaseInfo = Info; }
 
   // simple lvalue
-  llvm::Value *getPointer(CodeGenFunction &CGF) const {
-    assert(isSimple());
-    return V;
-  }
+  llvm::Value *getPointer(CodeGenFunction &CGF) const;
+  llvm::Value *getResignedPointer(QualType PointeeTy,
+                                  CodeGenFunction &CGF) const;
+  llvm::Value *getRawPointer(CodeGenFunction &CGF) const;
+
   Address getAddress(CodeGenFunction &CGF) const {
-    return Address(getPointer(CGF), getAlignment());
+    // FIXME: remove parameter.
+    return Addr;
   }
-  void setAddress(Address address) {
-    assert(isSimple());
-    V = address.getPointer();
-    Alignment = address.getAlignment().getQuantity();
+
+  void setAddress(Address address) { Addr = address; }
+
+  CGPointerAuthInfo getPointerAuthInfo() const {
+    return Addr.getPointerAuthInfo();
   }
 
   // vector elt lvalue
-  Address getVectorAddress() const {
-    return Address(getVectorPointer(), getAlignment());
+  Address getVectorAddress() const { return Addr; }
+  llvm::Value *getRawVectorPointer(CodeGenFunction &CGF) const {
+    assert(isVectorElt());
+    return Addr.getRawPointer(CGF);
   }
   llvm::Value *getVectorPointer() const {
     assert(isVectorElt());
-    return V;
+    return Addr.getBasePointer();
   }
   llvm::Value *getVectorIdx() const {
     assert(isVectorElt());
     return VectorIdx;
   }
 
-  Address getMatrixAddress() const {
-    return Address(getMatrixPointer(), getAlignment());
-  }
+  Address getMatrixAddress() const { return Addr; }
   llvm::Value *getMatrixPointer() const {
     assert(isMatrixElt());
-    return V;
+    return Addr.getBasePointer();
   }
   llvm::Value *getMatrixIdx() const {
     assert(isMatrixElt());
@@ -361,12 +395,10 @@ public:
   }
 
   // extended vector elements.
-  Address getExtVectorAddress() const {
-    return Address(getExtVectorPointer(), getAlignment());
-  }
-  llvm::Value *getExtVectorPointer() const {
+  Address getExtVectorAddress() const { return Addr; }
+  llvm::Value *getRawExtVectorPointer(CodeGenFunction &CGF) const {
     assert(isExtVectorElt());
-    return V;
+    return Addr.getRawPointer(CGF);
   }
   llvm::Constant *getExtVectorElts() const {
     assert(isExtVectorElt());
@@ -374,28 +406,30 @@ public:
   }
 
   // bitfield lvalue
-  Address getBitFieldAddress() const {
-    return Address(getBitFieldPointer(), getAlignment());
+  Address getBitFieldAddress() const { return Addr; }
+
+  llvm::Value *getRawBitFieldPointer(CodeGenFunction &CGF) const {
+    assert(isBitField());
+    return Addr.getRawPointer(CGF);
   }
-  llvm::Value *getBitFieldPointer() const { assert(isBitField()); return V; }
+
   const CGBitFieldInfo &getBitFieldInfo() const {
     assert(isBitField());
     return *BitFieldInfo;
   }
 
   // global register lvalue
-  llvm::Value *getGlobalReg() const { assert(isGlobalReg()); return V; }
+  llvm::Value *getRawGlobalReg(CodeGenFunction &CGF) const {
+    assert(isGlobalReg());
+    return Addr.getRawPointer(CGF);
+  }
 
-  static LValue MakeAddr(Address address, QualType type, ASTContext &Context,
+  static LValue MakeAddr(Address Addr, QualType type, ASTContext &Context,
                          LValueBaseInfo BaseInfo, TBAAAccessInfo TBAAInfo) {
-    Qualifiers qs = type.getQualifiers();
-    qs.setObjCGCAttr(Context.getObjCGCAttrKind(type));
-
     LValue R;
-    R.LVType = Simple;
-    assert(address.getPointer()->getType()->isPointerTy());
-    R.V = address.getPointer();
-    R.Initialize(type, qs, address.getAlignment(), BaseInfo, TBAAInfo);
+    R.initializeSimpleLValue({Addr.getBasePointer(), Addr.getAlignment()}, type,
+                             BaseInfo, TBAAInfo, Context);
+    R.Addr = Addr;
     return R;
   }
 
@@ -404,22 +438,24 @@ public:
                               TBAAAccessInfo TBAAInfo) {
     LValue R;
     R.LVType = VectorElt;
-    R.V = vecAddress.getPointer();
     R.VectorIdx = Idx;
-    R.Initialize(type, type.getQualifiers(), vecAddress.getAlignment(),
+    R.Initialize(type, type.getQualifiers(),
+                 {vecAddress.getBasePointer(), vecAddress.getAlignment()},
                  BaseInfo, TBAAInfo);
+    R.Addr = vecAddress;
     return R;
   }
 
-  static LValue MakeExtVectorElt(Address vecAddress, llvm::Constant *Elts,
+  static LValue MakeExtVectorElt(Address Addr, llvm::Constant *Elts,
                                  QualType type, LValueBaseInfo BaseInfo,
                                  TBAAAccessInfo TBAAInfo) {
     LValue R;
     R.LVType = ExtVectorElt;
-    R.V = vecAddress.getPointer();
     R.VectorElts = Elts;
-    R.Initialize(type, type.getQualifiers(), vecAddress.getAlignment(),
-                 BaseInfo, TBAAInfo);
+    R.Initialize(type, type.getQualifiers(),
+                 {Addr.getBasePointer(), Addr.getAlignment()}, BaseInfo,
+                 TBAAInfo);
+    R.Addr = Addr;
     return R;
   }
 
@@ -434,19 +470,21 @@ public:
                              TBAAAccessInfo TBAAInfo) {
     LValue R;
     R.LVType = BitField;
-    R.V = Addr.getPointer();
     R.BitFieldInfo = &Info;
-    R.Initialize(type, type.getQualifiers(), Addr.getAlignment(), BaseInfo,
+    R.Initialize(type, type.getQualifiers(),
+                 {Addr.getBasePointer(), Addr.getAlignment()}, BaseInfo,
                  TBAAInfo);
+    R.Addr = Addr;
     return R;
   }
 
   static LValue MakeGlobalReg(Address Reg, QualType type) {
     LValue R;
     R.LVType = GlobalReg;
-    R.V = Reg.getPointer();
-    R.Initialize(type, type.getQualifiers(), Reg.getAlignment(),
+    R.Initialize(type, type.getQualifiers(),
+                 {Reg.getBasePointer(), Reg.getAlignment()},
                  LValueBaseInfo(AlignmentSource::Decl), TBAAAccessInfo());
+    R.Addr = Reg;
     return R;
   }
 
@@ -455,10 +493,11 @@ public:
                               TBAAAccessInfo TBAAInfo) {
     LValue R;
     R.LVType = MatrixElt;
-    R.V = matAddress.getPointer();
     R.VectorIdx = Idx;
-    R.Initialize(type, type.getQualifiers(), matAddress.getAlignment(),
+    R.Initialize(type, type.getQualifiers(),
+                 {matAddress.getBasePointer(), matAddress.getAlignment()},
                  BaseInfo, TBAAInfo);
+    R.Addr = matAddress;
     return R;
   }
 
@@ -469,13 +508,10 @@ public:
 
 /// An aggregate value slot.
 class AggValueSlot {
-  /// The address.
-  llvm::Value *Addr;
+  Address Addr = Address::invalid();
 
   // Qualifiers
   Qualifiers Quals;
-
-  unsigned Alignment;
 
   /// DestructedFlag - This is set to true if some external code is
   /// responsible for setting up a destructor for the slot.  Otherwise
@@ -545,22 +581,13 @@ public:
   ///   for calling destructors on this object
   /// \param needsGC - true if the slot is potentially located
   ///   somewhere that ObjC GC calls should be emitted for
-  static AggValueSlot forAddr(Address addr,
-                              Qualifiers quals,
-                              IsDestructed_t isDestructed,
-                              NeedsGCBarriers_t needsGC,
-                              IsAliased_t isAliased,
-                              Overlap_t mayOverlap,
-                              IsZeroed_t isZeroed = IsNotZeroed,
-                       IsSanitizerChecked_t isChecked = IsNotSanitizerChecked) {
+  static AggValueSlot
+  forAddr(Address addr, Qualifiers quals, IsDestructed_t isDestructed,
+          NeedsGCBarriers_t needsGC, IsAliased_t isAliased,
+          Overlap_t mayOverlap, IsZeroed_t isZeroed = IsNotZeroed,
+          IsSanitizerChecked_t isChecked = IsNotSanitizerChecked) {
     AggValueSlot AV;
-    if (addr.isValid()) {
-      AV.Addr = addr.getPointer();
-      AV.Alignment = addr.getAlignment().getQuantity();
-    } else {
-      AV.Addr = nullptr;
-      AV.Alignment = 0;
-    }
+    AV.Addr = addr;
     AV.Quals = quals;
     AV.DestructedFlag = isDestructed;
     AV.ObjCGCFlag = needsGC;
@@ -608,21 +635,15 @@ public:
     return NeedsGCBarriers_t(ObjCGCFlag);
   }
 
-  llvm::Value *getPointer() const {
-    return Addr;
-  }
+  llvm::Value *getPointer(QualType PointeeTy, CodeGenFunction &CGF) const;
 
-  Address getAddress() const {
-    return Address(Addr, getAlignment());
-  }
+  Address getAddress() const { return Addr; }
 
-  bool isIgnored() const {
-    return Addr == nullptr;
-  }
+  llvm::Value *getRawPointer(CodeGenFunction &CGF) const;
 
-  CharUnits getAlignment() const {
-    return CharUnits::fromQuantity(Alignment);
-  }
+  bool isIgnored() const { return !Addr.isValid(); }
+
+  CharUnits getAlignment() const { return Addr.getAlignment(); }
 
   IsAliased_t isPotentiallyAliased() const {
     return IsAliased_t(AliasedFlag);

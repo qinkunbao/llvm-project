@@ -2630,6 +2630,20 @@ public:
   void diagnosePointerAuthDisabled(SourceLocation loc, SourceRange range);
   bool checkConstantPointerAuthKey(Expr *keyExpr, unsigned &key);
 
+  enum PointerAuthDiscArgKind {
+    // Address discrimination argument of __ptrauth.
+    PADAK_AddrDiscPtrAuth,
+
+    // Extra discriminator argument of __ptrauth.
+    PADAK_ExtraDiscPtrAuth,
+
+    // Type discriminator argument of ptrauth_struct.
+    PADAK_TypeDiscPtrAuthStruct,
+  };
+
+  bool checkPointerAuthDiscriminatorArg(Expr *arg, PointerAuthDiscArgKind kind,
+                                        unsigned &intVal);
+
   static bool adjustContextForLocalExternDecl(DeclContext *&DC);
   void DiagnoseFunctionSpecifiers(const DeclSpec &DS);
   NamedDecl *getShadowedDeclaration(const TypedefNameDecl *D,
@@ -7127,6 +7141,10 @@ public:
   /// Check that the C++ class annoated with "trivial_abi" satisfies all the
   /// conditions that are needed for the attribute to have an effect.
   void checkIllFormedTrivialABIStruct(CXXRecordDecl &RD);
+
+  /// Check that VTable Pointer authnetication is only being set on the first
+  /// first instantiation of the vtable
+  void checkIncorrectVTablePointerAuthenticationAttribute(CXXRecordDecl &RD);
 
   void ActOnFinishCXXMemberSpecification(Scope *S, SourceLocation RLoc,
                                          Decl *TagDecl, SourceLocation LBrac,

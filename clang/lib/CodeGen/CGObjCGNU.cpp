@@ -700,8 +700,9 @@ protected:
   llvm::Value *LookupIMPSuper(CodeGenFunction &CGF, Address ObjCSuper,
                               llvm::Value *cmd, MessageSendInfo &MSI) override {
     CGBuilderTy &Builder = CGF.Builder;
-    llvm::Value *lookupArgs[] = {EnforceType(Builder, ObjCSuper,
-        PtrToObjCSuperTy).getPointer(), cmd};
+    llvm::Value *lookupArgs[] = {
+        EnforceType(Builder, ObjCSuper, PtrToObjCSuperTy).getRawPointer(CGF),
+        cmd};
     return CGF.EmitNounwindRuntimeCall(MsgLookupSuperFn, lookupArgs);
   }
 
@@ -754,7 +755,7 @@ class CGObjCGNUstep : public CGObjCGNU {
       llvm::FunctionCallee LookupFn = SlotLookupFn;
 
       // Store the receiver on the stack so that we can reload it later
-      Address ReceiverPtr =
+      RawAddress ReceiverPtr =
         CGF.CreateTempAlloca(Receiver->getType(), CGF.getPointerAlign());
       Builder.CreateStore(Receiver, ReceiverPtr);
 
@@ -771,9 +772,9 @@ class CGObjCGNUstep : public CGObjCGNU {
         LookupFn2->addParamAttr(0, llvm::Attribute::NoCapture);
 
       llvm::Value *args[] = {
-              EnforceType(Builder, ReceiverPtr.getPointer(), PtrToIdTy),
-              EnforceType(Builder, cmd, SelectorTy),
-              EnforceType(Builder, self, IdTy) };
+          EnforceType(Builder, ReceiverPtr.getPointer(), PtrToIdTy),
+          EnforceType(Builder, cmd, SelectorTy),
+          EnforceType(Builder, self, IdTy)};
       llvm::CallBase *slot = CGF.EmitRuntimeCallOrInvoke(LookupFn, args);
       slot->setOnlyReadsMemory();
       slot->setMetadata(msgSendMDKind, node);
@@ -793,7 +794,7 @@ class CGObjCGNUstep : public CGObjCGNU {
                                 llvm::Value *cmd,
                                 MessageSendInfo &MSI) override {
       CGBuilderTy &Builder = CGF.Builder;
-      llvm::Value *lookupArgs[] = {ObjCSuper.getPointer(), cmd};
+      llvm::Value *lookupArgs[] = {ObjCSuper.getRawPointer(CGF), cmd};
 
       llvm::CallInst *slot =
         CGF.EmitNounwindRuntimeCall(SlotLookupSuperFn, lookupArgs);
@@ -1204,8 +1205,10 @@ class CGObjCGNUstep2 : public CGObjCGNUstep {
                               llvm::Value *cmd, MessageSendInfo &MSI) override {
     // Don't access the slot unless we're trying to cache the result.
     CGBuilderTy &Builder = CGF.Builder;
-    llvm::Value *lookupArgs[] = {CGObjCGNU::EnforceType(Builder, ObjCSuper,
-        PtrToObjCSuperTy).getPointer(), cmd};
+    llvm::Value *lookupArgs[] = {
+        CGObjCGNU::EnforceType(Builder, ObjCSuper, PtrToObjCSuperTy)
+            .getRawPointer(CGF),
+        cmd};
     return CGF.EmitNounwindRuntimeCall(MsgLookupSuperFn, lookupArgs);
   }
 
@@ -2072,7 +2075,8 @@ protected:
                               llvm::Value *cmd, MessageSendInfo &MSI) override {
     CGBuilderTy &Builder = CGF.Builder;
     llvm::Value *lookupArgs[] = {
-        EnforceType(Builder, ObjCSuper.getPointer(), PtrToObjCSuperTy), cmd,
+        EnforceType(Builder, ObjCSuper.getRawPointer(CGF), PtrToObjCSuperTy),
+        cmd,
     };
 
     if (CGM.ReturnTypeUsesSRet(MSI.CallInfo))
@@ -2617,7 +2621,8 @@ CGObjCGNU::GenerateMessageSendSuper(CodeGenFunction &CGF,
           llvm::Type::getInt1Ty(VMContext), IsClassMessage))};
   llvm::MDNode *node = llvm::MDNode::get(VMContext, impMD);
 
-  CGCallee callee(CGCalleeInfo(), imp);
+  CGPointerAuthInfo pointerAuth; // TODO
+  CGCallee callee(CGCalleeInfo(), imp, pointerAuth);
 
   llvm::CallBase *call;
   RValue msgRet = CGF.EmitCall(MSI.CallInfo, callee, Return, ActualArgs, &call);
@@ -2737,7 +2742,8 @@ CGObjCGNU::GenerateMessageSend(CodeGenFunction &CGF,
   imp = EnforceType(Builder, imp, MSI.MessengerType);
 
   llvm::CallBase *call;
-  CGCallee callee(CGCalleeInfo(), imp);
+  CGPointerAuthInfo pointerAuth; // TODO
+  CGCallee callee(CGCalleeInfo(), imp, pointerAuth);
   RValue msgRet = CGF.EmitCall(MSI.CallInfo, callee, Return, ActualArgs, &call);
   call->setMetadata(msgSendMDKind, node);
 
@@ -2758,9 +2764,10 @@ CGObjCGNU::GenerateMessageSend(CodeGenFunction &CGF,
       llvm::Type *RetTy = v.getElementType();
       Address NullVal = CGF.CreateTempAlloca(RetTy, v.getAlignment(), "null");
       CGF.InitTempAlloca(NullVal, llvm::Constant::getNullValue(RetTy));
-      phi->addIncoming(v.getPointer(), messageBB);
-      phi->addIncoming(NullVal.getPointer(), startBB);
-      msgRet = RValue::getAggregate(Address(phi, v.getAlignment()));
+      phi->addIncoming(CGF.getAsNaturalPointerTo(v, ResultType), messageBB);
+      phi->addIncoming(CGF.getAsNaturalPointerTo(NullVal, ResultType), startBB);
+      msgRet = RValue::getAggregate(
+          CGF.makeNaturalAddressForPointer(phi, ResultType, v.getAlignment()));
     } else /* isComplex() */ {
       std::pair<llvm::Value*,llvm::Value*> v = msgRet.getComplexVal();
       llvm::PHINode *phi = Builder.CreatePHI(v.first->getType(), 2);
@@ -3984,7 +3991,7 @@ llvm::Value * CGObjCGNU::EmitObjCWeakRead(CodeGenFunction &CGF,
                                           Address AddrWeakObj) {
   CGBuilderTy &B = CGF.Builder;
   AddrWeakObj = EnforceType(B, AddrWeakObj, PtrToIdTy);
-  return B.CreateCall(WeakReadFn, AddrWeakObj.getPointer());
+  return B.CreateCall(WeakReadFn, AddrWeakObj.getRawPointer(CGF));
 }
 
 void CGObjCGNU::EmitObjCWeakAssign(CodeGenFunction &CGF,
@@ -3992,7 +3999,7 @@ void CGObjCGNU::EmitObjCWeakAssign(CodeGenFunction &CGF,
   CGBuilderTy &B = CGF.Builder;
   src = EnforceType(B, src, IdTy);
   dst = EnforceType(B, dst, PtrToIdTy);
-  B.CreateCall(WeakAssignFn, {src, dst.getPointer()});
+  B.CreateCall(WeakAssignFn, {src, dst.getRawPointer(CGF)});
 }
 
 void CGObjCGNU::EmitObjCGlobalAssign(CodeGenFunction &CGF,
@@ -4003,7 +4010,7 @@ void CGObjCGNU::EmitObjCGlobalAssign(CodeGenFunction &CGF,
   dst = EnforceType(B, dst, PtrToIdTy);
   // FIXME. Add threadloca assign API
   assert(!threadlocal && "EmitObjCGlobalAssign - Threal Local API NYI");
-  B.CreateCall(GlobalAssignFn, {src, dst.getPointer()});
+  B.CreateCall(GlobalAssignFn, {src, dst.getRawPointer(CGF)});
 }
 
 void CGObjCGNU::EmitObjCIvarAssign(CodeGenFunction &CGF,
@@ -4012,7 +4019,7 @@ void CGObjCGNU::EmitObjCIvarAssign(CodeGenFunction &CGF,
   CGBuilderTy &B = CGF.Builder;
   src = EnforceType(B, src, IdTy);
   dst = EnforceType(B, dst, IdTy);
-  B.CreateCall(IvarAssignFn, {src, dst.getPointer(), ivarOffset});
+  B.CreateCall(IvarAssignFn, {src, dst.getRawPointer(CGF), ivarOffset});
 }
 
 void CGObjCGNU::EmitObjCStrongCastAssign(CodeGenFunction &CGF,
@@ -4020,7 +4027,7 @@ void CGObjCGNU::EmitObjCStrongCastAssign(CodeGenFunction &CGF,
   CGBuilderTy &B = CGF.Builder;
   src = EnforceType(B, src, IdTy);
   dst = EnforceType(B, dst, PtrToIdTy);
-  B.CreateCall(StrongCastAssignFn, {src, dst.getPointer()});
+  B.CreateCall(StrongCastAssignFn, {src, dst.getRawPointer(CGF)});
 }
 
 void CGObjCGNU::EmitGCMemmoveCollectable(CodeGenFunction &CGF,
@@ -4031,7 +4038,8 @@ void CGObjCGNU::EmitGCMemmoveCollectable(CodeGenFunction &CGF,
   DestPtr = EnforceType(B, DestPtr, PtrTy);
   SrcPtr = EnforceType(B, SrcPtr, PtrTy);
 
-  B.CreateCall(MemMoveFn, {DestPtr.getPointer(), SrcPtr.getPointer(), Size});
+  B.CreateCall(MemMoveFn,
+               {DestPtr.getRawPointer(CGF), SrcPtr.getRawPointer(CGF), Size});
 }
 
 llvm::GlobalVariable *CGObjCGNU::ObjCIvarOffsetVariable(

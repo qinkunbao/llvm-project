@@ -382,6 +382,11 @@ addPostInlineEntryExitInstrumentationPass(const PassManagerBuilder &Builder,
   PM.add(createPostInlineEntryExitInstrumenterPass());
 }
 
+static void addSoftPointerAuthPass(const PassManagerBuilder &Builder,
+                                   legacy::PassManagerBase &PM) {
+  PM.add(createSoftPointerAuthPass());
+}
+
 static TargetLibraryInfoImpl *createTLII(llvm::Triple &TargetTriple,
                                          const CodeGenOptions &CodeGenOpts) {
   TargetLibraryInfoImpl *TLII = new TargetLibraryInfoImpl(TargetTriple);
@@ -805,6 +810,13 @@ void EmitAssemblyHelper::CreatePasses(legacy::PassManager &MPM,
                            addPostInlineEntryExitInstrumentationPass);
     PMBuilder.addExtension(PassManagerBuilder::EP_EnabledOnOptLevel0,
                            addPostInlineEntryExitInstrumentationPass);
+  }
+
+  if (LangOpts.SoftPointerAuth) {
+    PMBuilder.addExtension(PassManagerBuilder::EP_OptimizerLast,
+                           addSoftPointerAuthPass);
+    PMBuilder.addExtension(PassManagerBuilder::EP_EnabledOnOptLevel0,
+                           addSoftPointerAuthPass);
   }
 
   // Set up the per-function pass manager.

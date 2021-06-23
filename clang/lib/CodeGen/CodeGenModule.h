@@ -26,6 +26,7 @@
 #include "clang/Basic/LangOptions.h"
 #include "clang/Basic/Module.h"
 #include "clang/Basic/NoSanitizeList.h"
+#include "clang/Basic/PointerAuthOptions.h"
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Basic/XRayLists.h"
 #include "clang/Lex/PreprocessorOptions.h"
@@ -68,6 +69,7 @@ class Stmt;
 class InitListExpr;
 class StringLiteral;
 class NamedDecl;
+class PointerAuthSchema;
 class ValueDecl;
 class VarDecl;
 class LangOptions;
@@ -414,6 +416,11 @@ private:
   /// Global annotations.
   std::vector<llvm::Constant*> Annotations;
 
+  /// Signed constant pointers.
+  void *SignedFunctionPointersByDeclAndType = nullptr;
+  void *SignedThunkPointers = nullptr;
+  void *ConstantSignedPointersByConstant = nullptr;
+
   /// Map used to get unique annotation strings.
   llvm::StringMap<llvm::Constant*> AnnotationStrings;
 
@@ -577,6 +584,13 @@ private:
   MetadataTypeMap MetadataIdMap;
   MetadataTypeMap VirtualMetadataIdMap;
   MetadataTypeMap GeneralizedMetadataIdMap;
+
+  llvm::DenseMap<GlobalDecl, uint16_t> PtrAuthDiscriminatorHashes;
+
+  llvm::DenseMap<const CXXRecordDecl *, Optional<PointerAuthQualifier>>
+      VTablePtrAuthInfos;
+  Optional<PointerAuthQualifier>
+  computeVTPointerAuthentication(const CXXRecordDecl *thisClass);
 
 public:
   CodeGenModule(ASTContext &C, const HeaderSearchOptions &headersearchopts,
@@ -880,6 +894,71 @@ public:
                                     bool DontDefer = false,
                                     ForDefinition_t IsForDefinition
                                       = NotForDefinition);
+
+  /// Return a function pointer for a reference to the given function.
+  /// This correctly handles weak references, but does not apply a
+  /// pointer signature.
+  llvm::Constant *getRawFunctionPointer(GlobalDecl GD,
+                                        llvm::Type *Ty = nullptr);
+
+  /// Return the ABI-correct function pointer value for a reference
+  /// to the given function.  This will apply a pointer signature if
+  /// necessary, caching the result for the given function.
+  llvm::Constant *getFunctionPointer(GlobalDecl GD,
+                                     llvm::Type *Ty = nullptr);
+
+  /// Return the ABI-correct function pointer value for a reference
+  /// to the given function.  This will apply a pointer signature if
+  /// necessary, but will only cache the result if \p FD is passed.
+  llvm::Constant *getFunctionPointer(llvm::Constant *pointer,
+                                     QualType functionType,
+                                     GlobalDecl GD = GlobalDecl());
+
+  llvm::Constant *getMemberFunctionPointer(const FunctionDecl *FD,
+                                           llvm::Type *Ty = nullptr);
+
+  llvm::Constant *getMemberFunctionPointer(llvm::Constant *pointer,
+                                           QualType functionType,
+                                           const FunctionDecl *FD = nullptr);
+
+  CGPointerAuthInfo getFunctionPointerAuthInfo(QualType functionType);
+
+  CGPointerAuthInfo getMemberFunctionPointerAuthInfo(QualType functionType);
+
+  CGPointerAuthInfo getPointerAuthInfoForPointeeType(QualType type);
+
+  CGPointerAuthInfo getPointerAuthInfoForType(QualType type);
+
+  llvm::Constant *getConstantSignedPointer(llvm::Constant *pointer,
+                                           const PointerAuthSchema &schema,
+                                           llvm::Constant *storageAddress,
+                                           GlobalDecl schemaDecl,
+                                           QualType schemaType);
+  llvm::Constant *getConstantSignedPointer(llvm::Constant *pointer,
+                                           unsigned key,
+                                           llvm::Constant *storageAddress,
+                                           llvm::Constant *extraDiscrim);
+
+  llvm::Constant *getConstantSignedPointer(llvm::Constant *Pointer,
+                                           QualType PointeeType);
+
+  llvm::Constant *
+  getPointerAuthOtherDiscriminator(const PointerAuthSchema &schema,
+                                   GlobalDecl schemaDecl, QualType schemaType);
+  uint16_t getPointerAuthDeclDiscriminator(GlobalDecl GD);
+  Optional<CGPointerAuthInfo>
+  getVTablePointerAuthInfo(CodeGenFunction *context,
+                           const CXXRecordDecl *record,
+                           llvm::Value *storageAddress);
+
+  Optional<PointerAuthQualifier>
+  getVTablePointerAuthentication(const CXXRecordDecl *thisClass);
+
+  bool isFunctionPointerAuthenticated(QualType FunctionPointerTy,
+                                      const Expr *Key,
+                                      const Expr *Discriminator);
+
+  CGPointerAuthInfo EmitPointerAuthInfo(const RecordDecl *RD);
 
   /// Get the address of the RTTI descriptor for the given type.
   llvm::Constant *GetAddrOfRTTIDescriptor(QualType Ty, bool ForEH = false);
@@ -1616,6 +1695,8 @@ private:
   /// Check whether we can use a "simpler", more core exceptions personality
   /// function.
   void SimplifyPersonality();
+
+  void destroyConstantSignedPointerCaches();
 
   /// Helper function for ConstructAttributeList and
   /// addDefaultFunctionDefinitionAttributes.  Builds a set of function

@@ -17,6 +17,16 @@ void test_auth() {
   fnptr = __builtin_ptrauth_auth(fnptr, 0, ptr_discriminator);
 }
 
+// CHECK-LABEL: define {{.*}} void @test_auth_peephole()
+void test_auth_peephole() {
+  // CHECK:      [[PTR:%.*]] = load void ()*, void ()** @fnptr,
+  // CHECK-NEXT: [[DISC0:%.*]] = load i8*, i8** @ptr_discriminator,
+  // CHECK-NEXT: [[DISC:%.*]] = ptrtoint i8* [[DISC0]] to i64
+  // CHECK-NEXT: call void [[PTR]]() [ "ptrauth"(i32 0, i64 [[DISC]]) ]
+  // CHECK-NEXT: ret void
+  __builtin_ptrauth_auth(fnptr, 0, ptr_discriminator)();
+}
+
 // CHECK-LABEL: define {{.*}} void @test_strip()
 void test_strip() {
   // CHECK:      [[PTR:%.*]] = load void ()*, void ()** @fnptr,
@@ -70,4 +80,17 @@ void test_sign_generic_data() {
   // CHECK-NEXT: [[RESULT:%.*]] = call i64 @llvm.ptrauth.sign.generic(i64 [[T0]], i64 [[DISC]])
   // CHECK-NEXT: store i64 [[RESULT]], i64* @signature,
   signature = __builtin_ptrauth_sign_generic_data(fnptr, ptr_discriminator);
+}
+
+// CHECK-LABEL: define {{.*}} void @test_string_discriminator()
+void test_string_discriminator() {
+  // CHECK:      [[X:%.*]] = alloca i32
+
+  // Check a couple of random discriminators used by Swift.
+
+  // CHECK:      store i32 58298, i32* [[X]],
+  int x = __builtin_ptrauth_string_discriminator("InitializeWithCopy");
+
+  // CHECK:      store i32 9112, i32* [[X]],
+  x = __builtin_ptrauth_string_discriminator("DestroyArray");
 }

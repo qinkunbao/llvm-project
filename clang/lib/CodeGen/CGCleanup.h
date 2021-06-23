@@ -324,7 +324,7 @@ public:
   Address getActiveFlag() const {
     return Address(ActiveFlag, CharUnits::One());
   }
-  void setActiveFlag(Address Var) {
+  void setActiveFlag(RawAddress Var) {
     assert(Var.getAlignment().isOne());
     ActiveFlag = cast<llvm::AllocaInst>(Var.getPointer());
   }

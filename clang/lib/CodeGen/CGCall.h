@@ -14,6 +14,7 @@
 #ifndef LLVM_CLANG_LIB_CODEGEN_CGCALL_H
 #define LLVM_CLANG_LIB_CODEGEN_CGCALL_H
 
+#include "CGPointerAuthInfo.h"
 #include "CGValue.h"
 #include "EHScopeStack.h"
 #include "clang/AST/ASTFwd.h"
@@ -74,6 +75,10 @@ class CGCallee {
     Last = Virtual
   };
 
+  struct OrdinaryInfoStorage {
+    CGCalleeInfo AbstractInfo;
+    CGPointerAuthInfo PointerAuthInfo;
+  };
   struct BuiltinInfoStorage {
     const FunctionDecl *Decl;
     unsigned ID;
@@ -90,7 +95,7 @@ class CGCallee {
 
   SpecialKind KindOrFunctionPointer;
   union {
-    CGCalleeInfo AbstractInfo;
+    OrdinaryInfoStorage OrdinaryInfo;
     BuiltinInfoStorage BuiltinInfo;
     PseudoDestructorInfoStorage PseudoDestructorInfo;
     VirtualInfoStorage VirtualInfo;
@@ -109,10 +114,12 @@ public:
 
   /// Construct a callee.  Call this constructor directly when this
   /// isn't a direct call.
-  CGCallee(const CGCalleeInfo &abstractInfo, llvm::Value *functionPtr)
+  CGCallee(const CGCalleeInfo &abstractInfo, llvm::Value *functionPtr,
+           const CGPointerAuthInfo &pointerAuthInfo)
       : KindOrFunctionPointer(
             SpecialKind(reinterpret_cast<uintptr_t>(functionPtr))) {
-    AbstractInfo = abstractInfo;
+    OrdinaryInfo.AbstractInfo = abstractInfo;
+    OrdinaryInfo.PointerAuthInfo = pointerAuthInfo;
     assert(functionPtr && "configuring callee without function pointer");
     assert(functionPtr->getType()->isPointerTy());
     assert(functionPtr->getType()->getPointerElementType()->isFunctionTy());
@@ -134,12 +141,12 @@ public:
 
   static CGCallee forDirect(llvm::Constant *functionPtr,
                             const CGCalleeInfo &abstractInfo = CGCalleeInfo()) {
-    return CGCallee(abstractInfo, functionPtr);
+    return CGCallee(abstractInfo, functionPtr, CGPointerAuthInfo());
   }
 
   static CGCallee forDirect(llvm::FunctionCallee functionPtr,
                             const CGCalleeInfo &abstractInfo = CGCalleeInfo()) {
-    return CGCallee(abstractInfo, functionPtr.getCallee());
+    return CGCallee(abstractInfo, functionPtr.getCallee(), CGPointerAuthInfo());
   }
 
   static CGCallee forVirtual(const CallExpr *CE, GlobalDecl MD, Address Addr,
@@ -179,7 +186,11 @@ public:
     if (isVirtual())
       return VirtualInfo.MD;
     assert(isOrdinary());
-    return AbstractInfo;
+    return OrdinaryInfo.AbstractInfo;
+  }
+  const CGPointerAuthInfo &getPointerAuthInfo() const {
+    assert(isOrdinary());
+    return OrdinaryInfo.PointerAuthInfo;
   }
   llvm::Value *getFunctionPointer() const {
     assert(isOrdinary());
@@ -189,6 +200,10 @@ public:
     assert(isOrdinary());
     KindOrFunctionPointer =
         SpecialKind(reinterpret_cast<uintptr_t>(functionPtr));
+  }
+  void setPointerAuthInfo(CGPointerAuthInfo pointerAuth) {
+    assert(isOrdinary());
+    OrdinaryInfo.PointerAuthInfo = pointerAuth;
   }
 
   bool isVirtual() const {
@@ -234,6 +249,16 @@ public:
       : RV(rv), HasLV(false), IsUsed(false), Ty(ty) {}
   CallArg(LValue lv, QualType ty)
       : LV(lv), HasLV(true), IsUsed(false), Ty(ty) {}
+  CallArg &operator=(const CallArg &Other) {
+    if (Other.HasLV)
+      LV = Other.LV;
+    else
+      RV = Other.RV;
+    HasLV = Other.HasLV;
+    IsUsed = Other.IsUsed;
+    Ty = Other.Ty;
+    return *this;
+  }
   bool hasLValue() const { return HasLV; }
   QualType getType() const { return Ty; }
 
@@ -380,6 +405,7 @@ public:
   Address getValue() const { return Addr; }
   bool isUnused() const { return IsUnused; }
   bool isExternallyDestructed() const { return IsExternallyDestructed; }
+  Address getAddress() const { return Addr; }
 };
 
 } // end namespace CodeGen
