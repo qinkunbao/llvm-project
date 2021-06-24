@@ -85,6 +85,9 @@ static bool shouldConvertToRelLookupTable(Module &M, GlobalVariable &GV) {
         !GlovalVarOp->isDSOLocal() ||
         !GlovalVarOp->isImplicitDSOLocal())
       return false;
+    
+    if (GlovalVarOp->getSection() == "llvm.ptrauth")
+      return false;
   }
 
   return true;
