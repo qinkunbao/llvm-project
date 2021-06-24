@@ -423,11 +423,6 @@ CodeGenFunction::EmitPointerAuthResign(llvm::Value *value, QualType type,
       return value;
   }
 
-  if (auto *ce = dyn_cast<llvm::ConstantExpr>(value))
-    if (ce->getOpcode() == llvm::Instruction::IntToPtr)
-      if (isa<llvm::ConstantInt>(ce->getOperand(0)))
-        return value;
-
   llvm::BasicBlock *initBB = Builder.GetInsertBlock();
   llvm::BasicBlock *resignBB = nullptr, *contBB = nullptr;
 
