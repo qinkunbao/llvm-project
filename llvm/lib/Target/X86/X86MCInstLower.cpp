@@ -48,6 +48,8 @@
 
 using namespace llvm;
 
+cl::opt<bool> UseSmallUBSANTraps("use-small-ubsan-traps", cl::Hidden);
+
 namespace {
 
 /// X86MCInstLower - This class is used to lower an MachineInstr into an MCInst.
@@ -2599,14 +2601,36 @@ void X86AsmPrinter::emitInstruction(const MachineInstr *MI) {
     return;
   }
   case X86::UBSAN_UD1:
-    EmitAndCountInstruction(MCInstBuilder(X86::UD1Lm)
-                                .addReg(X86::EAX)
-                                .addReg(X86::EAX)
-                                .addImm(1)
-                                .addReg(X86::NoRegister)
-                                .addImm(MI->getOperand(0).getImm())
-                                .addReg(X86::NoRegister));
+    if (!UseSmallUBSANTraps)
+      EmitAndCountInstruction(MCInstBuilder(X86::UD1Lm)
+                                  .addReg(X86::EAX)
+                                  .addReg(X86::EAX)
+                                  .addImm(1)
+                                  .addReg(X86::NoRegister)
+                                  .addImm(MI->getOperand(0).getImm())
+                                  .addReg(X86::NoRegister));
     return;
+  case X86::JCC_1: {
+    if (!UseSmallUBSANTraps)
+      break;
+    MachineBasicBlock *Target = MI->getOperand(0).getMBB();
+    MachineBasicBlock::iterator I =
+        Target->SkipPHIsLabelsAndDebug(Target->begin());
+    if (I->getOpcode() != X86::UBSAN_UD1)
+      break;
+
+    MCSymbol *DotSym = OutContext.createTempSymbol();
+    OutStreamer->emitLabel(DotSym);
+    EmitAndCountInstruction(
+        MCInstBuilder(X86::JCC_1)
+            .addExpr(MCBinaryExpr::createAdd(
+                MCSymbolRefExpr::create(DotSym, OutContext),
+                MCConstantExpr::create(1, OutContext), OutContext))
+            .addImm(MI->getOperand(1).getImm()));
+    EmitAndCountInstruction(MCInstBuilder(X86::CLD));
+
+    return;
+  }
   }
 
   MCInst TmpInst;
