@@ -18,6 +18,9 @@
 namespace clang {
 
 struct PointerAuthOptions {
+  /// Do authentication failures cause a trap?
+  bool AuthTraps = false;
+
   /// Should return addresses be authenticated?
   bool ReturnAddresses = false;
 };

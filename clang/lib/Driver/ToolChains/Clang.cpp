@@ -6833,6 +6833,10 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
                    options::OPT_fno_ptrauth_returns, false))
     CmdArgs.push_back("-fptrauth-returns");
 
+  if (Args.hasFlag(options::OPT_fptrauth_auth_traps,
+                   options::OPT_fno_ptrauth_auth_traps, false))
+    CmdArgs.push_back("-fptrauth-auth-traps");
+
   // -fsigned-bitfields is default, and clang doesn't yet support
   // -funsigned-bitfields.
   if (!Args.hasFlag(options::OPT_fsigned_bitfields,

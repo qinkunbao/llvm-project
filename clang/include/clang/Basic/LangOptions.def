@@ -161,6 +161,7 @@ LANGOPT(ExperimentalLibrary, 1, 0, "enable unstable and experimental library fea
 
 LANGOPT(PointerAuthIntrinsics, 1, 0, "pointer authentication intrinsics")
 LANGOPT(PointerAuthReturns, 1, 0, "return pointer authentication")
+LANGOPT(PointerAuthAuthTraps, 1, 0, "pointer authentication failure traps")
 VALUE_LANGOPT(PointerAuthABIVersion, 32, 0, "pointer authentication ABI version")
 LANGOPT(PointerAuthKernelABIVersion, 1, 0, "controls whether the pointer auth abi version represents a kernel ABI")
 LANGOPT(PointerAuthABIVersionEncoded, 1, 0, "controls whether the pointer auth abi version should be encoded in the IR")

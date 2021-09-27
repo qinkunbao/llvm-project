@@ -1162,6 +1162,10 @@ void DarwinClang::addClangTargetOptions(
     if (!DriverArgs.hasArg(options::OPT_fptrauth_intrinsics,
                            options::OPT_fno_ptrauth_intrinsics))
       CC1Args.push_back("-fptrauth-intrinsics");
+
+    if (!DriverArgs.hasArg(options::OPT_fptrauth_auth_traps,
+                           options::OPT_fno_ptrauth_auth_traps))
+      CC1Args.push_back("-fptrauth-auth-traps");
   }
 }
 

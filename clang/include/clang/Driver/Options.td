@@ -3088,9 +3088,12 @@ let Group = f_Group in {
       HelpText<"Enable pointer-authentication intrinsics">;
     def fptrauth_returns : Flag<["-"], "fptrauth-returns">,
       HelpText<"Enable signing and authentication of return addresses">;
+    def fptrauth_auth_traps : Flag<["-"], "fptrauth-auth-traps">,
+      HelpText<"Enable traps on authentication failures">;
   }
   def fno_ptrauth_intrinsics : Flag<["-"], "fno-ptrauth-intrinsics">;
   def fno_ptrauth_returns : Flag<["-"], "fno-ptrauth-returns">;
+  def fno_ptrauth_auth_traps : Flag<["-"], "fno-ptrauth-auth-traps">;
 }
 
 let Group = f_Group in {

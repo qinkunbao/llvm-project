@@ -1323,6 +1323,7 @@ bool CompilerInvocation::setDefaultPointerAuthOptions(
     const llvm::Triple &Triple) {
   if (Triple.getArch() == llvm::Triple::aarch64) {
     Opts.ReturnAddresses = LangOpts.PointerAuthReturns;
+    Opts.AuthTraps = LangOpts.PointerAuthAuthTraps;
     return true;
   }
 
@@ -1334,7 +1335,7 @@ static bool parsePointerAuthOptions(PointerAuthOptions &Opts,
                                     const LangOptions &LangOpts,
                                     const llvm::Triple &Triple,
                                     DiagnosticsEngine &Diags) {
-  if (!LangOpts.PointerAuthReturns)
+  if (!LangOpts.PointerAuthReturns && !LangOpts.PointerAuthAuthTraps)
     return true;
 
   if (CompilerInvocation::setDefaultPointerAuthOptions(Opts, LangOpts, Triple))
@@ -3245,6 +3246,8 @@ static void GeneratePointerAuthArgs(LangOptions &Opts,
     GenerateArg(Args, OPT_fptrauth_intrinsics, SA);
   if (Opts.PointerAuthReturns)
     GenerateArg(Args, OPT_fptrauth_returns, SA);
+  if (Opts.PointerAuthAuthTraps)
+    GenerateArg(Args, OPT_fptrauth_auth_traps, SA);
 
   if (Opts.PointerAuthABIVersionEncoded) {
     GenerateArg(Args, OPT_fptrauth_abi_version_EQ,
@@ -3258,6 +3261,7 @@ static void ParsePointerAuthArgs(LangOptions &Opts, ArgList &Args,
                                  DiagnosticsEngine &Diags) {
   Opts.PointerAuthIntrinsics = Args.hasArg(OPT_fptrauth_intrinsics);
   Opts.PointerAuthReturns = Args.hasArg(OPT_fptrauth_returns);
+  Opts.PointerAuthAuthTraps = Args.hasArg(OPT_fptrauth_auth_traps);
 
   Opts.PointerAuthABIVersionEncoded =
       Args.hasArg(OPT_fptrauth_abi_version_EQ) ||
