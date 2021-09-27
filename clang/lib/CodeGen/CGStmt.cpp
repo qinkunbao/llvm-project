@@ -2181,12 +2181,12 @@ std::pair<llvm::Value*, llvm::Type *> CodeGenFunction::EmitAsmInputLValue(
       Ty = llvm::IntegerType::get(getLLVMContext(), Size);
 
       return {Builder.CreateLoad(Builder.CreateElementBitCast(
-                  InputValue.getAddress(*this), Ty)),
+                  InputValue.getAddress(), Ty)),
               nullptr};
     }
   }
 
-  Address Addr = InputValue.getAddress(*this);
+  Address Addr = InputValue.getAddress();
   ConstraintStr += '*';
   return {InputValue.getPointer(*this), Addr.getElementType()};
 }
@@ -2469,7 +2469,7 @@ void CodeGenFunction::EmitAsmStmt(const AsmStmt &S) {
             std::max((uint64_t)LargestVectorWidth,
                      VT->getPrimitiveSizeInBits().getKnownMinSize());
     } else {
-      Address DestAddr = Dest.getAddress(*this);
+      Address DestAddr = Dest.getAddress();
       // Matrix types in memory are represented by arrays, but accessed through
       // vector pointers, with the alignment specified on the access operation.
       // For inline assembly, update pointer arguments to use vector pointers.
@@ -2781,7 +2781,7 @@ void CodeGenFunction::EmitAsmStmt(const AsmStmt &S) {
     // ResultTypeRequiresCast.size() elements of RegResults.
     if ((i < ResultTypeRequiresCast.size()) && ResultTypeRequiresCast[i]) {
       unsigned Size = getContext().getTypeSize(ResultRegQualTys[i]);
-      Address A = Builder.CreateElementBitCast(Dest.getAddress(*this),
+      Address A = Builder.CreateElementBitCast(Dest.getAddress(),
                                                ResultRegTypes[i]);
       if (getTargetHooks().isScalarizableAsmOperand(*this, TruncTy)) {
         Builder.CreateStore(Tmp, A);
@@ -2844,7 +2844,7 @@ CodeGenFunction::EmitCapturedStmt(const CapturedStmt &S, CapturedRegionKind K) {
 
 Address CodeGenFunction::GenerateCapturedStmtArgument(const CapturedStmt &S) {
   LValue CapStruct = InitCapturedStruct(S);
-  return CapStruct.getAddress(*this);
+  return CapStruct.getAddress();
 }
 
 /// Creates the outlined function for a CapturedStmt.

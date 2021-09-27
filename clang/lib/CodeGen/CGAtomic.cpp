@@ -151,7 +151,7 @@ namespace {
     Address getAtomicAddress() const {
       llvm::Type *ElTy;
       if (LVal.isSimple())
-        ElTy = LVal.getAddress(CGF).getElementType();
+        ElTy = LVal.getAddress().getElementType();
       else if (LVal.isBitField())
         ElTy = LVal.getBitFieldAddress().getElementType();
       else if (LVal.isVectorElt())
@@ -361,7 +361,7 @@ bool AtomicInfo::requiresMemSetZero(llvm::Type *type) const {
 
 bool AtomicInfo::emitMemSetZeroIfNecessary() const {
   assert(LVal.isSimple());
-  Address addr = LVal.getAddress(CGF);
+  Address addr = LVal.getAddress();
   if (!requiresMemSetZero(addr.getElementType()))
     return false;
 
@@ -1720,7 +1720,7 @@ Address AtomicInfo::materializeRValue(RValue rvalue) const {
   LValue TempLV = CGF.MakeAddrLValue(CreateTempAlloca(), getAtomicType());
   AtomicInfo Atomics(CGF, TempLV);
   Atomics.emitCopyIntoMemory(rvalue);
-  return TempLV.getAddress(CGF);
+  return TempLV.getAddress();
 }
 
 llvm::Value *AtomicInfo::convertRValueToInt(RValue RVal) const {
@@ -2060,7 +2060,7 @@ void CodeGenFunction::EmitAtomicStore(RValue rvalue, LValue dest,
   // maybe for address-space qualification.
   assert(!rvalue.isAggregate() ||
          rvalue.getAggregateAddress().getElementType() ==
-             dest.getAddress(*this).getElementType());
+             dest.getAddress().getElementType());
 
   AtomicInfo atomics(*this, dest);
   LValue LVal = atomics.getAtomicLValue();
@@ -2131,10 +2131,10 @@ std::pair<RValue, llvm::Value *> CodeGenFunction::EmitAtomicCompareExchange(
   // maybe for address-space qualification.
   assert(!Expected.isAggregate() ||
          Expected.getAggregateAddress().getElementType() ==
-             Obj.getAddress(*this).getElementType());
+             Obj.getAddress().getElementType());
   assert(!Desired.isAggregate() ||
          Desired.getAggregateAddress().getElementType() ==
-             Obj.getAddress(*this).getElementType());
+             Obj.getAddress().getElementType());
   AtomicInfo Atomics(*this, Obj);
 
   return Atomics.EmitAtomicCompareExchange(Expected, Desired, Success, Failure,

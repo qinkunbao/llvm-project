@@ -355,10 +355,7 @@ public:
     return Addr.isValid() ? Addr.getRawPointer(CGF) : nullptr;
   }
 
-  Address getAddress(CodeGenFunction &CGF) const {
-    // FIXME: remove parameter.
-    return Addr;
-  }
+  Address getAddress() const { return Addr; }
 
   void setAddress(Address address) { Addr = address; }
 
@@ -495,7 +492,7 @@ public:
   }
 
   RValue asAggregateRValue(CodeGenFunction &CGF) const {
-    return RValue::getAggregate(getAddress(CGF), isVolatileQualified());
+    return RValue::getAggregate(getAddress(), isVolatileQualified());
   }
 };
 
@@ -600,7 +597,7 @@ public:
             NeedsGCBarriers_t needsGC, IsAliased_t isAliased,
             Overlap_t mayOverlap, IsZeroed_t isZeroed = IsNotZeroed,
             IsSanitizerChecked_t isChecked = IsNotSanitizerChecked) {
-    return forAddr(LV.getAddress(CGF), LV.getQuals(), isDestructed, needsGC,
+    return forAddr(LV.getAddress(), LV.getQuals(), isDestructed, needsGC,
                    isAliased, mayOverlap, isZeroed, isChecked);
   }
 

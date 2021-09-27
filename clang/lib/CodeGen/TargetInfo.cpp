@@ -1367,7 +1367,7 @@ void X86_32TargetCodeGenInfo::addReturnRegisterOutputs(
 
   // Coerce the integer by bitcasting the return slot pointer.
   ReturnSlot.setAddress(
-      CGF.Builder.CreateElementBitCast(ReturnSlot.getAddress(CGF), CoerceTy));
+      CGF.Builder.CreateElementBitCast(ReturnSlot.getAddress(), CoerceTy));
   ResultRegDests.push_back(ReturnSlot);
 
   rewriteInputConstraintReferences(NumOutputs, 1, AsmString);
@@ -7141,7 +7141,7 @@ private:
                                            LValue Src) {
     llvm::Value *Handle = nullptr;
     llvm::Constant *C =
-        llvm::dyn_cast<llvm::Constant>(Src.getAddress(CGF).getRawPointer(CGF));
+        llvm::dyn_cast<llvm::Constant>(Src.getAddress().getRawPointer(CGF));
     // Lookup `addrspacecast` through the constant pointer if any.
     if (auto *ASC = llvm::dyn_cast_or_null<llvm::AddrSpaceCastOperator>(C))
       C = llvm::cast<llvm::Constant>(ASC->getPointerOperand());
