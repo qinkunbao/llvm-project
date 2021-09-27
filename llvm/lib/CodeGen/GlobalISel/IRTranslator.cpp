@@ -55,6 +55,7 @@
 #include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/GetElementPtrTypeIterator.h"
+#include "llvm/IR/GlobalPtrAuthInfo.h"
 #include "llvm/IR/InlineAsm.h"
 #include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/Instructions.h"
@@ -3052,9 +3053,21 @@ bool IRTranslator::translate(const Constant &C, Register Reg) {
     EntryBuilder->buildUndef(Reg);
   else if (isa<ConstantPointerNull>(C))
     EntryBuilder->buildConstant(Reg, 0);
-  else if (auto GV = dyn_cast<GlobalValue>(&C))
-    EntryBuilder->buildGlobalValue(Reg, GV);
-  else if (auto CAZ = dyn_cast<ConstantAggregateZero>(&C)) {
+  else if (auto GV = dyn_cast<GlobalValue>(&C)) {
+    auto GVB = dyn_cast<GlobalVariable>(GV);
+    if (!GVB || GVB->getSection() != "llvm.ptrauth")
+      return EntryBuilder->buildGlobalValue(Reg, GV);
+
+    auto PAI = GlobalPtrAuthInfo::analyze(GV);
+    Register Addr = getOrCreateVReg(*PAI->getPointer());
+    Register AddrDisc = getOrCreateVReg(*PAI->getAddrDiscriminator());
+    EntryBuilder->buildInstr(TargetOpcode::G_PTRAUTH_GLOBAL_VALUE)
+        .addDef(Reg)
+        .addUse(Addr)
+        .addImm(PAI->getKey()->getZExtValue())
+        .addUse(AddrDisc)
+        .addImm(PAI->getDiscriminator()->getZExtValue());
+  } else if (auto CAZ = dyn_cast<ConstantAggregateZero>(&C)) {
     if (!isa<FixedVectorType>(CAZ->getType()))
       return false;
     // Return the scalar if it is a <1 x Ty> vector.

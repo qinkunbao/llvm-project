@@ -129,6 +129,12 @@ EnableCombineMGatherIntrinsics("aarch64-enable-mgather-combine", cl::Hidden,
                                          "gather intrinsics"),
                                 cl::init(true));
 
+namespace llvm {
+cl::opt<bool> AArch64PtrAuthGlobalDynamicMat(
+  "aarch64-ptrauth-global-dynamic-mat", cl::Hidden, cl::init(true),
+  cl::desc("Always materialize llvm.ptrauth global references dynamically"));
+}
+
 /// Value type used for condition codes.
 static const MVT MVT_CC = MVT::i32;
 
@@ -447,6 +453,8 @@ AArch64TargetLowering::AArch64TargetLowering(const TargetMachine &TM,
   setOperationAction(ISD::SELECT_CC, MVT::f64, Custom);
   setOperationAction(ISD::BR_JT, MVT::Other, Custom);
   setOperationAction(ISD::JumpTable, MVT::i64, Custom);
+
+  setOperationAction(ISD::PtrAuthGlobalAddress, MVT::i64, Custom);
 
   setOperationAction(ISD::SHL_PARTS, MVT::i64, Custom);
   setOperationAction(ISD::SRA_PARTS, MVT::i64, Custom);
@@ -5583,6 +5591,8 @@ SDValue AArch64TargetLowering::LowerOperation(SDValue Op,
     return LowerGlobalAddress(Op, DAG);
   case ISD::GlobalTLSAddress:
     return LowerGlobalTLSAddress(Op, DAG);
+  case ISD::PtrAuthGlobalAddress:
+    return LowerPtrAuthGlobalAddress(Op, DAG);
   case ISD::SETCC:
   case ISD::STRICT_FSETCC:
   case ISD::STRICT_FSETCCS:
@@ -7962,6 +7972,181 @@ SDValue AArch64TargetLowering::LowerGlobalTLSAddress(SDValue Op,
     return LowerWindowsGlobalTLSAddress(Op, DAG);
 
   llvm_unreachable("Unexpected platform trying to use TLS");
+}
+
+//===----------------------------------------------------------------------===//
+//                      PtrAuthGlobalAddress lowering
+//
+// On MachO, we have 3 lowering alternatives to choose from:
+// - MOVaddrPAC: similar to MOVaddr, with added PAC.
+//   If the GV doesn't need a GOT load (~i.e., is locally defined)
+//   materialize the pointer using adrp+add+pac.
+//   This is the preferred lowering.
+//
+// - LOADgotPAC: similar to LOADgot, with added PAC.
+//   If the GV needs a GOT load, materialize the pointer using the usual
+//   GOT adrp+ldr, +pac.
+//
+// - LOADauthptrgot: similar to LOADgot.
+//   Load a signed pointer from a GOT-like section, __DATA,__auth_ptr.
+//   This usually lowers to GOT adrp+ldr, but also emits an entry into
+//   __DATA,__auth_ptr, with an @AUTH relocation.
+//   This is done in LowerPtrAuthGlobalAddressViaGOT.
+//
+// All 3 are pseudos that are expand late to longer sequences: this lets us
+// provide integrity guarantees on the to-be-signed intermediate values.
+//
+// LOADauthptrgot is undesirable because it requires a large section filled
+// with often similarly-signed pointers, making it a good harvesting target.
+// LOADauthptrgot is also problematic because it implies emitting a
+// relocation (which are constrained) that may end up in the shared cache
+// (which is even further constrained).
+// In particular, when the signing scheme is incompatible with being used in
+// a shared cache relocation, we emit a simpler alternative, and resign the
+// loaded weakly-signed pointer.  Since the intermediate value is signed,
+// we emit a plain resign intrinsic, and we don't need another pseudo to
+// encapsulate adrp+ldr+autpac.
+//
+SDValue AArch64TargetLowering::LowerPtrAuthGlobalAddressViaGOT(
+    SDValue TGA, SDLoc DL, EVT VT, AArch64PACKey::ID KeyC,
+    SDValue Discriminator, SDValue AddrDiscriminator, SelectionDAG &DAG) const {
+
+  auto *TGN = cast<GlobalAddressSDNode>(TGA.getNode());
+  const GlobalValue *GV = TGN->getGlobal();
+
+  // extern_weak and offsets don't mix well: ptrauth aside, you'd get the
+  // offset alone as a pointer if the symbol wasn't available, which probably
+  // breaking null checks in users.
+  // ptrauth complicates things further: error out.
+  if (TGN->getOffset() && GV->hasExternalWeakLinkage())
+    report_fatal_error("Unsupported offset in weak ptrauth global reference");
+
+  // With an address discriminator, the relocated pointer would be signed with
+  // the address of the __auth_ptr entry: resign it with the final address.
+  bool HasAddrDiversity = !isNullConstant(AddrDiscriminator);
+
+  // When using process-specific keys, we sign the __auth_ptr entry with the
+  // equivalent process-independent key, and resign it after loading it.  This
+  // allows __auth_ptr to be shared across processes.
+  AArch64PACKey::ID GOTKeyC;
+  switch (KeyC) {
+  case AArch64PACKey::IA: GOTKeyC = KeyC; break;
+  case AArch64PACKey::IB: GOTKeyC = AArch64PACKey::IA; break;
+  case AArch64PACKey::DA: GOTKeyC = KeyC; break;
+  case AArch64PACKey::DB: GOTKeyC = AArch64PACKey::DA; break;
+  }
+  bool IsKeyProcessSpecific = KeyC != GOTKeyC;
+
+  // In either case, we might need to emit a resign later.
+  // But for the __auth_ptr entry, use the simpler signing scheme.
+  SDValue GOTKey = DAG.getTargetConstant(GOTKeyC, DL, MVT::i32);
+  SDValue GOTLoad =
+    SDValue(DAG.getMachineNode(AArch64::LOADauthptrgot, DL, MVT::i64,
+                               {TGA, GOTKey, Discriminator}),
+            0);
+
+  if (!HasAddrDiversity && !IsKeyProcessSpecific)
+    return GOTLoad;
+
+  // extern_weak and resign don't mix well: resign isn't null-aware, and
+  // would fail to auth if passed a null pointer, we'd need extra control
+  // flow to support the combination.
+  // Note that this is more legitimate than weak+offset.
+  if (GV->hasExternalWeakLinkage())
+    report_fatal_error("Unsupported weak addr-div/B-key ptrauth global");
+
+  SDValue FinalKey = DAG.getTargetConstant(KeyC, DL, MVT::i32);
+  SDValue FinalDisc = Discriminator;
+  if (HasAddrDiversity) {
+    FinalDisc =
+        DAG.getNode(ISD::INTRINSIC_WO_CHAIN, DL, VT,
+                    {DAG.getConstant(Intrinsic::ptrauth_blend, DL, MVT::i32),
+                     AddrDiscriminator, Discriminator});
+  }
+
+  return DAG.getNode(
+      ISD::INTRINSIC_WO_CHAIN, DL, VT,
+      {DAG.getConstant(Intrinsic::ptrauth_resign, DL, MVT::i32), GOTLoad,
+       GOTKey, Discriminator, FinalKey, FinalDisc});
+}
+
+SDValue
+AArch64TargetLowering::LowerPtrAuthGlobalAddress(SDValue Op,
+                                                 SelectionDAG &DAG) const {
+  SDValue Ptr = Op.getOperand(0);
+  uint64_t KeyC = Op.getConstantOperandVal(1);
+  SDValue AddrDiscriminator = Op.getOperand(2);
+  uint64_t DiscriminatorC = Op.getConstantOperandVal(3);
+  EVT VT = Op.getValueType();
+  SDLoc DL(Op);
+
+  // Both key allocation and the wrapper usage support are target-specific.
+  if (!Subtarget->isTargetMachO())
+    llvm_unreachable("Unimplemented ptrauth global lowering");
+
+  uint64_t PtrOffsetC = 0;
+  if (Ptr.getOpcode() == ISD::ADD) {
+    PtrOffsetC = Ptr.getConstantOperandVal(1);
+    Ptr = Ptr.getOperand(0);
+  }
+  GlobalAddressSDNode *PtrN = cast<GlobalAddressSDNode>(Ptr.getNode());
+  const GlobalValue *PtrGV = PtrN->getGlobal();
+
+  // Classify the reference to determine whether it needs a GOT load.
+  const unsigned OpFlags =
+    Subtarget->ClassifyGlobalReference(PtrGV, getTargetMachine());
+  const bool NeedsGOTLoad = ((OpFlags & AArch64II::MO_GOT) != 0);
+  assert(((OpFlags & (~AArch64II::MO_GOT)) == 0) &&
+         "Unsupported non-GOT op flags on ptrauth global reference");
+
+  // Fold any offset into the GV; our pseudos expect it there.
+  PtrOffsetC += PtrN->getOffset();
+  SDValue TPtr = DAG.getTargetGlobalAddress(PtrGV, DL, VT, PtrOffsetC,
+                                            /*TargetFlags=*/0);
+  assert(PtrN->getTargetFlags() == 0 && "Unsupported tflags on ptrauth global");
+
+  // None of our lowerings support an offset larger than 32-bit.
+  if (!isUInt<32>(PtrOffsetC))
+    report_fatal_error("Unsupported >32-bit-wide offset in ptrauth global");
+
+  // The shared cache severely constrains the offset, to 5 bits, which prevents
+  // us from using LOADauthptrgot, our only option for extern_weak.
+  if (!isUInt<5>(PtrOffsetC) && PtrGV->hasExternalWeakLinkage())
+    report_fatal_error("Offset in weak ptrauth global reference is too large");
+
+  // Blend only works if the integer discriminator is 16-bit wide.
+  if (!isUInt<16>(DiscriminatorC))
+    report_fatal_error(
+        "Unsupported >16-bit-wide constant discriminator in ptrauth global");
+
+  SDValue Key = DAG.getTargetConstant(KeyC, DL, MVT::i32);
+  SDValue Discriminator = DAG.getTargetConstant(DiscriminatorC, DL, MVT::i64);
+  SDValue TAddrDiscriminator = !isNullConstant(AddrDiscriminator)
+                                   ? AddrDiscriminator
+                                   : DAG.getRegister(AArch64::XZR, MVT::i64);
+
+  // No GOT load needed -> MOVaddrPAC
+  if (!NeedsGOTLoad) {
+    assert(!PtrGV->hasExternalWeakLinkage() && "extern_weak should use GOT");
+    return SDValue(
+        DAG.getMachineNode(AArch64::MOVaddrPAC, DL, MVT::i64,
+                           {TPtr, Key, TAddrDiscriminator, Discriminator}),
+        0);
+  }
+
+  // GOT load, "dynamic" materialization allowed -> LOADgotPAC
+  // Note that we disallow extern_weak refs to avoid null checks later.
+  // We also require this for offsets >=32, because of shared cache constraints.
+  if ((AArch64PtrAuthGlobalDynamicMat && !PtrGV->hasExternalWeakLinkage()) ||
+      !isUInt<5>(PtrOffsetC))
+    return SDValue(
+        DAG.getMachineNode(AArch64::LOADgotPAC, DL, MVT::i64,
+                           {TPtr, Key, TAddrDiscriminator, Discriminator}),
+        0);
+
+  // GOT load, dynamic materialization disallowed -> LOADauthptrgot
+  return LowerPtrAuthGlobalAddressViaGOT(TPtr, DL, VT, (AArch64PACKey::ID)KeyC,
+                                         Discriminator, AddrDiscriminator, DAG);
 }
 
 // Looks through \param Val to determine the bit that can be used to
