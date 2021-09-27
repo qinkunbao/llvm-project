@@ -294,7 +294,15 @@ struct __type_info_implementations {
      __impl;
 };
 
-class _LIBCPP_EXCEPTION_ABI type_info
+#if defined(__arm64__) && __has_cpp_attribute(clang::ptrauth_vtable_pointer)
+#define _LIBCPP_TYPE_INFO_VTABLE_POINTER_AUTH \
+   [[clang::ptrauth_vtable_pointer(process_independent, no_address_discrimination, no_extra_discrimination)]]
+#else
+#define _LIBCPP_TYPE_INFO_VTABLE_POINTER_AUTH
+#endif
+
+
+class _LIBCPP_EXCEPTION_ABI _LIBCPP_TYPE_INFO_VTABLE_POINTER_AUTH type_info
 {
   type_info& operator=(const type_info&);
   type_info(const type_info&);
