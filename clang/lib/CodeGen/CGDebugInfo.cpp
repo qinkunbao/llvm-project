@@ -951,8 +951,21 @@ llvm::DIType *CGDebugInfo::CreateQualifiedType(QualType Ty,
   // additional ones.
   llvm::dwarf::Tag Tag = getNextQualifier(Qc);
   if (!Tag) {
-    assert(Qc.empty() && "Unknown type qualifier for debug info");
-    return getOrCreateType(QualType(T, 0), Unit);
+    if (Qc.getPointerAuth().isPresent()) {
+      unsigned Key = Qc.getPointerAuth().getKey();
+      bool IsDiscr = Qc.getPointerAuth().isAddressDiscriminated();
+      unsigned ExtraDiscr = Qc.getPointerAuth().getExtraDiscriminator();
+      bool authenticatesNullValues =
+          Qc.getPointerAuth().authenticatesNullValues();
+      Qc.removePtrAuth();
+      assert(Qc.empty() && "Unknown type qualifier for debug info");
+      auto *FromTy = getOrCreateType(QualType(T, 0), Unit);
+      return DBuilder.createPtrAuthQualifiedType(
+          FromTy, Key, IsDiscr, ExtraDiscr, authenticatesNullValues);
+    } else {
+      assert(Qc.empty() && "Unknown type qualifier for debug info");
+      return getOrCreateType(QualType(T, 0), Unit);
+    }
   }
 
   auto *FromTy = getOrCreateType(Qc.apply(CGM.getContext(), T), Unit);

@@ -684,6 +684,8 @@ public:
 #define TRANSFORM_TYPE_TRAIT_DEF(_, Trait) case tok::kw___##Trait:
 #include "clang/Basic/TransformTypeTraits.def"
     case tok::kw_requires:
+    case tok::kw___ptrauth:
+    case tok::kw___ptrauth_restricted_intptr:
       return true;
     default:
       return false;

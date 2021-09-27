@@ -2855,6 +2855,17 @@ public:
 
   bool checkConstantPointerAuthKey(Expr *keyExpr, unsigned &key);
 
+  enum PointerAuthDiscArgKind {
+    // Address discrimination argument of __ptrauth.
+    PADAK_AddrDiscPtrAuth,
+
+    // Extra discriminator argument of __ptrauth.
+    PADAK_ExtraDiscPtrAuth,
+  };
+
+  bool checkPointerAuthDiscriminatorArg(Expr *arg, PointerAuthDiscArgKind kind,
+                                        unsigned &intVal);
+
   static bool adjustContextForLocalExternDecl(DeclContext *&DC);
   void DiagnoseFunctionSpecifiers(const DeclSpec &DS);
   NamedDecl *getShadowedDeclaration(const TypedefNameDecl *D,

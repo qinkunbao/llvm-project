@@ -182,6 +182,10 @@ Decl *Sema::ActOnProperty(Scope *S, SourceLocation AtLoc,
                            0);
   TypeSourceInfo *TSI = GetTypeForDeclarator(FD.D, S);
   QualType T = TSI->getType();
+  if (T.getPointerAuth().isPresent()) {
+    Diag(AtLoc, diag::err_ptrauth_qualifier_invalid)
+        << T << (int)!T->isSignablePointerType() << 2;
+  }
   if (!getOwnershipRule(Attributes)) {
     Attributes |= deducePropertyOwnershipFromType(*this, T);
   }

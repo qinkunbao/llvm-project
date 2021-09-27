@@ -1940,6 +1940,54 @@ bool Sema::checkConstantPointerAuthKey(Expr *Arg, unsigned &Result) {
   return false;
 }
 
+bool Sema::checkPointerAuthDiscriminatorArg(Expr *arg,
+                                            PointerAuthDiscArgKind kind,
+                                            unsigned &intVal) {
+  if (!arg) {
+    intVal = 0;
+    return true;
+  }
+
+  Optional<llvm::APSInt> result = arg->getIntegerConstantExpr(Context);
+  if (!result) {
+    Diag(arg->getExprLoc(), diag::err_ptrauth_arg_not_ice);
+    return false;
+  }
+
+  unsigned max;
+  bool isAddrDiscArg = false;
+
+  switch (kind) {
+  case PADAK_AddrDiscPtrAuth:
+    max = 1;
+    isAddrDiscArg = true;
+    break;
+  case PADAK_ExtraDiscPtrAuth:
+    max = PointerAuthQualifier::MaxDiscriminator;
+    break;
+  };
+
+  if (*result < 0 || *result > max) {
+    llvm::SmallString<32> value;
+    {
+      llvm::raw_svector_ostream str(value);
+      str << *result;
+    }
+
+    if (isAddrDiscArg)
+      Diag(arg->getExprLoc(), diag::err_ptrauth_address_discrimination_invalid)
+          << value;
+    else
+      Diag(arg->getExprLoc(), diag::err_ptrauth_extra_discriminator_invalid)
+          << value << max;
+
+    return false;
+  };
+
+  intVal = result->getZExtValue();
+  return true;
+}
+
 static std::pair<const ValueDecl *, CharUnits>
 findConstantBaseAndOffset(Sema &S, Expr *E) {
   // Must evaluate as a pointer.
@@ -6542,6 +6590,14 @@ ExprResult Sema::BuildAtomicExpr(SourceRange CallRange, SourceRange ExprRange,
     }
   }
 
+  auto pointerAuth = AtomTy.getPointerAuth();
+  if (pointerAuth && pointerAuth.isAddressDiscriminated()) {
+    Diag(ExprRange.getBegin(),
+         diag::err_atomic_op_needs_non_address_discriminated_pointer)
+    << 0 << Ptr->getType() << Ptr->getSourceRange();
+    return ExprError();
+  }
+
   // For an arithmetic operation, the implied arithmetic must be well-formed.
   if (Form == Arithmetic) {
     // GCC does not enforce these rules for GNU atomics, but we do to help catch
@@ -6894,6 +6950,13 @@ Sema::SemaBuiltinAtomicOverloaded(ExprResult TheCallResult) {
       !ValType->isBlockPointerType()) {
     Diag(DRE->getBeginLoc(), diag::err_atomic_builtin_must_be_pointer_intptr)
         << FirstArg->getType() << FirstArg->getSourceRange();
+    return ExprError();
+  }
+  auto pointerAuth = ValType.getPointerAuth();
+  if (pointerAuth && pointerAuth.isAddressDiscriminated()) {
+    Diag(FirstArg->getBeginLoc(),
+             diag::err_atomic_op_needs_non_address_discriminated_pointer)
+        << 1 << ValType << FirstArg->getSourceRange();
     return ExprError();
   }
 
@@ -11580,6 +11643,9 @@ struct SearchNonTrivialToCopyField
     S.DiagRuntimeBehavior(SL, E, S.PDiag(diag::note_nontrivial_field) << 0);
   }
   void visitARCWeak(QualType FT, SourceLocation SL) {
+    S.DiagRuntimeBehavior(SL, E, S.PDiag(diag::note_nontrivial_field) << 0);
+  }
+  void visitPtrAuth(QualType FT, SourceLocation SL) {
     S.DiagRuntimeBehavior(SL, E, S.PDiag(diag::note_nontrivial_field) << 0);
   }
   void visitStruct(QualType FT, SourceLocation SL) {

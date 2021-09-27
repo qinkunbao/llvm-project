@@ -300,6 +300,51 @@ typedef __UINTPTR_TYPE__ ptrauth_generic_signature_t;
 #define ptrauth_sign_generic_data(__value, __data) \
   __builtin_ptrauth_sign_generic_data(__value, __data)
 
+/* Define some standard __ptrauth qualifiers used in the ABI. */
+#define __ptrauth_function_pointer(__typekey) \
+  __ptrauth(ptrauth_key_function_pointer,0,__typekey)
+#define __ptrauth_return_address              \
+  __ptrauth(ptrauth_key_return_address,1,0)
+#define __ptrauth_block_invocation_pointer    \
+  __ptrauth(ptrauth_key_function_pointer,1,0)
+#define __ptrauth_block_copy_helper           \
+  __ptrauth(ptrauth_key_function_pointer,1,0)
+#define __ptrauth_block_destroy_helper        \
+  __ptrauth(ptrauth_key_function_pointer,1,0)
+#define __ptrauth_block_byref_copy_helper     \
+  __ptrauth(ptrauth_key_function_pointer,1,0)
+#define __ptrauth_block_byref_destroy_helper  \
+  __ptrauth(ptrauth_key_function_pointer,1,0)
+#if __has_feature(ptrauth_signed_block_descriptors)
+#define __ptrauth_block_descriptor_pointer \
+  __ptrauth(ptrauth_key_block_descriptor_pointer,1,0xC0BB)
+#else
+#define __ptrauth_block_descriptor_pointer
+#endif
+#define __ptrauth_objc_method_list_imp        \
+  __ptrauth(ptrauth_key_function_pointer,1,0)
+#if __has_feature(ptrauth_objc_method_list_pointer)
+#define __ptrauth_objc_method_list_pointer \
+  __ptrauth(ptrauth_key_method_list_pointer,1,0xC310)
+#else
+#define __ptrauth_objc_method_list_pointer
+#endif
+#define __ptrauth_swift_heap_object_destructor \
+  __ptrauth(ptrauth_key_function_pointer,1,0xbbbf)
+
+/* Some situations in the C++ and Swift ABIs use declaration-specific
+   or type-specific extra discriminators. */
+#define __ptrauth_cxx_virtual_function_pointer(__declkey) \
+  __ptrauth(ptrauth_key_function_pointer,1,__declkey)
+#define __ptrauth_swift_function_pointer(__typekey) \
+  __ptrauth(ptrauth_key_function_pointer,0,__typekey)
+#define __ptrauth_swift_class_method_pointer(__declkey) \
+  __ptrauth(ptrauth_key_function_pointer,1,__declkey)
+#define __ptrauth_swift_protocol_witness_function_pointer(__declkey) \
+  __ptrauth(ptrauth_key_function_pointer,1,__declkey)
+#define __ptrauth_swift_value_witness_function_pointer(__key) \
+  __ptrauth(ptrauth_key_function_pointer,1,__key)
+
 #else
 
 #define ptrauth_strip(__value, __key) ({(void)__key; __value;})
@@ -314,6 +359,23 @@ typedef __UINTPTR_TYPE__ ptrauth_generic_signature_t;
 #define ptrauth_type_discriminator(__type) ((ptrauth_extra_data_t)0)
 #define ptrauth_function_pointer_type_discriminator(__type) ((ptrauth_extra_data_t)0)
 #define ptrauth_sign_generic_data(__value, __data) ({(void)__value;(void)__data;((ptrauth_generic_signature_t)0);})
+
+#define __ptrauth_function_pointer(__typekey)
+#define __ptrauth_return_address
+#define __ptrauth_block_invocation_pointer
+#define __ptrauth_block_copy_helper
+#define __ptrauth_block_destroy_helper
+#define __ptrauth_block_byref_copy_helper
+#define __ptrauth_block_byref_destroy_helper
+#define __ptrauth_block_descriptor_pointer
+#define __ptrauth_objc_method_list_imp
+#define __ptrauth_objc_method_list_pointer
+#define __ptrauth_swift_heap_object_destructor
+#define __ptrauth_cxx_virtual_function_pointer(__declkey)
+#define __ptrauth_swift_function_pointer(__typekey)
+#define __ptrauth_swift_class_method_pointer(__declkey)
+#define __ptrauth_swift_protocol_witness_function_pointer(__declkey)
+#define __ptrauth_swift_value_witness_function_pointer(__key)
 
 #endif /* __has_feature(ptrauth_intrinsics) */
 

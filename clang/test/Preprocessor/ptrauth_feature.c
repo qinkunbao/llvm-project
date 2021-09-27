@@ -1,8 +1,8 @@
-// RUN: %clang_cc1 %s -E -triple=arm64-- | FileCheck %s --check-prefixes=NOCALLS,NOINTRIN,NORETS
-// RUN: %clang_cc1 %s -E -triple=arm64-- -fptrauth-calls | FileCheck %s --check-prefixes=CALLS,NOINTRIN,NORETS,NOFUNC
-// RUN: %clang_cc1 %s -E -triple=arm64-- -fptrauth-returns | FileCheck %s --check-prefixes=NOCALLS,NOINTRIN,RETS,NOFUNC
-// RUN: %clang_cc1 %s -E -triple=arm64-- -fptrauth-intrinsics | FileCheck %s --check-prefixes=NOCALLS,INTRIN,NORETS,NOFUNC
-// RUN: %clang_cc1 %s -E -triple=arm64e-apple-ios6.0 -fptrauth-intrinsics -fptrauth-function-pointer-type-discrimination | FileCheck %s --check-prefixes=NOCALLS,INTRIN,NORETS,FUNC
+// RUN: %clang_cc1 %s -E -triple=arm64-- | FileCheck %s --check-prefixes=NOCALLS,NOINTRIN,NORETS,NOQUAL
+// RUN: %clang_cc1 %s -E -triple=arm64-- -fptrauth-calls | FileCheck %s --check-prefixes=CALLS,NOINTRIN,NORETS,NOQUAL,NOFUNC
+// RUN: %clang_cc1 %s -E -triple=arm64-- -fptrauth-returns | FileCheck %s --check-prefixes=NOCALLS,NOINTRIN,RETS,NOQUAL,NOFUNC
+// RUN: %clang_cc1 %s -E -triple=arm64-- -fptrauth-intrinsics | FileCheck %s --check-prefixes=NOCALLS,INTRIN,NORETS,QUAL,NOFUNC
+// RUN: %clang_cc1 %s -E -triple=arm64e-apple-ios6.0 -fptrauth-intrinsics -fptrauth-function-pointer-type-discrimination | FileCheck %s --check-prefixes=NOCALLS,INTRIN,NORETS,QUAL,FUNC
 
 #if __has_feature(ptrauth_calls)
 // CALLS: has_ptrauth_calls
@@ -26,6 +26,14 @@ void has_ptrauth_returns() {}
 #else
 // NORETS: no_ptrauth_returns
 void no_ptrauth_returns() {}
+#endif
+
+#if __has_feature(ptrauth_qualifier)
+// QUAL: has_ptrauth_qualifier
+void has_ptrauth_qualifier() {}
+#else
+// NOQUAL: no_ptrauth_qualifier
+void no_ptrauth_qualifier() {}
 #endif
 
 #include <ptrauth.h>
