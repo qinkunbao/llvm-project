@@ -6,6 +6,7 @@
 // NONE-NOT: "-fptrauth-calls"
 // NONE-NOT: "-fptrauth-returns"
 // NONE-NOT: "-fptrauth-auth-traps"
+// NONE-NOT: "-fptrauth-soft"
 
 // RUN: %clang -target arm64-apple-ios -fptrauth-calls -c %s -### 2>&1 | FileCheck %s --check-prefix CALL
 // CALL: "-cc1"{{.*}} {{.*}} "-fptrauth-calls"
@@ -18,6 +19,9 @@
 
 // RUN: %clang -target arm64-apple-ios -fptrauth-auth-traps -c %s -### 2>&1 | FileCheck %s --check-prefix TRAPS
 // TRAPS: "-cc1"{{.*}} {{.*}} "-fptrauth-auth-traps"
+
+// RUN: %clang -target arm64-apple-ios -fptrauth-soft -c %s -### 2>&1 | FileCheck %s --check-prefix SOFT
+// SOFT: "-cc1"{{.*}} {{.*}} "-fptrauth-soft"
 
 
 // Check the arm64e defaults.

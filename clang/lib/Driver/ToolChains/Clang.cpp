@@ -6852,6 +6852,10 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
                    false))
     CmdArgs.push_back("-fptrauth-vtable-pointer-type-discrimination");
 
+  if (Args.hasFlag(options::OPT_fptrauth_soft,
+                   options::OPT_fno_ptrauth_soft, false))
+    CmdArgs.push_back("-fptrauth-soft");
+
   if (Args.hasFlag(options::OPT_fptrauth_block_descriptor_pointers,
                    options::OPT_fno_ptrauth_block_descriptor_pointers, false))
     CmdArgs.push_back("-fptrauth-block-descriptor-pointers");

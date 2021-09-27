@@ -38,7 +38,22 @@ class PointerAuthSchema {
 public:
   enum class Kind : unsigned {
     None,
+    Soft,
     ARM8_3,
+  };
+
+  /// Software pointer-signing "keys". If you add a new key, make sure this->Key
+  /// has a large enough bit-width.
+  enum class SoftKey : unsigned {
+    FunctionPointers = 0,
+    BlockInvocationFunctionPointers = 1,
+    BlockHelperFunctionPointers = 2,
+    ObjCMethodListFunctionPointers = 3,
+    CXXVTablePointers = 4,
+    CXXVirtualFunctionPointers = 5,
+    CXXMemberFunctionPointers = 6,
+    ObjCMethodListPointer = 7,
+    BlockDescriptorPointers = 8,
   };
 
   /// Hardware pointer-signing keys in ARM8.3.
@@ -78,6 +93,22 @@ private:
 public:
   PointerAuthSchema() : TheKind(Kind::None) {}
 
+  PointerAuthSchema(SoftKey key, bool isAddressDiscriminated,
+                    PointerAuthenticationMode authenticationMode,
+                    Discrimination otherDiscrimination,
+                    Optional<uint16_t> constantDiscriminator = None,
+                    bool authenticatesNullValues = false)
+      : TheKind(Kind::Soft), IsAddressDiscriminated(isAddressDiscriminated),
+        AuthenticatesNullValues(authenticatesNullValues),
+        SelectedAuthenticationMode(authenticationMode),
+        DiscriminationKind(otherDiscrimination), Key(unsigned(key)) {
+    assert((getOtherDiscrimination() != Discrimination::Constant ||
+            constantDiscriminator) &&
+           "constant discrimination requires a constant!");
+    if (constantDiscriminator)
+      ConstantDiscriminator = *constantDiscriminator;
+  }
+
   PointerAuthSchema(ARM8_3Key key, bool isAddressDiscriminated,
                     PointerAuthenticationMode authenticationMode,
                     Discrimination otherDiscrimination,
@@ -93,6 +124,15 @@ public:
     if (constantDiscriminator)
       ConstantDiscriminator = *constantDiscriminator;
   }
+
+  PointerAuthSchema(SoftKey key, bool isAddressDiscriminated,
+                    Discrimination otherDiscrimination,
+                    Optional<uint16_t> constantDiscriminator = None,
+                    bool authenticatesNullValues = false)
+      : PointerAuthSchema(key, isAddressDiscriminated,
+                          PointerAuthenticationMode::SignAndAuth,
+                          otherDiscrimination, constantDiscriminator,
+                          authenticatesNullValues) {}
 
   PointerAuthSchema(ARM8_3Key key, bool isAddressDiscriminated,
                     Discrimination otherDiscrimination,
@@ -137,6 +177,8 @@ public:
     switch (getKind()) {
     case Kind::None:
       llvm_unreachable("calling getKey() on disabled schema");
+    case Kind::Soft:
+      return unsigned(getSoftKey());
     case Kind::ARM8_3:
       return unsigned(getARM8_3Key());
     }
@@ -145,6 +187,11 @@ public:
 
   PointerAuthenticationMode getAuthenticationMode() const {
     return SelectedAuthenticationMode;
+  }
+
+  SoftKey getSoftKey() const {
+    assert(getKind() == Kind::Soft);
+    return SoftKey(Key);
   }
 
   ARM8_3Key getARM8_3Key() const {

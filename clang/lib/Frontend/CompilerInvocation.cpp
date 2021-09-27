@@ -1321,6 +1321,51 @@ static void setPGOUseInstrumentor(CodeGenOptions &Opts,
 bool CompilerInvocation::setDefaultPointerAuthOptions(
     PointerAuthOptions &Opts, const LangOptions &LangOpts,
     const llvm::Triple &Triple) {
+  if (LangOpts.SoftPointerAuth) {
+    if (LangOpts.PointerAuthCalls) {
+      using Key = PointerAuthSchema::SoftKey;
+      using Discrimination = PointerAuthSchema::Discrimination;
+      Opts.FunctionPointers =
+          PointerAuthSchema(Key::FunctionPointers, false,
+                            LangOpts.FunctionPointerTypeDiscrimination
+                                ? Discrimination::Type
+                                : Discrimination::None);
+      Opts.BlockInvocationFunctionPointers = PointerAuthSchema(
+          Key::BlockInvocationFunctionPointers, true, Discrimination::None);
+      Opts.BlockHelperFunctionPointers = PointerAuthSchema(
+          Key::BlockHelperFunctionPointers, true, Discrimination::None);
+      Opts.BlockByrefHelperFunctionPointers = PointerAuthSchema(
+          Key::BlockHelperFunctionPointers, true, Discrimination::None);
+      if (LangOpts.PointerAuthBlockDescriptorPointers) {
+        Opts.BlockDescriptorPointers = PointerAuthSchema(
+            Key::BlockDescriptorPointers, true, Discrimination::Constant,
+            BlockDescriptorConstantDiscriminator);
+      }
+      Opts.ObjCMethodListFunctionPointers = PointerAuthSchema(
+          Key::ObjCMethodListFunctionPointers, true, Discrimination::None);
+      Opts.ObjCMethodListPointer = PointerAuthSchema(
+          Key::ObjCMethodListPointer, true, Discrimination::Constant,
+          MethodListPointerConstantDiscriminator);
+      Opts.CXXVTablePointers = PointerAuthSchema(
+          Key::CXXVTablePointers,
+          LangOpts.PointerAuthVTPtrAddressDiscrimination,
+          LangOpts.PointerAuthVTPtrTypeDiscrimination ? Discrimination::Type
+                                                      : Discrimination::None);
+      Opts.CXXTypeInfoVTablePointer = PointerAuthSchema(
+          Key::CXXVTablePointers, false, Discrimination::None);
+      Opts.CXXVTTVTablePointers = PointerAuthSchema(
+          Key::CXXVTablePointers, false, Discrimination::None);
+      Opts.CXXVirtualFunctionPointers =
+          Opts.CXXVirtualVariadicFunctionPointers = PointerAuthSchema(
+              Key::CXXVirtualFunctionPointers, true, Discrimination::Decl);
+      Opts.CXXMemberFunctionPointers = PointerAuthSchema(
+          Key::CXXMemberFunctionPointers, false, Discrimination::Type);
+    }
+    Opts.ReturnAddresses = LangOpts.PointerAuthReturns;
+    Opts.AuthTraps = LangOpts.PointerAuthAuthTraps;
+    return true;
+  }
+
   if (Triple.getArch() == llvm::Triple::aarch64) {
     if (LangOpts.PointerAuthCalls) {
       using Key = PointerAuthSchema::ARM8_3Key;
@@ -3296,6 +3341,8 @@ static void GeneratePointerAuthArgs(LangOptions &Opts,
     GenerateArg(Args, OPT_fptrauth_vtable_pointer_type_discrimination, SA);
   if (Opts.FunctionPointerTypeDiscrimination)
     GenerateArg(Args, OPT_fptrauth_function_pointer_type_discrimination, SA);
+  if (Opts.SoftPointerAuth)
+    GenerateArg(Args, OPT_fptrauth_soft, SA);
   if (Opts.PointerAuthBlockDescriptorPointers)
     GenerateArg(Args, OPT_fptrauth_block_descriptor_pointers, SA);
 
@@ -3317,6 +3364,7 @@ static void ParsePointerAuthArgs(LangOptions &Opts, ArgList &Args,
       Args.hasArg(OPT_fptrauth_vtable_pointer_address_discrimination);
   Opts.PointerAuthVTPtrTypeDiscrimination =
       Args.hasArg(OPT_fptrauth_vtable_pointer_type_discrimination);
+  Opts.SoftPointerAuth = Args.hasArg(OPT_fptrauth_soft);
   Opts.PointerAuthBlockDescriptorPointers =
       Args.hasArg(OPT_fptrauth_block_descriptor_pointers);
 
