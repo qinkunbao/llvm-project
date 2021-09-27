@@ -426,6 +426,7 @@ private:
 
   /// Signed constant pointers.
   void *SignedFunctionPointersByDeclAndType = nullptr;
+  void *SignedThunkPointers = nullptr;
   void *ConstantSignedPointersByConstant = nullptr;
 
   /// Map used to get unique annotation strings.
@@ -948,6 +949,13 @@ public:
   llvm::Constant *getFunctionPointer(llvm::Constant *pointer,
                                      QualType functionType,
                                      GlobalDecl GD = GlobalDecl());
+
+  llvm::Constant *getMemberFunctionPointer(const FunctionDecl *FD,
+                                           llvm::Type *Ty = nullptr);
+
+  llvm::Constant *getMemberFunctionPointer(llvm::Constant *pointer,
+                                           QualType functionType,
+                                           const FunctionDecl *FD = nullptr);
 
   CGPointerAuthInfo getFunctionPointerAuthInfo(QualType functionType);
 
