@@ -142,13 +142,21 @@ bool CallLowering::lowerCall(MachineIRBuilder &MIRBuilder, const CallBase &CB,
     ++i;
   }
 
-  // Try looking through a bitcast from one function type to another.
-  // Commonly happens with calls to objc_msgSend().
-  const Value *CalleeV = CB.getCalledOperand()->stripPointerCasts();
-  if (const Function *F = dyn_cast<Function>(CalleeV))
-    Info.Callee = MachineOperand::CreateGA(F, 0);
-  else
-    Info.Callee = MachineOperand::CreateReg(GetCalleeReg(), false);
+  if (CB.countOperandBundlesOfType(LLVMContext::OB_ptrauth) && !PAI) {
+    // This is a direct call where the IRTranslator has determined the callee is
+    // compatible with the requested key & discriminator.
+    auto GPAI = GlobalPtrAuthInfo::analyze(CB.getCalledOperand());
+    Constant *Callee = GPAI->getPointer()->stripPointerCasts();
+    Info.Callee = MachineOperand::CreateGA(cast<GlobalValue>(Callee), 0);
+  } else {
+    // Try looking through a bitcast from one function type to another.
+    // Commonly happens with calls to objc_msgSend().
+    const Value *CalleeV = CB.getCalledOperand()->stripPointerCasts();
+    if (const Function *F = dyn_cast<Function>(CalleeV))
+      Info.Callee = MachineOperand::CreateGA(F, 0);
+    else
+      Info.Callee = MachineOperand::CreateReg(GetCalleeReg(), false);
+  }
 
   Register ReturnHintAlignReg;
   Align ReturnHintAlign;

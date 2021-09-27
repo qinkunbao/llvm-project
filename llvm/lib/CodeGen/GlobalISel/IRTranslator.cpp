@@ -2437,9 +2437,12 @@ bool IRTranslator::translateCallBase(const CallBase &CB,
     Value *Key = PAB->Inputs[0];
     Value *Discriminator = PAB->Inputs[1];
 
-    Register DiscReg = getOrCreateVReg(*Discriminator);
-    PAI = CallLowering::PointerAuthInfo{
-        DiscReg, cast<ConstantInt>(Key)->getZExtValue()};
+    auto CalleePAI = GlobalPtrAuthInfo::analyze(CB.getCalledOperand());
+    if (!CalleePAI || !CalleePAI->isCompatibleWith(Key, Discriminator, *DL)) {
+      Register DiscReg = getOrCreateVReg(*Discriminator);
+      PAI = CallLowering::PointerAuthInfo{
+          DiscReg, cast<ConstantInt>(Key)->getZExtValue()};
+    }
   }
 
   // We don't set HasCalls on MFI here yet because call lowering may decide to
