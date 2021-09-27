@@ -65,6 +65,9 @@ typedef enum {
      representations of values of block-pointer type) are not signed. */
   ptrauth_key_block_function = ptrauth_key_asia,
 
+  /* The key used to sign metadata pointers to Objective-C method-lists. */
+  ptrauth_key_method_list_pointer = ptrauth_key_asda,
+
   /* The key used to sign block descriptor pointers. */
   ptrauth_key_block_descriptor_pointer = ptrauth_key_asda,
 
