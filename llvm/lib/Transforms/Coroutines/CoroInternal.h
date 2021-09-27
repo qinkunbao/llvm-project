@@ -116,6 +116,7 @@ struct LLVM_LIBRARY_VISIBILITY Shape {
   };
 
   struct RetconLoweringStorage {
+    const Constant *ResumePtrAuthInfo;
     Function *ResumePrototype;
     Function *Alloc;
     Function *Dealloc;
@@ -173,10 +174,22 @@ struct LLVM_LIBRARY_VISIBILITY Shape {
     return ConstantInt::get(getIndexType(), Value);
   }
 
+  Optional<GlobalPtrAuthInfo> getResumePtrAuthInfo() const {
+    switch (ABI) {
+    case coro::ABI::Switch:
+    case coro::ABI::Async:
+      return None;
+    case coro::ABI::Retcon:
+    case coro::ABI::RetconOnce:
+      if (!RetconLowering.ResumePtrAuthInfo) return None;
+      return GlobalPtrAuthInfo::analyze(RetconLowering.ResumePtrAuthInfo);
+    }
+  }
+
   PointerType *getSwitchResumePointerType() const {
     assert(ABI == coro::ABI::Switch);
-  assert(FrameTy && "frame type not assigned");
-  return cast<PointerType>(FrameTy->getElementType(SwitchFieldIndex::Resume));
+    assert(FrameTy && "frame type not assigned");
+    return cast<PointerType>(FrameTy->getElementType(SwitchFieldIndex::Resume));
   }
 
   FunctionType *getResumeFunctionType() const {
