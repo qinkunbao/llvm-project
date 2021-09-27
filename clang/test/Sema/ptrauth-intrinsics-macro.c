@@ -13,6 +13,7 @@ extern int dv;
 void test(int *dp, int value) {
   dp = ptrauth_strip(dp, VALID_DATA_KEY);
   ptrauth_extra_data_t t0 = ptrauth_blend_discriminator(dp, value);
+  t0 = ptrauth_type_discriminator(int (*)(int));
   (void)t0;
   dp = ptrauth_sign_constant(&dv, VALID_DATA_KEY, 0);
   dp = ptrauth_sign_unauthenticated(dp, VALID_DATA_KEY, 0);
@@ -30,6 +31,8 @@ void test(int *dp, int value) {
 
 
 
+  int t1 = ptrauth_string_discriminator("string");
+  (void)t1;
   int t2 = ptrauth_sign_generic_data(dp, 0);
   (void)t2;
 }

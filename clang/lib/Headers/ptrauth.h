@@ -157,6 +157,35 @@ typedef __UINTPTR_TYPE__ ptrauth_generic_signature_t;
 #define ptrauth_auth_data(__value, __old_key, __old_data) \
   __builtin_ptrauth_auth(__value, __old_key, __old_data)
 
+/* Compute a constant discriminator from the given string.
+
+   The result can be used as the second argument to
+   ptrauth_blend_discriminator or the third argument to the
+   __ptrauth qualifier.  It has type size_t.
+
+   The argument must be a string literal.
+   A call to this function is an integer constant expression. */
+#define ptrauth_string_discriminator(__string) \
+  __builtin_ptrauth_string_discriminator(__string)
+
+/* Compute a constant discriminator from the given type.
+
+   The result can be used as the second argument to
+   ptrauth_blend_discriminator or the third argument to the
+   __ptrauth qualifier.  It has type size_t.
+
+   If the type is a C++ member function pointer type, the result is
+   the discriminator used to signed member function pointers of that
+   type.  If the type is a function, function pointer, or function
+   reference type, the result is the discriminator used to sign
+   functions of that type.  It is ill-formed to use this macro with any
+   other type.
+
+   A call to this function is an integer constant expression. */
+#define ptrauth_type_discriminator(__type) \
+  __builtin_ptrauth_type_discriminator(__type)
+
+
 /* Compute a signature for the given pair of pointer-sized values.
    The order of the arguments is significant.
 
@@ -187,6 +216,8 @@ typedef __UINTPTR_TYPE__ ptrauth_generic_signature_t;
 #define ptrauth_sign_unauthenticated(__value, __key, __data) ({(void)__key; (void)__data; __value;})
 #define ptrauth_auth_and_resign(__value, __old_key, __old_data, __new_key, __new_data) ({(void)__old_key; (void)__old_data; (void)__new_key; (void)__new_data; __value;})
 #define ptrauth_auth_data(__value, __old_key, __old_data) ({(void)__old_key;(void)__old_data;__value;})
+#define ptrauth_string_discriminator(__string) ({(void)__string; ((ptrauth_extra_data_t)0);})
+#define ptrauth_type_discriminator(__type) ((ptrauth_extra_data_t)0)
 #define ptrauth_sign_generic_data(__value, __data) ({(void)__value;(void)__data;((ptrauth_generic_signature_t)0);})
 
 #endif /* __has_feature(ptrauth_intrinsics) */

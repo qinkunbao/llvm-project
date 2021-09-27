@@ -422,6 +422,9 @@ private:
   /// Global annotations.
   std::vector<llvm::Constant*> Annotations;
 
+  /// Signed constant pointers.
+  void *ConstantSignedPointersByConstant = nullptr;
+
   /// Map used to get unique annotation strings.
   llvm::StringMap<llvm::Constant*> AnnotationStrings;
 
@@ -916,6 +919,11 @@ public:
 
   // Return the function body address of the given function.
   llvm::Constant *GetFunctionStart(const ValueDecl *Decl);
+
+  llvm::Constant *getConstantSignedPointer(llvm::Constant *pointer,
+                                           unsigned key,
+                                           llvm::Constant *storageAddress,
+                                           llvm::Constant *extraDiscrim);
 
   /// Get the address of the RTTI descriptor for the given type.
   llvm::Constant *GetAddrOfRTTIDescriptor(QualType Ty, bool ForEH = false);
@@ -1717,6 +1725,8 @@ private:
   /// Check whether we can use a "simpler", more core exceptions personality
   /// function.
   void SimplifyPersonality();
+
+  void destroyConstantSignedPointerCaches();
 
   /// Helper function for ConstructAttributeList and
   /// addDefaultFunctionDefinitionAttributes.  Builds a set of function
