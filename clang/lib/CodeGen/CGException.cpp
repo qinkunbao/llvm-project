@@ -1814,7 +1814,7 @@ Address CodeGenFunction::recoverAddrOfEscapedLocal(CodeGenFunction &ParentCGF,
   llvm::CallInst *RecoverCall = nullptr;
   CGBuilderTy Builder(*this, AllocaInsertPt);
   if (auto *ParentAlloca = dyn_cast_or_null<llvm::AllocaInst>(
-          ParentVar.getBasePointer())) {
+          ParentVar.getPointerIfNotSigned())) {
     // Mark the variable escaped if nobody else referenced it and compute the
     // localescape index.
     auto InsertPair = ParentCGF.EscapedLocals.insert(

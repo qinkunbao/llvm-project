@@ -76,7 +76,7 @@ public:
   }
 };
 
-/// An aligned address.
+/// An aligned address whose pointer isn't signed.
 class RawAddress {
   RawAddressImpl<void> A;
 
@@ -137,6 +137,16 @@ public:
 /// carry C type information or allow the representation of things like
 /// bit-fields; clients working at that level should generally be using
 /// `LValue`.
+///
+/// An address may be either *raw*, meaning that it's an ordinary machine
+/// pointer, or *signed*, meaning that the pointer carries an embedded
+/// pointer-authentication signature. Representing signed pointers directly in
+/// this abstraction allows the authentication to be delayed as long as possible
+/// without forcing IRGen to use totally different code paths for signed and
+/// unsigned values or to separately propagate signature information through
+/// every API that manipulates addresses. Pointer arithmetic on signed addresses
+/// (e.g. drilling down to a struct field) is accumulated into a separate offset
+/// which is applied when the address is finally accessed.
 class Address {
   friend class CGBuilderTy;
 
@@ -145,8 +155,7 @@ class Address {
   /// The expected IR type of the pointer. When the address is a raw pointer,
   /// this is currently redundant with the pointer's type, but for signed
   /// pointers it is useful if the pointer has been offsetted or cast from the
-  /// original type. In the long run, when LLVM adopts opaque pointer types,
-  /// this should become the notional element type of the address.
+  /// original type.
   ///
   /// Carrying accurate element type information in Address makes it more
   /// convenient to work with Address values and allows frontend assertions to
@@ -194,6 +203,11 @@ public:
   static Address invalid() { return Address(nullptr); }
   bool isValid() const { return Pointer != nullptr; }
 
+  llvm::Value *getPointerIfNotSigned() const {
+    assert(isValid() && "pointer isn't valid");
+    return Pointer;
+  }
+
   /// This function is used in situations where the caller is doing some sort of
   /// opaque "laundering" of the pointer.
   void replaceBasePointer(llvm::Value *P) {
@@ -210,6 +224,10 @@ public:
   llvm::Value *getBasePointer() const {
     assert(isValid() && "pointer isn't valid");
     return Pointer;
+  }
+
+  llvm::Value *getUnsignedPointer() const {
+    return getBasePointer();
   }
 
   /// Return the type of the pointer value.
@@ -239,12 +257,20 @@ public:
     ElementType = Ty;
   }
 
+  /// Add a constant offset.
+  void addOffset(CharUnits V, llvm::Type *Ty, CGBuilderTy &Builder);
+
+  /// Add a variable offset.
+  /// \param V An llvm value holding a variable offset.
+  void addOffset(llvm::Value *V, llvm::Type *Ty, CGBuilderTy &Builder,
+                 CharUnits NewAlignment);
+
   bool hasOffset() const { return Offset; }
 
   llvm::Value *getOffset() const { return Offset; }
 
   llvm::Value *getRawPointer(CodeGenFunction &CGF) const {
-    return getBasePointer();
+    return getUnsignedPointer();
   }
 
   /// Return address with different pointer, but same element type and
@@ -261,7 +287,7 @@ public:
 };
 
 inline RawAddress::RawAddress(Address Addr)
-    : A(Addr.isValid() ? Addr.getBasePointer() : nullptr,
+    : A(Addr.isValid() ? Addr.getUnsignedPointer() : nullptr,
         Addr.isValid() ? Addr.getElementType() : nullptr,
         Addr.isValid() ? Addr.getAlignment() : CharUnits::Zero())  {
     }

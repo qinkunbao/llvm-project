@@ -3215,7 +3215,7 @@ static llvm::Value *tryRemoveRetainOfSelf(CodeGenFunction &CGF,
     dyn_cast<llvm::LoadInst>(retainedValue->stripPointerCasts());
   if (!load || load->isAtomic() || load->isVolatile() ||
       load->getPointerOperand() !=
-          CGF.GetAddrOfLocalVar(self).getBasePointer())
+          CGF.GetAddrOfLocalVar(self).getPointerIfNotSigned())
     return nullptr;
 
   // Okay!  Burn it all down.  This relies for correctness on the
@@ -3252,7 +3252,8 @@ static llvm::Value *emitAutoreleaseOfResult(CodeGenFunction &CGF,
 
 /// Heuristically search for a dominating store to the return-value slot.
 static llvm::StoreInst *findDominatingStoreToReturnValue(CodeGenFunction &CGF) {
-  llvm::Value *ReturnValuePtr = CGF.ReturnValue.getBasePointer();
+  // This function shouldn't be called when ReturnValue is signed.
+  llvm::Value *ReturnValuePtr = CGF.ReturnValue.getUnsignedPointer();
 
   // Check if a User is a store which pointerOperand is the ReturnValue.
   // We are looking for stores to the ReturnValue, not for stores of the
@@ -3840,7 +3841,7 @@ static bool isProvablyNull(llvm::Value *addr) {
 }
 
 static bool isProvablyNonNull(Address Addr, CodeGenFunction &CGF) {
-  return llvm::isKnownNonZero(Addr.getBasePointer(),
+  return llvm::isKnownNonZero(Addr.getUnsignedPointer(),
                               CGF.CGM.getDataLayout());
 }
 
@@ -3849,7 +3850,7 @@ static void emitWriteback(CodeGenFunction &CGF,
                           const CallArgList::Writeback &writeback) {
   const LValue &srcLV = writeback.Source;
   Address srcAddr = srcLV.getAddress();
-  assert(!isProvablyNull(srcAddr.getBasePointer()) &&
+  assert(!isProvablyNull(srcAddr.getPointerIfNotSigned()) &&
          "shouldn't have writeback for provably null argument");
 
   llvm::BasicBlock *contBB = nullptr;
@@ -3966,7 +3967,7 @@ static void emitWritebackArg(CodeGenFunction &CGF, CallArgList &args,
       CGF.ConvertTypeForMem(CRE->getType()->getPointeeType());
 
   // If the address is a constant null, just pass the appropriate null.
-  if (isProvablyNull(srcAddr.getBasePointer())) {
+  if (isProvablyNull(srcAddr.getPointerIfNotSigned())) {
     args.add(RValue::get(llvm::ConstantPointerNull::get(destType)),
              CRE->getType());
     return;
