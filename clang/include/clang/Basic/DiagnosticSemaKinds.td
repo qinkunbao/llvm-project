@@ -880,6 +880,15 @@ def err_ptrauth_string_not_literal : Error<
 def err_ptrauth_type_disc_undiscriminated : Error<
   "cannot pass undiscriminated type %0 to "
   "'__builtin_ptrauth_type_discriminator'">;
+def err_ptrauth_struct_signing_mismatch : Error<
+  "%0 is signed differently from the previous declaration">;
+def note_previous_ptrauth_struct_declaration : Note<
+  "previous declaration of %0 is here">;
+def err_ptrauth_invalid_struct_attr_dynamic_class : Error<
+  "attribute ptrauth_struct cannot be used on class %0 because it is a "
+  "dynamic class">;
+def err_ptrauth_discriminator_mismatch_derived_class : Error<
+  "key or discriminator of class %0 doesn't match that of base class %1">;
 def err_ptrauth_non_string_authentication_option : Error<
   "__ptrauth options must be a string of comma separated flags, found %0">;
 def err_ptrauth_unknown_authentication_option : Error<
@@ -913,11 +922,12 @@ def err_ptrauth_qualifier_redundant : Error<
 def err_ptrauth_qualifier_bad_arg_count : Error<
   "%0 qualifier must take between 1 and 4 arguments">;
 def err_ptrauth_arg_not_ice : Error<
-  "argument to __ptrauth must be an integer constant expression">;
+  "argument to %select{__ptrauth|ptrauth_struct}0 must be an integer constant "
+  "expression">;
 def err_ptrauth_address_discrimination_invalid : Error<
   "address discrimination flag for __ptrauth must be 0 or 1; value is %0">;
 def err_ptrauth_extra_discriminator_invalid : Error<
-  "extra discriminator for __ptrauth must be between "
+  "extra discriminator for %select{__ptrauth|ptrauth_struct}2 must be between "
   "0 and %1; value is %0">;
 
 /// main()

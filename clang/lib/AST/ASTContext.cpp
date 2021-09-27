@@ -3355,6 +3355,21 @@ uint16_t ASTContext::getPointerAuthTypeDiscriminator(QualType T) {
   return getPointerAuthStringDiscriminator(*this, Str.c_str());
 }
 
+std::tuple<bool, unsigned, unsigned>
+ASTContext::getRecordPointerAuthKeyAndDiscriminator(
+    const RecordDecl *RD) const {
+  if (auto *Attr = RD->getAttr<PointerAuthStructAttr>())
+    return std::make_tuple(true, Attr->getKey(), Attr->getDiscriminator());
+  return std::make_tuple(false, 0u, 0u);
+}
+
+bool ASTContext::recordsHaveSamePointerAuthKeyAndDiscriminator(
+    const RecordDecl *RD0, const RecordDecl *RD1) const {
+  if (RD0 == RD1)
+    return true;
+  return getRecordPointerAuthKeyAndDiscriminator(RD0) ==
+         getRecordPointerAuthKeyAndDiscriminator(RD1);
+}
 bool ASTContext::typeContainsAuthenticatedNull(const Type *type) const {
   return typeContainsAuthenticatedNull(QualType(type, 0));
 }

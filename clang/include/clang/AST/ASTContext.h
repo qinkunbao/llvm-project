@@ -1265,6 +1265,18 @@ public:
   bool typeContainsAuthenticatedNull(const Type *) const;
   Optional<bool> tryTypeContainsAuthenticatedNull(QualType) const;
 
+  std::tuple<bool, unsigned, unsigned>
+  getRecordPointerAuthKeyAndDiscriminator(const RecordDecl *RD) const;
+
+  bool recordIsPointerAuthSigned(const RecordDecl *RD) const {
+    return std::get<0>(getRecordPointerAuthKeyAndDiscriminator(RD));
+  }
+
+  /// Determine whether two records have the same ptrauth key and discriminator.
+  bool
+  recordsHaveSamePointerAuthKeyAndDiscriminator(const RecordDecl *RD0,
+                                                const RecordDecl *RD1) const;
+
   /// Apply Objective-C protocol qualifiers to the given type.
   /// \param allowOnPointerType specifies if we can apply protocol
   /// qualifiers on ObjCObjectPointerType. It can be set to true when

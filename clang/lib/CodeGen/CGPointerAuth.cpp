@@ -72,6 +72,22 @@ uint16_t CodeGen::getPointerAuthDeclDiscriminator(CodeGenModule &CGM,
   return CGM.getPointerAuthDeclDiscriminator(declaration);
 }
 
+CGPointerAuthInfo CodeGenModule::EmitPointerAuthInfo(const RecordDecl *RD) {
+  assert(RD && "null RecordDecl passed");
+  auto *Attr = RD->getAttr<PointerAuthStructAttr>();
+
+  if (Attr) {
+    unsigned Key = Attr->getKey();
+    auto *Discriminator =
+        llvm::ConstantInt::get(IntPtrTy, Attr->getDiscriminator());
+    return CGPointerAuthInfo(Key, PointerAuthenticationMode::SignAndAuth,
+                             /* authenticatesNullValues */ false,
+                             Discriminator);
+  }
+
+  return CGPointerAuthInfo();
+}
+
 /// Return the "other" decl-specific discriminator for the given decl.
 uint16_t
 CodeGenModule::getPointerAuthDeclDiscriminator(GlobalDecl declaration) {
@@ -116,6 +132,11 @@ getPointerAuthInfoForPointeeType(CodeGenModule &CGM, QualType pointeeType) {
   // Function pointers use the function-pointer schema by default.
   if (pointeeType->isFunctionType())
     return CGM.getFunctionPointerAuthInfo(pointeeType);
+
+  if (auto recordTy = pointeeType->getAs<RecordType>())
+    if (CGPointerAuthInfo authInfo =
+            CGM.EmitPointerAuthInfo(recordTy->getDecl()))
+      return authInfo;
 
   // Normal data pointers never use direct pointer authentication by default.
   return CGPointerAuthInfo();

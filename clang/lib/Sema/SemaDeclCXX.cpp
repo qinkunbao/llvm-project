@@ -2615,6 +2615,12 @@ Sema::CheckBaseSpecifier(CXXRecordDecl *Class,
     return nullptr;
   }
 
+  if (!Context.recordsHaveSamePointerAuthKeyAndDiscriminator(Class,
+                                                             CXXBaseDecl))
+    Diag(Class->getLocation(),
+         diag::err_ptrauth_discriminator_mismatch_derived_class)
+        << Class->getDeclName() << CXXBaseDecl->getDeclName();
+
   // A class which contains a flexible array member is not suitable for use as a
   // base class:
   //   - If the layout determines that a base comes before another base,
@@ -6801,6 +6807,12 @@ void Sema::CheckCompletedCXXClass(Scope *S, CXXRecordDecl *Record) {
       }
     }
   }
+
+  // Disallow attribute ptrauth_struct on dynamic classes.
+  if (Context.recordIsPointerAuthSigned(Record) && Record->isDynamicClass())
+    Diag(Record->getLocation(),
+         diag::err_ptrauth_invalid_struct_attr_dynamic_class)
+        << Record->getDeclName();
 
   // Warn if the class has virtual methods but non-virtual public destructor.
   if (Record->isPolymorphic() && !Record->isDependentType()) {
