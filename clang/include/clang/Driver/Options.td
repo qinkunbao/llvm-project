@@ -3086,8 +3086,11 @@ let Group = f_Group in {
   let Flags = [CC1Option] in {
     def fptrauth_intrinsics : Flag<["-"], "fptrauth-intrinsics">,
       HelpText<"Enable pointer-authentication intrinsics">;
+    def fptrauth_returns : Flag<["-"], "fptrauth-returns">,
+      HelpText<"Enable signing and authentication of return addresses">;
   }
   def fno_ptrauth_intrinsics : Flag<["-"], "fno-ptrauth-intrinsics">;
+  def fno_ptrauth_returns : Flag<["-"], "fno-ptrauth-returns">;
 }
 
 let Group = f_Group in {

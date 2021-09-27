@@ -1155,6 +1155,10 @@ void DarwinClang::addClangTargetOptions(
         CC1Args.push_back("-fptrauth-kernel-abi-version");
     }
 
+    if (!DriverArgs.hasArg(options::OPT_fptrauth_returns,
+                           options::OPT_fno_ptrauth_returns))
+      CC1Args.push_back("-fptrauth-returns");
+
     if (!DriverArgs.hasArg(options::OPT_fptrauth_intrinsics,
                            options::OPT_fno_ptrauth_intrinsics))
       CC1Args.push_back("-fptrauth-intrinsics");

@@ -36,6 +36,14 @@ typedef enum {
      which disable ABI pointer authentication. */
   ptrauth_key_process_dependent_data = ptrauth_key_asdb,
 
+  /* The key used to sign return addresses on the stack.
+     The extra data is based on the storage address of the return address.
+     On ARM64, that is always the storage address of the return address plus 8
+     (or, in other words, the value of the stack pointer on function entry) */
+  ptrauth_key_return_address = ptrauth_key_process_dependent_code,
+
+  /* Other pointers signed under the ABI use private ABI rules. */
+
 } ptrauth_key;
 
 /* An integer type of the appropriate size for a discriminator argument. */
