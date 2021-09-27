@@ -44,6 +44,9 @@
 #include "llvm/CodeGen/TargetRegisterInfo.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DebugInfoMetadata.h"
+#include "llvm/IR/DiagnosticInfo.h"
+#include "llvm/IR/DiagnosticPrinter.h"
+#include "llvm/IR/GlobalPtrAuthInfo.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCInst.h"
@@ -99,6 +102,9 @@ public:
   }
 
   void authLRBeforeTailCall(const MachineFunction &MF, unsigned ScratchReg);
+
+  const MCExpr *
+  lowerPtrAuthGlobalConstant(const GlobalPtrAuthInfo &PAI) override;
 
   void emitStartOfAsmFile(Module &M) override;
   void emitJumpTableInfo() override;
@@ -1591,6 +1597,56 @@ void AArch64AsmPrinter::emitPtrauthAuthResign(const MachineInstr *MI) {
   //  Lend:
   if (EndSym)
     OutStreamer->emitLabel(EndSym);
+}
+
+const MCExpr *
+AArch64AsmPrinter::lowerPtrAuthGlobalConstant(const GlobalPtrAuthInfo &PAI) {
+  MCContext &Ctx = OutContext;
+
+  // Figure out the base symbol and the addend, if any.
+  APInt Offset(64, 0);
+  const Value *BaseGV =
+    PAI.getPointer()->stripAndAccumulateConstantOffsets(
+      getDataLayout(), Offset, /*AllowNonInbounds=*/true);
+
+  auto *BaseGVB = dyn_cast<GlobalValue>(BaseGV);
+
+  // If we can't understand the referenced ConstantExpr, there's nothing
+  // else we can do: emit an error.
+  if (!BaseGVB) {
+    BaseGVB = PAI.getGV();
+
+    std::string Buf;
+    raw_string_ostream OS(Buf);
+    OS << "Couldn't resolve target base/addend of llvm.ptrauth global '"
+      << *BaseGVB << "'";
+    BaseGV->getContext().emitError(OS.str());
+  }
+
+  // If there is an addend, turn that into the appropriate MCExpr.
+  const MCExpr *Sym = MCSymbolRefExpr::create(getSymbol(BaseGVB), Ctx);
+  if (Offset.sgt(0))
+    Sym = MCBinaryExpr::createAdd(
+        Sym, MCConstantExpr::create(Offset.getSExtValue(), Ctx), Ctx);
+  else if (Offset.slt(0))
+    Sym = MCBinaryExpr::createSub(
+        Sym, MCConstantExpr::create((-Offset).getSExtValue(), Ctx), Ctx);
+
+  uint64_t KeyID = PAI.getKey()->getZExtValue();
+  if (!isUInt<2>(KeyID))
+    BaseGV->getContext().emitError(
+        "Invalid AArch64 PAC Key ID '" + utostr(KeyID) + "' in llvm.ptrauth global '" +
+        BaseGV->getName() + "'");
+
+  uint64_t Disc = PAI.getDiscriminator()->getZExtValue();
+  if (!isUInt<16>(Disc))
+    BaseGV->getContext().emitError("Invalid AArch64 Discriminator '" +
+                                   utostr(Disc) + "' in llvm.ptrauth global '" +
+                                   BaseGV->getName() + "'");
+
+  // Finally build the complete @AUTH expr.
+  return AArch64AuthMCExpr::create(Sym, Disc, AArch64PACKey::ID(KeyID),
+                                   PAI.hasAddressDiversity(), Ctx);
 }
 
 // Simple pseudo-instructions have their lowering (with expansion to real
