@@ -139,6 +139,32 @@ void GlobalObject::copyAttributesFrom(const GlobalObject *Src) {
   setSection(Src->getSection());
 }
 
+bool GlobalValue::hasExternalWeakLinkage() const {
+  // llvm.ptrauth wrapper globals are tricky: they're always constant defs
+  // with private linkage, but the extern_weak linkage check is almost always
+  // used to check whether the global reference can be null.
+  // llvm.ptrauth references can be, if the underlying global is itself null.
+  // That's only possible if it's extern_weak: look through the initializer.
+  // llvm.ptrauth globals should be thought of as special ConstantExprs.
+  if (auto *GVB = dyn_cast<GlobalVariable>(this)) {
+    if (getSection() == "llvm.ptrauth") {
+      // While llvm.ptrauth globals must have an initializer, this code might
+      // be called early enough that they don't (in particular in LTO,
+      // via ConstantFold, before the initializer has been mapped).
+      if (!GVB->hasInitializer())
+        return true;
+      auto *Base = GVB->getInitializer()->getOperand(0);
+      APInt Offset(64, 0);
+      Base = Base->stripAndAccumulateConstantOffsets(
+          getParent()->getDataLayout(), Offset, /*AllowNonInbounds=*/true);
+      if (auto *BaseGV = dyn_cast<GlobalValue>(Base))
+        return BaseGV->hasExternalWeakLinkage();
+      return true;
+    }
+  }
+  return isExternalWeakLinkage(getLinkage());
+}
+
 std::string GlobalValue::getGlobalIdentifier(StringRef Name,
                                              GlobalValue::LinkageTypes Linkage,
                                              StringRef FileName) {
