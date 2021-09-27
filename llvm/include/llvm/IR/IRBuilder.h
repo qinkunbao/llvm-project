@@ -2580,6 +2580,7 @@ public:
   IRBuilder(const IRBuilder &) = delete;
 
   InserterTy &getInserter() { return Inserter; }
+  const InserterTy &getInserter() const { return Inserter; }
 };
 
 // Create wrappers for C Binding types (see CBindingWrapping.h).
