@@ -153,35 +153,38 @@ class PointerAuthQualifier {
     AuthenticationModeBits = 2,
     AuthenticationModeMask = ((1 << AuthenticationModeBits) - 1)
                              << AuthenticationModeShift,
-    AuthenticatesNullValuesShift = AuthenticationModeShift + AuthenticationModeBits,
+    IsaPointerShift = AuthenticationModeShift + AuthenticationModeBits,
+    IsaPointerBits = 1,
+    IsaPointerMask = ((1 << IsaPointerBits) - 1) << IsaPointerShift,
+    AuthenticatesNullValuesShift = IsaPointerShift + IsaPointerBits,
     AuthenticatesNullValuesBits = 1,
     AuthenticatesNullValuesMask = ((1 << AuthenticatesNullValuesBits) - 1)
                                   << AuthenticatesNullValuesShift,
     KeyShift = AuthenticatesNullValuesShift + AuthenticatesNullValuesBits,
-    KeyBits = 11,
+    KeyBits = 10,
     KeyMask = ((1 << KeyBits) - 1) << KeyShift,
     DiscriminatorShift = KeyShift + KeyBits,
     DiscriminatorBits = 16,
     DiscriminatorMask = ((1 << DiscriminatorBits) - 1) << DiscriminatorShift,
   };
 
-  // bits:     |0      |1      |2..3              |4                |5..15|   16...31   |
-  //           |Enabled|Address|AuthenticationMode|AuthenticatesNull|Key  |Discriminator|
+  // bits:     |0      |1      |2..3              |4          |5                |6..15|   16...31   |
+  //           |Enabled|Address|AuthenticationMode|ISA pointer|AuthenticatesNull|Key  |Discriminator|
   uint32_t Data;
 
   static_assert((EnabledBits + AddressDiscriminatedBits +
-                 AuthenticationModeBits + KeyBits +
-                 AuthenticatesNullValuesBits + DiscriminatorBits) ==
+                 AuthenticationModeBits + IsaPointerBits +
+                 AuthenticatesNullValuesBits + KeyBits + DiscriminatorBits) ==
                     32,
                 "PointerAuthQualifier should be exactly 32 bits");
   static_assert((EnabledMask + AddressDiscriminatedMask +
-                 AuthenticationModeMask + KeyMask +
-                 AuthenticatesNullValuesMask + DiscriminatorMask) ==
+                 AuthenticationModeMask + IsaPointerMask +
+                 AuthenticatesNullValuesMask + KeyMask + DiscriminatorMask) ==
                     0xFFFFFFFF,
                 "All masks should cover the entire bits");
   static_assert((EnabledMask ^ AddressDiscriminatedMask ^
-                 AuthenticationModeMask ^ KeyMask ^
-                 AuthenticatesNullValuesMask ^ DiscriminatorMask) ==
+                 AuthenticationModeMask ^ IsaPointerMask ^
+                 AuthenticatesNullValuesMask ^ KeyMask ^ DiscriminatorMask) ==
                     0xFFFFFFFF,
                 "All masks should cover the entire bits");
 
@@ -199,12 +202,13 @@ public:
   PointerAuthQualifier(unsigned key, bool isAddressDiscriminated,
                        unsigned extraDiscriminator,
                        PointerAuthenticationMode authenticationMode,
-                       bool authenticatesNullValues)
+                       bool isIsaPointer, bool authenticatesNullValues)
       : Data(EnabledMask |
              (isAddressDiscriminated ? AddressDiscriminatedMask : 0) |
              (key << KeyShift) |
              (unsigned(authenticationMode) << AuthenticationModeShift) |
              (extraDiscriminator << DiscriminatorShift) |
+             (isIsaPointer << IsaPointerShift) |
              (authenticatesNullValues << AuthenticatesNullValuesShift)) {
     assert(key <= MaxKey);
     assert(extraDiscriminator <= MaxDiscriminator);
@@ -236,6 +240,11 @@ public:
   PointerAuthenticationMode getAuthenticationMode() const {
     return PointerAuthenticationMode((Data & AuthenticationModeMask) >>
                                      AuthenticationModeShift);
+  }
+
+  bool isIsaPointer() const {
+    assert(isPresent());
+    return (Data & IsaPointerMask) >> IsaPointerShift;
   }
 
   bool authenticatesNullValues() const {

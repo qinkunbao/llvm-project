@@ -81,6 +81,7 @@ CGPointerAuthInfo CodeGenModule::EmitPointerAuthInfo(const RecordDecl *RD) {
     auto *Discriminator =
         llvm::ConstantInt::get(IntPtrTy, Attr->getDiscriminator());
     return CGPointerAuthInfo(Key, PointerAuthenticationMode::SignAndAuth,
+                             /* isIsaPointer */ false,
                              /* authenticatesNullValues */ false,
                              Discriminator);
   }
@@ -119,6 +120,7 @@ CodeGenModule::getFunctionPointerAuthInfo(QualType T) {
     Discriminator = getPointerAuthOtherDiscriminator(Schema, GlobalDecl(), T);
 
   return CGPointerAuthInfo(Schema.getKey(), Schema.getAuthenticationMode(),
+                           /* isIsaPointer */ false,
                            /* authenticatesNullValues */ false, Discriminator);
 }
 
@@ -136,6 +138,7 @@ CodeGenModule::getMemberFunctionPointerAuthInfo(QualType functionType) {
   auto discriminator =
       getPointerAuthOtherDiscriminator(schema, GlobalDecl(), functionType);
   return CGPointerAuthInfo(schema.getKey(), schema.getAuthenticationMode(),
+                           /* isIsaPointer */ false,
                            /* authenticatesNullValues */ false, discriminator);
 }
 
@@ -217,6 +220,7 @@ CodeGenFunction::EmitPointerAuthInfo(const PointerAuthSchema &schema,
   }
 
   return CGPointerAuthInfo(schema.getKey(), schema.getAuthenticationMode(),
+                           schema.isIsaPointer(),
                            schema.authenticatesNullValues(), discriminator);
 }
 
@@ -244,6 +248,7 @@ CodeGenFunction::EmitPointerAuthInfo(PointerAuthQualifier qualifier,
 
   return CGPointerAuthInfo(qualifier.getKey(),
                            qualifier.getAuthenticationMode(),
+                           qualifier.isIsaPointer(),
                            qualifier.authenticatesNullValues(), discriminator);
 }
 
@@ -399,7 +404,8 @@ static bool equalAuthPolicies(const CGPointerAuthInfo &left,
          "should only be called with non-null auth policies");
   return left.authenticatesNullValues() == right.authenticatesNullValues() &&
          left.getKey() == right.getKey() &&
-         left.getAuthenticationMode() == right.getAuthenticationMode();
+         left.getAuthenticationMode() == right.getAuthenticationMode() &&
+         left.isIsaPointer() == right.isIsaPointer();
 }
 
 llvm::Value *
@@ -668,6 +674,8 @@ CodeGenModule::getConstantSignedPointer(llvm::Constant *pointer,
                                         GlobalDecl schemaDecl,
                                         QualType schemaType) {
   assert(shouldSignPointer(schema));
+  // We ignore schema.isIsaPointer() for global decls as
+  // the assumption is that we won't emit tagged isas during codegen
   llvm::Constant *otherDiscriminator =
     getPointerAuthOtherDiscriminator(schema, schemaDecl, schemaType);
 
@@ -741,6 +749,7 @@ CodeGenModule::computeVTPointerAuthentication(const CXXRecordDecl *thisClass) {
   }
   return PointerAuthQualifier(key, addressDiscriminated, discriminator,
                               PointerAuthenticationMode::SignAndAuth,
+                              /* isIsaPointer */ false,
                               /* authenticatesNullValues */ false);
 }
 
@@ -784,6 +793,7 @@ CodeGenModule::getVTablePointerAuthInfo(CodeGenFunction *CGF,
 
   return CGPointerAuthInfo(authentication->getKey(),
                            PointerAuthenticationMode::SignAndAuth,
+                           /* IsIsaPointer */ false,
                            /* authenticatesNullValues */ false, discriminator);
 }
 

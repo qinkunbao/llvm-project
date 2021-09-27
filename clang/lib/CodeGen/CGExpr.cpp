@@ -5182,6 +5182,7 @@ static CGCallee EmitSignedFunctionPointerCallee(CodeGenFunction &CGF,
     functionPointerExpr->getType()->castAs<PointerType>()->getPointeeType();
   CGCalleeInfo calleeInfo(functionType->getAs<FunctionProtoType>());
   CGPointerAuthInfo pointerAuth(key, PointerAuthenticationMode::SignAndAuth,
+                                /* isaIsaPointer */ false,
                                 /* authenticatesNullValues */ false,
                                 discriminator);
   CGCallee callee(calleeInfo, calleePtr, pointerAuth);

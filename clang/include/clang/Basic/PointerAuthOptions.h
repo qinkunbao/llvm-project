@@ -30,6 +30,14 @@ namespace clang {
 /// ptrauth_string_discriminator("method_list_t")
 constexpr uint16_t MethodListPointerConstantDiscriminator = 0xC310;
 
+/// Constant discriminator to be used with objective-c isa pointers. The value
+/// is ptrauth_string_discriminator("isa")
+constexpr uint16_t IsaPointerConstantDiscriminator = 0x6AE1;
+
+/// Constant discriminator to be used with objective-c superclass pointers.
+/// The value is ptrauth_string_discriminator("objc_class:superclass")
+constexpr uint16_t SuperPointerConstantDiscriminator = 0xB5AB;
+
 /// Constant discriminator to be used with block descriptor pointers. The value
 /// is ptrauth_string_discriminator("block_descriptor")
 constexpr uint16_t BlockDescriptorConstantDiscriminator = 0xC0BB;
@@ -53,7 +61,8 @@ public:
     CXXVirtualFunctionPointers = 5,
     CXXMemberFunctionPointers = 6,
     ObjCMethodListPointer = 7,
-    BlockDescriptorPointers = 8,
+    ObjCIsaPointer = 8,
+    BlockDescriptorPointers = 9,
   };
 
   /// Hardware pointer-signing keys in ARM8.3.
@@ -84,6 +93,7 @@ public:
 private:
   Kind TheKind : 2;
   unsigned IsAddressDiscriminated : 1;
+  unsigned IsIsaPointer : 1;
   unsigned AuthenticatesNullValues : 1;
   PointerAuthenticationMode SelectedAuthenticationMode : 2;
   Discrimination DiscriminationKind : 2;
@@ -97,8 +107,10 @@ public:
                     PointerAuthenticationMode authenticationMode,
                     Discrimination otherDiscrimination,
                     Optional<uint16_t> constantDiscriminator = None,
+                    bool isIsaPointer = false,
                     bool authenticatesNullValues = false)
       : TheKind(Kind::Soft), IsAddressDiscriminated(isAddressDiscriminated),
+        IsIsaPointer(isIsaPointer),
         AuthenticatesNullValues(authenticatesNullValues),
         SelectedAuthenticationMode(authenticationMode),
         DiscriminationKind(otherDiscrimination), Key(unsigned(key)) {
@@ -113,8 +125,10 @@ public:
                     PointerAuthenticationMode authenticationMode,
                     Discrimination otherDiscrimination,
                     Optional<uint16_t> constantDiscriminator = None,
+                    bool isIsaPointer = false,
                     bool authenticatesNullValues = false)
       : TheKind(Kind::ARM8_3), IsAddressDiscriminated(isAddressDiscriminated),
+        IsIsaPointer(isIsaPointer),
         AuthenticatesNullValues(authenticatesNullValues),
         SelectedAuthenticationMode(authenticationMode),
         DiscriminationKind(otherDiscrimination), Key(unsigned(key)) {
@@ -128,20 +142,22 @@ public:
   PointerAuthSchema(SoftKey key, bool isAddressDiscriminated,
                     Discrimination otherDiscrimination,
                     Optional<uint16_t> constantDiscriminator = None,
+                    bool isIsaPointer = false,
                     bool authenticatesNullValues = false)
       : PointerAuthSchema(key, isAddressDiscriminated,
                           PointerAuthenticationMode::SignAndAuth,
                           otherDiscrimination, constantDiscriminator,
-                          authenticatesNullValues) {}
+                          isIsaPointer, authenticatesNullValues) {}
 
   PointerAuthSchema(ARM8_3Key key, bool isAddressDiscriminated,
                     Discrimination otherDiscrimination,
                     Optional<uint16_t> constantDiscriminator = None,
+                    bool isIsaPointer = false,
                     bool authenticatesNullValues = false)
       : PointerAuthSchema(key, isAddressDiscriminated,
                           PointerAuthenticationMode::SignAndAuth,
                           otherDiscrimination, constantDiscriminator,
-                          authenticatesNullValues) {}
+                          isIsaPointer, authenticatesNullValues) {}
 
   Kind getKind() const { return TheKind; }
 
@@ -152,6 +168,11 @@ public:
   bool isAddressDiscriminated() const {
     assert(getKind() != Kind::None);
     return IsAddressDiscriminated;
+  }
+
+  bool isIsaPointer() const {
+    assert(getKind() != Kind::None);
+    return IsIsaPointer;
   }
 
   bool authenticatesNullValues() const {
@@ -249,6 +270,12 @@ struct PointerAuthOptions {
 
   /// The ABI for C++ member function pointers.
   PointerAuthSchema CXXMemberFunctionPointers;
+
+  /// The ABI for Objective-C isa pointers.
+  PointerAuthSchema ObjCIsaPointers;
+
+  /// The ABI for Objective-C superclass pointers.
+  PointerAuthSchema ObjCSuperPointers;
 };
 
 }  // end namespace clang

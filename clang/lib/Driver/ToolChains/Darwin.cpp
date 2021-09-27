@@ -1115,6 +1115,22 @@ void DarwinClang::addClangWarningOptions(ArgStringList &CC1Args) const {
   }
 }
 
+#if CLANG_ENABLE_PTRAUTH_OBJC_ISA
+static bool useObjCIsaPtrauth(const Darwin &D) {
+  VersionTuple TargetVersion = D.getTripleTargetVersion();
+  if (D.isTargetMacCatalyst() || D.TargetEnvironment == Darwin::Simulator)
+    return true;
+  switch (D.TargetPlatform) {
+  case Darwin::IPhoneOS:
+  case Darwin::TvOS:
+    return TargetVersion >= VersionTuple(14, 5, 0);
+  case Darwin::WatchOS:
+  case Darwin::MacOS:
+    return true;
+  }
+}
+#endif
+
 void DarwinClang::addClangTargetOptions(
   const llvm::opt::ArgList &DriverArgs, llvm::opt::ArgStringList &CC1Args,
   Action::OffloadKind DeviceOffloadKind) const{
@@ -1193,6 +1209,18 @@ void DarwinClang::addClangTargetOptions(
           options::OPT_fptrauth_function_pointer_type_discrimination,
           options::OPT_fno_ptrauth_function_pointer_type_discrimination))
         CC1Args.push_back("-fptrauth-function-pointer-type-discrimination");
+    }
+
+    if (!DriverArgs.hasArg(options::OPT_fptrauth_objc_isa,
+                           options::OPT_fno_ptrauth_objc_isa)) {
+#if CLANG_ENABLE_PTRAUTH_OBJC_ISA
+      if (useObjCIsaPtrauth(*this))
+        CC1Args.push_back("-fptrauth-objc-isa-mode=sign-and-auth");
+      else
+        CC1Args.push_back("-fptrauth-objc-isa-mode=sign-and-strip");
+#else // !CLANG_ENABLE_PTRAUTH_OBJC_ISA
+      CC1Args.push_back("-fptrauth-objc-isa-mode=strip");
+#endif // CLANG_ENABLE_PTRAUTH_OBJC_ISA
     }
   }
 }

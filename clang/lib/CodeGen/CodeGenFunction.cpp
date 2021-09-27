@@ -2934,6 +2934,11 @@ void CodeGenFunction::EmitPointerAuthOperandBundle(
   bundles.emplace_back("ptrauth", args);
 }
 
+llvm::Value *CodeGenFunction::getObjCIsaMask() {
+  llvm::Constant *maskAddress = CGM.getObjCIsaMaskAddress();
+  return Builder.CreatePtrToInt(maskAddress, IntPtrTy);
+}
+
 static llvm::Value *EmitPointerAuthCommon(CodeGenFunction &CGF,
                                           const CGPointerAuthInfo &pointerAuth,
                                           llvm::Value *pointer,
@@ -2950,10 +2955,21 @@ static llvm::Value *EmitPointerAuthCommon(CodeGenFunction &CGF,
   // Convert the pointer to intptr_t before signing it.
   auto origType = pointer->getType();
   pointer = CGF.Builder.CreatePtrToInt(pointer, CGF.IntPtrTy);
+  llvm::Value *maskedBits = nullptr;
+  if (pointerAuth.isIsaPointer() &&
+      CGF.getLangOpts().PointerAuthObjcIsaMasking) {
+    llvm::Value *mask = CGF.getObjCIsaMask();
+    auto maskedPointer = CGF.Builder.CreateAnd(pointer, mask);
+    maskedBits = CGF.Builder.CreateXor(pointer, maskedPointer);
+    pointer = maskedPointer;
+  }
 
   // call i64 @llvm.ptrauth.sign.i64(i64 %pointer, i32 %key, i64 %discriminator)
   auto intrinsic = CGF.CGM.getIntrinsic(intrinsicID);
   pointer = CGF.EmitRuntimeCall(intrinsic, { pointer, key, discriminator });
+
+  if (maskedBits)
+    pointer = CGF.Builder.CreateOr(pointer, maskedBits);
 
   // Convert back to the original type.
   pointer = CGF.Builder.CreateIntToPtr(pointer, origType);
@@ -3019,13 +3035,22 @@ CodeGenFunction::EmitPointerAuthResignCall(llvm::Value *value,
   if (curAuth.getAuthenticationMode() !=
           PointerAuthenticationMode::SignAndAuth ||
       newAuth.getAuthenticationMode() !=
-          PointerAuthenticationMode::SignAndAuth) {
+          PointerAuthenticationMode::SignAndAuth ||
+      curAuth.isIsaPointer() != newAuth.isIsaPointer()) {
     auto authedValue = EmitPointerAuthAuth(curAuth, value);
     return EmitPointerAuthSign(newAuth, authedValue);
   }
   // Convert the pointer to intptr_t before signing it.
   auto origType = value->getType();
   value = Builder.CreatePtrToInt(value, IntPtrTy);
+
+  llvm::Value *masked_bits = nullptr;
+  if (curAuth.isIsaPointer() && getLangOpts().PointerAuthObjcIsaMasking) {
+    llvm::Value *mask = getObjCIsaMask();
+    auto masked_value = Builder.CreateAnd(value, mask);
+    masked_bits = Builder.CreateXor(value, masked_value);
+    value = masked_value;
+  }
 
   auto curKey = Builder.getInt32(curAuth.getKey());
   auto newKey = Builder.getInt32(newAuth.getKey());
@@ -3043,6 +3068,9 @@ CodeGenFunction::EmitPointerAuthResignCall(llvm::Value *value,
   value = EmitRuntimeCall(intrinsic,
                           { value, curKey, curDiscriminator,
                             newKey, newDiscriminator });
+
+  if (masked_bits)
+    value = Builder.CreateOr(value, masked_bits);
 
   // Convert back to the original type.
   value = Builder.CreateIntToPtr(value, origType);

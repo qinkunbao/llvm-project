@@ -155,6 +155,9 @@ if platform.system() not in ['Windows']:
 if platform.system() not in ['Darwin', 'Fuchsia']:
     config.available_features.add('libgcc')
 
+if not config.clang_enable_ptrauth_objc_isa:
+    config.available_features.add('no-ptrauth-objc-isa')
+
 # Case-insensitive file system
 
 

@@ -98,6 +98,9 @@
 #cmakedefine01 CLANG_ENABLE_OBJC_REWRITER
 #cmakedefine01 CLANG_ENABLE_STATIC_ANALYZER
 
+/* Enable objc isa signing ptrauth driver support, based on deployment target */
+#cmakedefine01 CLANG_ENABLE_PTRAUTH_OBJC_ISA
+
 /* Spawn a new process clang.exe for the CC1 tool invocation, when necessary */
 #cmakedefine01 CLANG_SPAWN_CC1
 

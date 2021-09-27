@@ -453,6 +453,8 @@ option(CLANG_ENABLE_ARCMT "Build ARCMT." ON)
 option(CLANG_ENABLE_STATIC_ANALYZER
   "Include static analyzer in clang binary." ON)
 
+option(CLANG_ENABLE_PTRAUTH_OBJC_ISA "Objc isa/super pointer authentication for clang/ptrauth.h: when enabled, can default to sign-and-strip or sign-and-auth based on target" OFF)
+
 option(CLANG_ENABLE_PROTO_FUZZER "Build Clang protobuf fuzzer." OFF)
 
 if(NOT CLANG_ENABLE_STATIC_ANALYZER AND CLANG_ENABLE_ARCMT)

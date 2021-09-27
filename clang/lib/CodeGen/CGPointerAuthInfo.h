@@ -23,19 +23,20 @@ namespace CodeGen {
 class CGPointerAuthInfo {
 private:
   PointerAuthenticationMode AuthenticationMode : 2;
+  bool IsIsaPointer : 1;
   bool AuthenticatesNullValues : 1;
-  unsigned Key : 29;
+  unsigned Key : 28;
   llvm::Value *Discriminator;
 
 public:
   CGPointerAuthInfo()
       : AuthenticationMode(PointerAuthenticationMode::None),
-        AuthenticatesNullValues(false), Key(0),
+        IsIsaPointer(false), AuthenticatesNullValues(false), Key(0),
         Discriminator(nullptr) {}
   CGPointerAuthInfo(unsigned key, PointerAuthenticationMode authenticationMode,
-                    bool authenticatesNullValues,
+                    bool isIsaPointer, bool authenticatesNullValues,
                     llvm::Value *discriminator)
-      : AuthenticationMode(authenticationMode),
+      : AuthenticationMode(authenticationMode), IsIsaPointer(isIsaPointer),
         AuthenticatesNullValues(authenticatesNullValues), Key(key),
         Discriminator(discriminator) {
     assert(!discriminator || discriminator->getType()->isIntegerTy() ||
@@ -60,6 +61,8 @@ public:
   PointerAuthenticationMode getAuthenticationMode() const {
     return AuthenticationMode;
   }
+
+  bool isIsaPointer() const { return IsIsaPointer; }
 
   bool authenticatesNullValues() const { return AuthenticatesNullValues; }
 

@@ -2191,6 +2191,13 @@ void PointerAuthQualifier::print(raw_ostream &OS,
   default:
     break;
   }
+  if (isIsaPointer()) {
+    if (hasOptions)
+      StrOS << ",";
+    StrOS << PointerAuthenticationOptionIsaPointer;
+    hasOptions = true;
+  }
+
   if (authenticatesNullValues()) {
     if (hasOptions)
       StrOS << ",";

@@ -823,7 +823,7 @@ CGCallee ItaniumCXXABI::EmitLoadOfMemberFunctionPointer(
     auto *NonVirtualDiscriminator = AuthInfo.getDiscriminator();
     DiscriminatorPHI->addIncoming(NonVirtualDiscriminator, FnNonVirtual);
     PointerAuth = CGPointerAuthInfo(
-        Schema.getKey(), Schema.getAuthenticationMode(),
+        Schema.getKey(), Schema.getAuthenticationMode(), Schema.isIsaPointer(),
         Schema.authenticatesNullValues(), DiscriminatorPHI);
   }
 

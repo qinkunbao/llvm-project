@@ -106,6 +106,8 @@ It is possible to tweak the behaviour of pointer authentication using the `optio
 
 - authentication mode: ``strip``, ``sign-and-strip``, ``sign-and-auth``. These control whether authentication codes are ignored completely (``strip``), whether values are signed but not authenticated (``sign-and-strip``), or the default of full authentication (``sign-and-auth``).
 
+- ``isa-pointer``: This is used to indicate that the target value is an Objective-C isa pointer, and needs to mask out objective-c tag bits prior to signing or authenticating the value.
+
 - ``authenticates-null-values``: Enables full signing and authentication of null values. The default behaviour of pointer authentication is to not sign or authenticate null values. This option ensures that all values, including null values, will always be signed and authenticated.
 
 .. _Signing schemas:
@@ -813,7 +815,10 @@ Objective-C method lists sign methods with the ``IA`` key using address diversit
 
 The Objective-C runtime provides additional protection to methods that have been loaded into the Objective-C method cache; this protection is private to the runtime.
 
-Pointer authentication cannot protect against access-path atacks against the Objective-C ``isa`` pointer, through which all dispatch occurs, because of compatibility requirements and existing and important usage of high bits in the pointer.
+Objective-C ``isa`` and ``super`` pointers
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+Objective-C ``isa`` and ``super`` pointers are both signed with the ``DA`` key with constant discriminators of 0x6AE1 and 0x25DA respectively.
 
 Swift class methods
 ~~~~~~~~~~~~~~~~~~~

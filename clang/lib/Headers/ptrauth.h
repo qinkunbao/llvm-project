@@ -72,6 +72,10 @@ typedef enum {
   /* The key used to sign metadata pointers to Objective-C method-lists. */
   ptrauth_key_method_list_pointer = ptrauth_key_asda,
 
+  /* The key used to sign Objective-C isa and super pointers. */
+  ptrauth_key_objc_isa_pointer = ptrauth_key_process_independent_data,
+  ptrauth_key_objc_super_pointer = ptrauth_key_process_independent_data,
+
   /* The key used to sign block descriptor pointers. */
   ptrauth_key_block_descriptor_pointer = ptrauth_key_asda,
 
@@ -111,6 +115,38 @@ typedef __UINTPTR_TYPE__ ptrauth_generic_signature_t;
    of these intrinsics.  This is not necessary when using the
    __ptrauth qualifier; the compiler will perform this check
    automatically. */
+
+#if __has_feature(ptrauth_qualifier_authentication_mode)
+/* We define these macros including the comma so we can no-op them in the future
+   without version locking with downstream projects
+*/
+  #if __has_feature(ptrauth_objc_isa_signs)
+    #if __has_feature(ptrauth_objc_isa_authenticates)
+      #define __ptrauth_isa_signing_mode , "sign-and-auth"
+    #elif __has_feature(ptrauth_objc_isa_strips)
+      #define __ptrauth_isa_signing_mode , "sign-and-strip"
+    #endif
+  #else
+    #if __has_feature(ptrauth_objc_isa_strips)
+      #define __ptrauth_isa_signing_mode , "strip"
+    #endif
+  #endif
+#endif
+
+#ifdef __ptrauth_isa_signing_mode
+  #if __has_feature(ptrauth_objc_isa_masking)
+    #define __ptrauth_isa_masking_mode ",isa-pointer"
+  #else
+    #define __ptrauth_isa_masking_mode
+  #endif
+#else
+  #define __ptrauth_isa_signing_mode
+  #if __has_feature(ptrauth_objc_isa_masking)
+    #define __ptrauth_isa_masking_mode "isa-pointer"
+  #else
+    #define __ptrauth_isa_masking_mode
+  #endif
+#endif
 
 #if __has_feature(ptrauth_intrinsics)
 
@@ -333,6 +369,28 @@ typedef __UINTPTR_TYPE__ ptrauth_generic_signature_t;
 #else
 #define __ptrauth_objc_method_list_pointer
 #endif
+#if !__has_feature(ptrauth_qualifier_authentication_mode) ||                   \
+      (__has_feature(ptrauth_objc_isa_signs) ||                                \
+       __has_feature(ptrauth_objc_isa_strips))
+#define __ptrauth_isa_discriminator 0x6AE1
+#define __ptrauth_super_discriminator 0xB5AB
+#define __ptrauth_objc_isa_pointer                                             \
+  __ptrauth(ptrauth_key_objc_isa_pointer, 1,                                   \
+            __ptrauth_isa_discriminator __ptrauth_isa_signing_mode             \
+                __ptrauth_isa_masking_mode)
+#define __ptrauth_objc_isa_uintptr                                             \
+  __ptrauth_restricted_intptr(                                                 \
+      ptrauth_key_objc_isa_pointer, 1,                                         \
+      __ptrauth_isa_discriminator __ptrauth_isa_signing_mode                   \
+          __ptrauth_isa_masking_mode)
+#define __ptrauth_objc_super_pointer                                           \
+  __ptrauth(ptrauth_key_objc_super_pointer, 1,                                 \
+            __ptrauth_super_discriminator __ptrauth_isa_signing_mode)
+#else
+#define __ptrauth_objc_isa_pointer
+#define __ptrauth_objc_isa_uintptr
+#define __ptrauth_objc_super_pointer
+#endif
 #define __ptrauth_cxx_vtable_pointer          \
   __ptrauth(ptrauth_key_cxx_vtable_pointer,0,0)
 #define __ptrauth_cxx_vtt_vtable_pointer      \
@@ -384,6 +442,9 @@ typedef __UINTPTR_TYPE__ ptrauth_generic_signature_t;
 #define __ptrauth_block_descriptor_pointer
 #define __ptrauth_objc_method_list_imp
 #define __ptrauth_objc_method_list_pointer
+#define __ptrauth_objc_isa_pointer
+#define __ptrauth_objc_isa_uintptr
+#define __ptrauth_objc_super_pointer
 #define __ptrauth_cxx_vtable_pointer
 #define __ptrauth_cxx_vtt_vtable_pointer
 #define __ptrauth_swift_heap_object_destructor

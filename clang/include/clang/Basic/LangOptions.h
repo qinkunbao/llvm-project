@@ -41,6 +41,8 @@ static constexpr llvm::StringLiteral PointerAuthenticationOptionSignAndStrip =
     "sign-and-strip";
 static constexpr llvm::StringLiteral PointerAuthenticationOptionSignAndAuth =
     "sign-and-auth";
+static constexpr llvm::StringLiteral PointerAuthenticationOptionIsaPointer =
+    "isa-pointer";
 static constexpr llvm::StringLiteral
     PointerAuthenticationOptionAuthenticatesNullValues =
         "authenticates-null-values";

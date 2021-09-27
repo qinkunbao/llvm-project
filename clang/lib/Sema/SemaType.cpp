@@ -8227,6 +8227,8 @@ static void HandlePtrAuthQualifier(ASTContext &Ctx, QualType &type,
 
   Optional<PointerAuthenticationMode> authenticationMode = None;
   SourceRange authenticationModeRange;
+  bool isIsaPointer = false;
+  SourceRange isaPointerRange;
   bool authenticatesNullValues = false;
   SourceRange authenticatesNullValuesRange;
 
@@ -8283,6 +8285,20 @@ static void HandlePtrAuthQualifier(ASTContext &Ctx, QualType &type,
         }
         authenticationMode = *explicitAuthenticationMode;
         authenticationModeRange = option.range;
+        continue;
+      }
+      if (option.option == PointerAuthenticationOptionIsaPointer) {
+        if (isIsaPointer) {
+          S.Diag(option.range.getBegin(),
+                 diag::err_ptrauth_repeated_authentication_option)
+              << 1 << option.range;
+          S.Diag(isaPointerRange.getBegin(),
+                 diag::note_ptrauth_previous_authentication_option)
+              << 1 << isaPointerRange;
+          isInvalid = true;
+        }
+        isIsaPointer = true;
+        isaPointerRange = option.range;
         continue;
       }
       if (option.option == PointerAuthenticationOptionAuthenticatesNullValues) {
@@ -8347,7 +8363,8 @@ static void HandlePtrAuthQualifier(ASTContext &Ctx, QualType &type,
   assert((!isAddressDiscriminatedArg || isAddressDiscriminated <= 1) &&
          "address discriminator arg should be either 0 or 1");
   PointerAuthQualifier qual(key, isAddressDiscriminated, extraDiscriminator,
-                            *authenticationMode, authenticatesNullValues);
+                            *authenticationMode, isIsaPointer,
+                            authenticatesNullValues);
   type = S.Context.getPointerAuthType(type, qual);
 }
 

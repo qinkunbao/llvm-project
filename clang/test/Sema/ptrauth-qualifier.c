@@ -36,14 +36,25 @@ int *__ptrauth(VALID_DATA_KEY, 1, 65535, "Foo") invalid13;       // expected-err
 int *__ptrauth(VALID_DATA_KEY, 1, 65535, "strip", 41) invalid14; // expected-error{{__ptrauth qualifier must take between 1 and 4 arguments}}
 int *__ptrauth(VALID_DATA_KEY, 1, 65535, "strip,sign-and-strip") invalid15;     // expected-error{{repeated __ptrauth authentication mode}}
                                                                                 // expected-note@-1{{previous __ptrauth authentication mode}}
-int *__ptrauth(VALID_DATA_KEY, 1, 65535, "strip,") invalid16;                   // expected-error{{empty __ptrauth authentication option}}
-int *__ptrauth(VALID_DATA_KEY, 1, 65535, ",") invalid17;                        // expected-error{{empty __ptrauth authentication option}}
+int *__ptrauth(VALID_DATA_KEY, 1, 65535, "isa-pointer,isa-pointer") invalid16;  // expected-error{{repeated __ptrauth authentication option}}
+                                                                                // expected-note@-1{{previous __ptrauth authentication option}}
+int *__ptrauth(VALID_DATA_KEY, 1, 65535, "isa-pointer, isa-pointer") invalid17; // expected-error{{repeated __ptrauth authentication option}}
+                                                                                // expected-note@-1{{previous __ptrauth authentication option}}
+int *__ptrauth(VALID_DATA_KEY, 1, 65535, "strip, , isa-pointer") invalid18;     // expected-error{{empty __ptrauth authentication option}}
+int *__ptrauth(VALID_DATA_KEY, 1, 65535, "strip,") invalid19;                   // expected-error{{empty __ptrauth authentication option}}
+int *__ptrauth(VALID_DATA_KEY, 1, 65535, ",") invalid20;                        // expected-error{{empty __ptrauth authentication option}}
                                                                                 // expected-error@-1{{empty __ptrauth authentication option}}
-int *__ptrauth(VALID_DATA_KEY, 1, 65535, ",,") invalid18;                       // expected-error{{empty __ptrauth authentication option}}
+int *__ptrauth(VALID_DATA_KEY, 1, 65535, ",,") invalid21;                       // expected-error{{empty __ptrauth authentication option}}
                                                                                 // expected-error@-1{{empty __ptrauth authentication option}}
                                                                                 // expected-error@-2{{empty __ptrauth authentication option}}
-void *__ptrauth(VALID_DATA_KEY, 1, 0, "authenticates-null-values") invalid19;    // expected-error{{globals with authenticated null values are currently unsupported}}
-void *__ptrauth(VALID_DATA_KEY, 1, 0, "authenticates-null-values") invalid20 = 0; // expected-error{{globals with authenticated null values are currently unsupported}}
+int *__ptrauth(VALID_DATA_KEY, 1, 65535, "strip isa-pointer") invalid22;        // expected-error{{missing comma between __ptrauth options}}
+int *__ptrauth(VALID_DATA_KEY, 1, 65535, "strip\nisa-pointer") invalid23;       // expected-error{{missing comma between __ptrauth options}}
+int *__ptrauth(VALID_DATA_KEY, 1, 65535, "strip"
+                                         " isa-pointer") invalid24;              // expected-error{{missing comma between __ptrauth options}}
+int *__ptrauth(VALID_DATA_KEY, 1, 0, "sign-and-strip,\n,isa-pointer") invalid25; // expected-error{{empty __ptrauth authentication option}}
+int *__ptrauth(VALID_DATA_KEY, 1, 0, "sign-and-strip,\t,isa-pointer") invalid26; // expected-error{{empty __ptrauth authentication option}}
+void *__ptrauth(VALID_DATA_KEY, 1, 0, "authenticates-null-values") invalid27;    // expected-error{{globals with authenticated null values are currently unsupported}}
+void *__ptrauth(VALID_DATA_KEY, 1, 0, "authenticates-null-values") invalid28 = 0; // expected-error{{globals with authenticated null values are currently unsupported}}
 
 int * __ptrauth(VALID_DATA_KEY) valid0;
 int * __ptrauth(VALID_DATA_KEY) *valid1;
@@ -59,9 +70,23 @@ int * __ptrauth(VALID_DATA_KEY, 1, 65535) valid10;
 int *__ptrauth(VALID_DATA_KEY, 1, 0, "strip") valid12;
 int *__ptrauth(VALID_DATA_KEY, 1, 0, "sign-and-strip") valid13;
 int *__ptrauth(VALID_DATA_KEY, 1, 0, "sign-and-auth") valid14;
-int *__ptrauth(VALID_DATA_KEY, 1, 0, " strip") valid15;
-int *__ptrauth(VALID_DATA_KEY, 1, 0, "strip ") valid16;
-int *__ptrauth(VALID_DATA_KEY, 1, 0, " strip ") valid17;
+int *__ptrauth(VALID_DATA_KEY, 1, 0, "isa-pointer") valid15;
+int *__ptrauth(VALID_DATA_KEY, 1, 0, "sign-and-auth,isa-pointer") valid15;
+int *__ptrauth(VALID_DATA_KEY, 1, 0, "sign-and-strip,isa-pointer") valid16;
+int *__ptrauth(VALID_DATA_KEY, 1, 0, "strip,isa-pointer") valid17;
+int *__ptrauth(VALID_DATA_KEY, 1, 0, " strip,isa-pointer") valid18;
+int *__ptrauth(VALID_DATA_KEY, 1, 0, "strip ,isa-pointer") valid19;
+int *__ptrauth(VALID_DATA_KEY, 1, 0, "strip, isa-pointer") valid20;
+int *__ptrauth(VALID_DATA_KEY, 1, 0, "strip,isa-pointer ") valid21;
+int *__ptrauth(VALID_DATA_KEY, 1, 0, " strip") valid22;
+int *__ptrauth(VALID_DATA_KEY, 1, 0, "strip ") valid23;
+int *__ptrauth(VALID_DATA_KEY, 1, 0, " strip ") valid24;
+int *__ptrauth(VALID_DATA_KEY, 1, 0, "sign-and-strip,"
+                                     "isa-pointer") valid25;
+int *__ptrauth(VALID_DATA_KEY, 1, 0, "sign-and-strip"
+                                     ",isa-pointer") valid26;
+int *__ptrauth(VALID_DATA_KEY, 1, 0, "sign-and-strip\n,isa-pointer") valid27;
+int *__ptrauth(VALID_DATA_KEY, 1, 0, "sign-and-strip\t,isa-pointer") valid28;
 
 extern intp redeclaration0; // expected-note {{previous declaration}}
 extern intp __ptrauth(VALID_DATA_KEY) redeclaration0; // expected-error{{redeclaration of 'redeclaration0' with a different type: '__ptrauth(2,0,0) intp' (aka 'int *__ptrauth(2,0,0)') vs 'intp' (aka 'int *')}}

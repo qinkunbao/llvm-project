@@ -40,6 +40,7 @@ config.has_plugins = @CLANG_PLUGIN_SUPPORT@
 config.clang_vendor_uti = "@CLANG_VENDOR_UTI@"
 config.llvm_external_lit = path(r"@LLVM_EXTERNAL_LIT@")
 config.standalone_build = @CLANG_BUILT_STANDALONE@
+config.clang_enable_ptrauth_objc_isa = @CLANG_ENABLE_PTRAUTH_OBJC_ISA@
 
 import lit.llvm
 lit.llvm.initialize(lit_config, config)

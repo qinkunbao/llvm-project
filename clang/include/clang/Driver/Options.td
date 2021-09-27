@@ -3102,6 +3102,12 @@ let Group = f_Group in {
       HelpText<"enable signing block descriptors">;
     def fptrauth_function_pointer_type_discrimination : Flag<["-"], "fptrauth-function-pointer-type-discrimination">,
       HelpText<"Enabling type discrimination on C function pointers">;
+    def fptrauth_objc_isa : Flag<["-"], "fptrauth-objc-isa">,
+      HelpText<"Enable signing and authentication of Objective-C object's 'isa' field">;
+    def fptrauth_objc_isa_mode : Joined<["-"], "fptrauth-objc-isa-mode=">,
+      HelpText<"Authentication mode for ObjC isa field. Full auth if unspecified">, Values<"strip,sign-and-strip,sign-and-auth">;
+    def fptrauth_objc_isa_masking : Flag<["-"], "fptrauth-objc-isa-masking">,
+      HelpText<"pre- and post-authentication masking mode of objective-c isa pointers">;
   }
   def fno_ptrauth_intrinsics : Flag<["-"], "fno-ptrauth-intrinsics">;
   def fno_ptrauth_calls : Flag<["-"], "fno-ptrauth-calls">;
@@ -3110,6 +3116,7 @@ let Group = f_Group in {
   def fno_ptrauth_vtable_pointer_address_discrimination : Flag<["-"], "fno-ptrauth-vtable-pointer-address-discrimination">;
   def fno_ptrauth_vtable_pointer_type_discrimination : Flag<["-"], "fno-ptrauth-vtable-pointer-type-discrimination">;
   def fno_ptrauth_soft : Flag<["-"], "fno-ptrauth-soft">;
+  def fno_ptrauth_objc_isa : Flag<["-"], "fno-ptrauth-objc-isa">;
   def fno_ptrauth_block_descriptor_pointers : Flag<["-"], "fno-ptrauth-block-descriptor-pointers">;
   def fno_ptrauth_function_pointer_type_discrimination : Flag<["-"], "fno-ptrauth-function-pointer-type-discrimination">;
 }

@@ -605,6 +605,8 @@ private:
   Optional<PointerAuthQualifier>
   computeVTPointerAuthentication(const CXXRecordDecl *thisClass);
 
+  llvm::Constant *ObjCIsaMaskAddress = nullptr;
+
 public:
   CodeGenModule(ASTContext &C, IntrusiveRefCntPtr<llvm::vfs::FileSystem> FS,
                 const HeaderSearchOptions &headersearchopts,
@@ -996,6 +998,8 @@ public:
                                       const Expr *Discriminator);
 
   CGPointerAuthInfo EmitPointerAuthInfo(const RecordDecl *RD);
+
+  llvm::Constant *getObjCIsaMaskAddress();
 
   /// Get the address of the RTTI descriptor for the given type.
   llvm::Constant *GetAddrOfRTTIDescriptor(QualType Ty, bool ForEH = false);
