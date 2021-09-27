@@ -46,8 +46,8 @@ CGCXXABI::ConvertMemberPointerType(const MemberPointerType *MPT) {
 
 CGCallee CGCXXABI::EmitLoadOfMemberFunctionPointer(
     CodeGenFunction &CGF, const Expr *E, Address This,
-    llvm::Value *&ThisPtrForCall,
-    llvm::Value *MemPtr, const MemberPointerType *MPT) {
+    llvm::Value *&ThisPtrForCall, llvm::Value *MemPtr,
+    const MemberPointerType *MPT) {
   ErrorUnsupportedABI(CGF, "calls through member pointers");
 
   const auto *RD =

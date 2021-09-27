@@ -23,6 +23,7 @@
 #include "CGVTables.h"
 #include "CodeGenFunction.h"
 #include "CodeGenModule.h"
+#include "ConstantEmitter.h"
 #include "TargetInfo.h"
 #include "clang/AST/Attr.h"
 #include "clang/AST/Mangle.h"
@@ -290,9 +291,11 @@ public:
   bool exportThunk() override { return true; }
 
   llvm::Value *performThisAdjustment(CodeGenFunction &CGF, Address This,
-                                     const ThisAdjustment &TA) override;
+                                     const CXXRecordDecl *UnadjustedThisClass,
+                                     const ThunkInfo &TI) override;
 
   llvm::Value *performReturnAdjustment(CodeGenFunction &CGF, Address Ret,
+                                       const CXXRecordDecl *UnadjustedRetClass,
                                        const ReturnAdjustment &RA) override;
 
   size_t getSrcArgforCopyCtor(const CXXConstructorDecl *,
@@ -1459,6 +1462,13 @@ llvm::Value *ItaniumCXXABI::EmitDynamicCastCall(
 
   // Emit the call to __dynamic_cast.
   llvm::Value *Value = ThisAddr.getRawPointer(CGF);
+  if (CGM.getCodeGenOpts().PointerAuth.CXXVTablePointers) {
+    llvm::Value *vtable =
+        CGF.GetVTablePtr(ThisAddr, CGM.Int8PtrTy, SrcDecl,
+                         CodeGenFunction::VTableAuthMode::MustTrap);
+    assert(vtable);
+    (void)vtable;
+  }
   Value = CGF.EmitCastToVoidPtr(Value);
 
   llvm::Value *args[] = {Value, SrcRTTI, DestRTTI, OffsetHint};
@@ -1841,8 +1851,17 @@ llvm::Value *ItaniumCXXABI::getVTableAddressPointInStructorWithVTT(
         CGF.VoidPtrTy, VTT, VirtualPointerIndex);
 
   // And load the address point from the VTT.
-  return CGF.Builder.CreateAlignedLoad(CGF.VoidPtrTy, VTT,
-                                       CGF.getPointerAlign());
+  llvm::Value *AP =
+      CGF.Builder.CreateAlignedLoad(CGF.VoidPtrTy, VTT, CGF.getPointerAlign());
+
+  if (auto &Schema = CGF.CGM.getCodeGenOpts().PointerAuth.CXXVTTVTablePointers) {
+    CGPointerAuthInfo PointerAuth = CGF.EmitPointerAuthInfo(Schema, VTT,
+                                                            GlobalDecl(),
+                                                            QualType());
+    AP = CGF.EmitPointerAuthAuth(PointerAuth, AP);
+  }
+
+  return AP;
 }
 
 llvm::GlobalVariable *ItaniumCXXABI::getAddrOfVTable(const CXXRecordDecl *RD,
@@ -1910,8 +1929,9 @@ CGCallee ItaniumCXXABI::getVirtualFunctionPointer(CodeGenFunction &CGF,
       This, TyPtr->getPointerTo(), MethodDecl->getParent());
 
   uint64_t VTableIndex = CGM.getItaniumVTableContext().getMethodVTableIndex(GD);
-  llvm::Value *VFunc;
-  if (CGF.ShouldEmitVTableTypeCheckedLoad(MethodDecl->getParent())) {
+  llvm::Value *VFunc, *VTableSlotPtr = nullptr;
+  auto &Schema = CGM.getCodeGenOpts().PointerAuth.CXXVirtualFunctionPointers;
+  if (!Schema && CGF.ShouldEmitVTableTypeCheckedLoad(MethodDecl->getParent())) {
     VFunc = CGF.EmitVTableTypeCheckedLoad(
         MethodDecl->getParent(), VTable, TyPtr,
         VTableIndex * CGM.getContext().getTargetInfo().getPointerWidth(0) / 8);
@@ -1928,7 +1948,7 @@ CGCallee ItaniumCXXABI::getVirtualFunctionPointer(CodeGenFunction &CGF,
     } else {
       VTable =
           CGF.Builder.CreateBitCast(VTable, TyPtr->getPointerTo());
-      llvm::Value *VTableSlotPtr = CGF.Builder.CreateConstInBoundsGEP1_64(
+      VTableSlotPtr = CGF.Builder.CreateConstInBoundsGEP1_64(
           TyPtr, VTable, VTableIndex, "vfn");
       VFuncLoad =
           CGF.Builder.CreateAlignedLoad(TyPtr, VTableSlotPtr,
@@ -1953,7 +1973,13 @@ CGCallee ItaniumCXXABI::getVirtualFunctionPointer(CodeGenFunction &CGF,
     VFunc = VFuncLoad;
   }
 
-  CGCallee Callee(GD, VFunc);
+  CGPointerAuthInfo PointerAuth;
+  if (Schema) {
+    assert(VTableSlotPtr && "virtual function pointer not set");
+    GD = CGM.getItaniumVTableContext().findOriginalMethod(GD.getCanonicalDecl());
+    PointerAuth = CGF.EmitPointerAuthInfo(Schema, VTableSlotPtr, GD, QualType());
+  }
+  CGCallee Callee(GD, VFunc, PointerAuth);
   return Callee;
 }
 
@@ -2049,6 +2075,7 @@ bool ItaniumCXXABI::canSpeculativelyEmitVTable(const CXXRecordDecl *RD) const {
 }
 static llvm::Value *performTypeAdjustment(CodeGenFunction &CGF,
                                           Address InitialPtr,
+                                          const CXXRecordDecl *UnadjustedClass,
                                           int64_t NonVirtualAdjustment,
                                           int64_t VirtualAdjustment,
                                           bool IsReturnAdjustment) {
@@ -2066,8 +2093,8 @@ static llvm::Value *performTypeAdjustment(CodeGenFunction &CGF,
   // Perform the virtual adjustment if we have one.
   llvm::Value *ResultPtr;
   if (VirtualAdjustment) {
-    Address VTablePtrPtr = CGF.Builder.CreateElementBitCast(V, CGF.Int8PtrTy);
-    llvm::Value *VTablePtr = CGF.Builder.CreateLoad(VTablePtrPtr);
+    llvm::Value *VTablePtr =
+        CGF.GetVTablePtr(V, CGF.Int8PtrTy, UnadjustedClass);
 
     llvm::Value *Offset;
     llvm::Value *OffsetPtr = CGF.Builder.CreateConstInBoundsGEP1_64(
@@ -2108,18 +2135,20 @@ static llvm::Value *performTypeAdjustment(CodeGenFunction &CGF,
   return CGF.Builder.CreateBitCast(ResultPtr, InitialPtr.getType());
 }
 
-llvm::Value *ItaniumCXXABI::performThisAdjustment(CodeGenFunction &CGF,
-                                                  Address This,
-                                                  const ThisAdjustment &TA) {
-  return performTypeAdjustment(CGF, This, TA.NonVirtual,
-                               TA.Virtual.Itanium.VCallOffsetOffset,
+llvm::Value *
+ItaniumCXXABI::performThisAdjustment(CodeGenFunction &CGF, Address This,
+                                     const CXXRecordDecl *UnadjustedClass,
+                                     const ThunkInfo &TI) {
+  return performTypeAdjustment(CGF, This, UnadjustedClass, TI.This.NonVirtual,
+                               TI.This.Virtual.Itanium.VCallOffsetOffset,
                                /*IsReturnAdjustment=*/false);
 }
 
 llvm::Value *
 ItaniumCXXABI::performReturnAdjustment(CodeGenFunction &CGF, Address Ret,
+                                       const CXXRecordDecl *UnadjustedClass,
                                        const ReturnAdjustment &RA) {
-  return performTypeAdjustment(CGF, Ret, RA.NonVirtual,
+  return performTypeAdjustment(CGF, Ret, UnadjustedClass, RA.NonVirtual,
                                RA.Virtual.Itanium.VBaseOffsetOffset,
                                /*IsReturnAdjustment=*/true);
 }
@@ -3575,6 +3604,10 @@ void ItaniumRTTIBuilder::BuildVTablePointer(const Type *Ty) {
                                                           Two);
   }
   VTable = llvm::ConstantExpr::getBitCast(VTable, CGM.Int8PtrTy);
+
+  if (auto &Schema = CGM.getCodeGenOpts().PointerAuth.CXXTypeInfoVTablePointer)
+    VTable = CGM.getConstantSignedPointer(VTable, Schema, nullptr, GlobalDecl(),
+                                          QualType(Ty, 0));
 
   Fields.push_back(VTable);
 }

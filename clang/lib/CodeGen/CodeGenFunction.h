@@ -2340,10 +2340,20 @@ public:
 
   void InitializeVTablePointers(const CXXRecordDecl *ClassDecl);
 
+  // VTableTrapMode - whether we guarantee that loading the
+  // vtable is guaranteed to trap on authentication failure,
+  // even if the resulting vtable pointer is unused.
+  enum class VTableAuthMode {
+    Authenticate,
+    MustTrap,
+    UnsafeUbsanStrip // Should only be used for Vptr UBSan check
+  };
   /// GetVTablePtr - Return the Value of the vtable pointer member pointed
   /// to by This.
-  llvm::Value *GetVTablePtr(Address This, llvm::Type *VTableTy,
-                            const CXXRecordDecl *VTableClass);
+  llvm::Value *
+  GetVTablePtr(Address This, llvm::Type *VTableTy,
+               const CXXRecordDecl *VTableClass,
+               VTableAuthMode authMode = VTableAuthMode::Authenticate);
 
   enum CFITypeCheckKind {
     CFITCK_VCall,

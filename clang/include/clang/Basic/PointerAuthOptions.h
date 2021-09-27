@@ -180,6 +180,25 @@ struct PointerAuthOptions {
 
   /// The ABI for a reference to an Objective-C method list in _class_ro_t.
   PointerAuthSchema ObjCMethodListPointer;
+
+  /// The ABI for C++ virtual table pointers (the pointer to the table
+  /// itself) as installed in an actual class instance.
+  PointerAuthSchema CXXVTablePointers;
+
+  /// TypeInfo has external ABI requirements and is emitted without
+  /// actually having parsed the libcxx definition, so we can't simply
+  /// perform a look up. The settings for this should match the exact
+  /// specification in type_info.h
+  PointerAuthSchema CXXTypeInfoVTablePointer;
+
+  /// The ABI for C++ virtual table pointers as installed in a VTT.
+  PointerAuthSchema CXXVTTVTablePointers;
+
+  /// The ABI for most C++ virtual function pointers, i.e. v-table entries.
+  PointerAuthSchema CXXVirtualFunctionPointers;
+
+  /// The ABI for variadic C++ virtual function pointers.
+  PointerAuthSchema CXXVirtualVariadicFunctionPointers;
 };
 
 }  // end namespace clang

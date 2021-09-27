@@ -658,6 +658,114 @@ CodeGenModule::getConstantSignedPointer(llvm::Constant *pointer,
                                   storageAddress, otherDiscriminator);
 }
 
+Optional<PointerAuthQualifier>
+CodeGenModule::computeVTPointerAuthentication(const CXXRecordDecl *thisClass) {
+  auto defaultAuthentication = getCodeGenOpts().PointerAuth.CXXVTablePointers;
+  if (!defaultAuthentication)
+    return None;
+  const CXXRecordDecl *primaryBase =
+      Context.baseForVTableAuthentication(thisClass);
+
+  unsigned key = defaultAuthentication.getKey();
+  bool addressDiscriminated = defaultAuthentication.isAddressDiscriminated();
+  auto defaultDiscrimination = defaultAuthentication.getOtherDiscrimination();
+  unsigned typeBasedDiscriminator =
+      Context.getPointerAuthVTablePointerDiscriminator(primaryBase);
+  unsigned discriminator;
+  if (defaultDiscrimination == PointerAuthSchema::Discrimination::Type) {
+    discriminator = typeBasedDiscriminator;
+  } else if (defaultDiscrimination ==
+             PointerAuthSchema::Discrimination::Constant) {
+    discriminator = defaultAuthentication.getConstantDiscrimination();
+  } else {
+    assert(defaultDiscrimination == PointerAuthSchema::Discrimination::None);
+    discriminator = 0;
+  }
+  if (auto explicitAuthentication =
+          primaryBase->getAttr<VTablePointerAuthenticationAttr>()) {
+    auto explicitKey = explicitAuthentication->getKey();
+    auto explicitAddressDiscrimination =
+        explicitAuthentication->getAddressDiscrimination();
+    auto explicitDiscriminator =
+        explicitAuthentication->getExtraDiscrimination();
+    if (explicitKey == VTablePointerAuthenticationAttr::NoKey) {
+      return None;
+    }
+    if (explicitKey != VTablePointerAuthenticationAttr::DefaultKey) {
+      if (explicitKey == VTablePointerAuthenticationAttr::ProcessIndependent)
+        key = (unsigned)PointerAuthSchema::ARM8_3Key::ASDA;
+      else {
+        assert(explicitKey ==
+               VTablePointerAuthenticationAttr::ProcessDependent);
+        key = (unsigned)PointerAuthSchema::ARM8_3Key::ASDB;
+      }
+    }
+
+    if (explicitAddressDiscrimination !=
+        VTablePointerAuthenticationAttr::DefaultAddressDiscrimination) {
+      addressDiscriminated =
+          explicitAddressDiscrimination ==
+          VTablePointerAuthenticationAttr::AddressDiscrimination;
+    }
+
+    if (explicitDiscriminator ==
+        VTablePointerAuthenticationAttr::TypeDiscrimination) {
+      discriminator = typeBasedDiscriminator;
+    } else if (explicitDiscriminator ==
+               VTablePointerAuthenticationAttr::CustomDiscrimination) {
+      discriminator = explicitAuthentication->getCustomDiscriminationValue();
+    } else if (explicitDiscriminator == VTablePointerAuthenticationAttr::NoExtraDiscrimination) {
+      discriminator = 0;
+    }
+  }
+  return PointerAuthQualifier(key, addressDiscriminated, discriminator,
+                              PointerAuthenticationMode::SignAndAuth,
+                              /* authenticatesNullValues */ false);
+}
+
+Optional<PointerAuthQualifier>
+CodeGenModule::getVTablePointerAuthentication(const CXXRecordDecl *record) {
+  if (!record->getDefinition() || !record->isPolymorphic())
+    return None;
+
+  auto existing = VTablePtrAuthInfos.find(record);
+  Optional<PointerAuthQualifier> authentication;
+  if (existing != VTablePtrAuthInfos.end()) {
+    authentication = existing->getSecond();
+  } else {
+    authentication = computeVTPointerAuthentication(record);
+    VTablePtrAuthInfos.insert(std::make_pair(record, authentication));
+  }
+  return authentication;
+}
+
+Optional<CGPointerAuthInfo>
+CodeGenModule::getVTablePointerAuthInfo(CodeGenFunction *CGF,
+                                        const CXXRecordDecl *record,
+                                        llvm::Value *storageAddress) {
+  auto authentication = getVTablePointerAuthentication(record);
+  if (!authentication)
+    return None;
+
+  llvm::Value *discriminator = nullptr;
+  if (auto extraDiscriminator = authentication->getExtraDiscriminator()) {
+    discriminator = llvm::ConstantInt::get(IntPtrTy, extraDiscriminator);
+  }
+  if (authentication->isAddressDiscriminated()) {
+    assert(storageAddress &&
+           "address not provided for address-discriminated schema");
+    if (discriminator)
+      discriminator =
+          CGF->EmitPointerAuthBlendDiscriminator(storageAddress, discriminator);
+    else
+      discriminator = CGF->Builder.CreatePtrToInt(storageAddress, IntPtrTy);
+  }
+
+  return CGPointerAuthInfo(authentication->getKey(),
+                           PointerAuthenticationMode::SignAndAuth,
+                           /* authenticatesNullValues */ false, discriminator);
+}
+
 llvm::Constant *
 CodeGen::getConstantSignedPointer(CodeGenModule &CGM,
                                   llvm::Constant *pointer, unsigned key,

@@ -26,7 +26,7 @@
 // RUN: %clang -mkernel -target arm64e-apple-ios -c %s -### 2>&1 | FileCheck %s --check-prefix DEFAULT-KERN
 // RUN: %clang -fapple-kext -target arm64e-apple-ios -c %s -### 2>&1 | FileCheck %s --check-prefix DEFAULT-KERN
 // DEFAULT: "-fptrauth-returns" "-fptrauth-intrinsics" "-fptrauth-calls" "-fptrauth-auth-traps" "-target-cpu" "apple-a12"{{.*}}
-// DEFAULT-KERN: "-fptrauth-returns" "-fptrauth-intrinsics" "-fptrauth-calls" "-fptrauth-auth-traps" "-fptrauth-block-descriptor-pointers" "-fptrauth-function-pointer-type-discrimination" "-target-cpu" "apple-a12"{{.*}}
+// DEFAULT-KERN: "-fptrauth-returns" "-fptrauth-intrinsics" "-fptrauth-calls" "-fptrauth-auth-traps" "-fptrauth-block-descriptor-pointers" "-fptrauth-vtable-pointer-address-discrimination" "-fptrauth-vtable-pointer-type-discrimination" "-fptrauth-function-pointer-type-discrimination" "-target-cpu" "apple-a12"{{.*}}
 
 // RUN: %clang -target arm64e-apple-ios -fno-ptrauth-calls -c %s -### 2>&1 | FileCheck %s --check-prefix DEFAULT-NOCALL
 // RUN: %clang -mkernel -target arm64e-apple-ios -fno-ptrauth-calls -c %s -### 2>&1 | FileCheck %s --check-prefix DEFAULT-KERN-NOCALL
@@ -34,7 +34,7 @@
 // DEFAULT-NOCALL-NOT: "-fptrauth-calls"
 // DEFAULT-KERN-NOCALL-NOT: "-fptrauth-calls"
 // DEFAULT-NOCALL: "-fptrauth-returns" "-fptrauth-intrinsics" "-fptrauth-auth-traps" "-target-cpu" "apple-a12"
-// DEFAULT-KERN-NOCALL: "-fptrauth-returns" "-fptrauth-intrinsics" "-fptrauth-auth-traps" "-fptrauth-block-descriptor-pointers" "-fptrauth-function-pointer-type-discrimination" "-target-cpu" "apple-a12"{{.*}}
+// DEFAULT-KERN-NOCALL: "-fptrauth-returns" "-fptrauth-intrinsics" "-fptrauth-auth-traps" "-fptrauth-block-descriptor-pointers" "-fptrauth-vtable-pointer-address-discrimination" "-fptrauth-vtable-pointer-type-discrimination" "-fptrauth-function-pointer-type-discrimination" "-target-cpu" "apple-a12"{{.*}}
 
 
 // RUN: %clang -target arm64e-apple-ios -fno-ptrauth-returns -c %s -### 2>&1 | FileCheck %s --check-prefix NORET

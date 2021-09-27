@@ -56,6 +56,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/TinyPtrVector.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/ADT/iterator_range.h"
@@ -1260,6 +1261,8 @@ public:
 
   /// Return the "other" type-specific discriminator for the given type.
   uint16_t getPointerAuthTypeDiscriminator(QualType T);
+  uint16_t
+  getPointerAuthVTablePointerDiscriminator(const CXXRecordDecl *record);
 
   bool typeContainsAuthenticatedNull(QualType) const;
   bool typeContainsAuthenticatedNull(const Type *) const;
@@ -3388,12 +3391,20 @@ public:
   /// Whether a C++ static variable or CUDA/HIP kernel should be externalized.
   bool shouldExternalize(const Decl *D) const;
 
+  /// Resolve the root record to be used to derive the vtable pointer
+  /// authentication policy for the specified record.
+  const CXXRecordDecl *baseForVTableAuthentication(const CXXRecordDecl *);
+  bool useAbbreviatedThunkName(GlobalDecl virtualMethodDecl,
+                               StringRef mangledName);
+
   StringRef getCUIDHash() const;
 
 private:
   /// All OMPTraitInfo objects live in this collection, one per
   /// `pragma omp [begin] declare variant` directive.
   SmallVector<std::unique_ptr<OMPTraitInfo>, 4> OMPTraitInfoVector;
+
+  llvm::DenseMap<GlobalDecl, llvm::StringSet<>> thunksToBeAbbreviated;
 };
 
 /// Insertion operator for diagnostics.

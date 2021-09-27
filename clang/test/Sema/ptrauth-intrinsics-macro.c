@@ -53,6 +53,10 @@ void test(int *dp, int (*fp)(int), int value) {
   (void)p6;
   void * __ptrauth_objc_method_list_imp p7;
   (void)p7;
+  void * __ptrauth_cxx_vtable_pointer p8;
+  (void)p8;
+  void * __ptrauth_cxx_vtt_vtable_pointer p9;
+  (void)p9;
   void * __ptrauth_swift_heap_object_destructor p10;
   (void)p10;
   void * __ptrauth_swift_function_pointer(VALID_CODE_KEY) p11;

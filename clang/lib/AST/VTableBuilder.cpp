@@ -1164,8 +1164,11 @@ void ItaniumVTableBuilder::ComputeThisAdjustments() {
       //
       // Do not set ThunkInfo::Method if Idx is already in VTableThunks. This
       // can happen when covariant return adjustment is required too.
-      if (!VTableThunks.count(Idx))
-        VTableThunks[Idx].Method = VTables.findOriginalMethodInMap(MD);
+      if (!VTableThunks.count(Idx)) {
+        auto method = VTables.findOriginalMethodInMap(MD);
+        VTableThunks[Idx].Method = method;
+        VTableThunks[Idx].ThisType = method->getThisType().getTypePtr();
+      }
       VTableThunks[Idx].This = ThisAdjustment;
     };
 
@@ -1570,8 +1573,9 @@ void ItaniumVTableBuilder::AddMethods(
               ComputeReturnAdjustment(ReturnAdjustmentOffset);
 
             // This is a virtual thunk for the most derived class, add it.
-            AddThunk(Overrider.Method,
-                     ThunkInfo(ThisAdjustment, ReturnAdjustment));
+            AddThunk(
+                Overrider.Method,
+                ThunkInfo(ThisAdjustment, ReturnAdjustment, OverriddenMD->getThisType().getTypePtr()));
           }
         }
 
@@ -1641,8 +1645,10 @@ void ItaniumVTableBuilder::AddMethods(
     // vtable entry. We need to record the method because we cannot call
     // findOriginalMethod to find the method that created the entry if the
     // method in the entry requires adjustment.
-    if (!ReturnAdjustment.isEmpty())
+    if (!ReturnAdjustment.isEmpty()) {
       VTableThunks[Components.size()].Method = MD;
+      VTableThunks[Components.size()].ThisType = MD->getThisType().getTypePtr();
+    }
 
     AddMethod(Overrider.Method, ReturnAdjustment);
   }
@@ -3178,9 +3184,10 @@ void VFTableBuilder::AddMethods(BaseSubobject Base, unsigned BaseDepth,
                                     ReturnAdjustmentOffset.VirtualBase);
       }
     }
-
+    auto thisType = (OverriddenMD ? OverriddenMD : MD)->getThisType().getTypePtr();
     AddMethod(FinalOverriderMD,
               ThunkInfo(ThisAdjustmentOffset, ReturnAdjustment,
+                        thisType,
                         ForceReturnAdjustmentMangling ? MD : nullptr));
   }
 }

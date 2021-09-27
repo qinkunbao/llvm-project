@@ -1180,6 +1180,16 @@ void DarwinClang::addClangTargetOptions(
         CC1Args.push_back("-fptrauth-block-descriptor-pointers");
 
       if (!DriverArgs.hasArg(
+          options::OPT_fptrauth_vtable_pointer_address_discrimination,
+          options::OPT_fno_ptrauth_vtable_pointer_address_discrimination))
+        CC1Args.push_back("-fptrauth-vtable-pointer-address-discrimination");
+
+      if (!DriverArgs.hasArg(
+          options::OPT_fptrauth_vtable_pointer_type_discrimination,
+          options::OPT_fno_ptrauth_vtable_pointer_type_discrimination))
+        CC1Args.push_back("-fptrauth-vtable-pointer-type-discrimination");
+
+      if (!DriverArgs.hasArg(
           options::OPT_fptrauth_function_pointer_type_discrimination,
           options::OPT_fno_ptrauth_function_pointer_type_discrimination))
         CC1Args.push_back("-fptrauth-function-pointer-type-discrimination");

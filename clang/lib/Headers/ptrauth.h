@@ -65,6 +65,10 @@ typedef enum {
      representations of values of block-pointer type) are not signed. */
   ptrauth_key_block_function = ptrauth_key_asia,
 
+  /* The key used to sign C++ v-table pointers.
+     The extra data is always 0. */
+  ptrauth_key_cxx_vtable_pointer = ptrauth_key_asda,
+
   /* The key used to sign metadata pointers to Objective-C method-lists. */
   ptrauth_key_method_list_pointer = ptrauth_key_asda,
 
@@ -329,6 +333,10 @@ typedef __UINTPTR_TYPE__ ptrauth_generic_signature_t;
 #else
 #define __ptrauth_objc_method_list_pointer
 #endif
+#define __ptrauth_cxx_vtable_pointer          \
+  __ptrauth(ptrauth_key_cxx_vtable_pointer,0,0)
+#define __ptrauth_cxx_vtt_vtable_pointer      \
+  __ptrauth(ptrauth_key_cxx_vtable_pointer,0,0)
 #define __ptrauth_swift_heap_object_destructor \
   __ptrauth(ptrauth_key_function_pointer,1,0xbbbf)
 
@@ -344,6 +352,12 @@ typedef __UINTPTR_TYPE__ ptrauth_generic_signature_t;
   __ptrauth(ptrauth_key_function_pointer,1,__declkey)
 #define __ptrauth_swift_value_witness_function_pointer(__key) \
   __ptrauth(ptrauth_key_function_pointer,1,__key)
+
+/* C++ vtable pointer signing class attribute */
+#define ptrauth_cxx_vtable_pointer(key, address_discrimination,                \
+                                   extra_discrimination...)                    \
+  [[clang::ptrauth_vtable_pointer(key, address_discrimination,                 \
+                                  extra_discrimination)]]
 
 #else
 
@@ -370,12 +384,16 @@ typedef __UINTPTR_TYPE__ ptrauth_generic_signature_t;
 #define __ptrauth_block_descriptor_pointer
 #define __ptrauth_objc_method_list_imp
 #define __ptrauth_objc_method_list_pointer
+#define __ptrauth_cxx_vtable_pointer
+#define __ptrauth_cxx_vtt_vtable_pointer
 #define __ptrauth_swift_heap_object_destructor
 #define __ptrauth_cxx_virtual_function_pointer(__declkey)
 #define __ptrauth_swift_function_pointer(__typekey)
 #define __ptrauth_swift_class_method_pointer(__declkey)
 #define __ptrauth_swift_protocol_witness_function_pointer(__declkey)
 #define __ptrauth_swift_value_witness_function_pointer(__key)
+#define ptrauth_cxx_vtable_pointer(key, address_discrimination,                \
+                                   extra_discrimination...)
 
 #endif /* __has_feature(ptrauth_intrinsics) */
 
