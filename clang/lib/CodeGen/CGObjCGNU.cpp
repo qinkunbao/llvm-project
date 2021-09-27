@@ -2629,7 +2629,8 @@ CGObjCGNU::GenerateMessageSendSuper(CodeGenFunction &CGF,
           llvm::Type::getInt1Ty(VMContext), IsClassMessage))};
   llvm::MDNode *node = llvm::MDNode::get(VMContext, impMD);
 
-  CGCallee callee(CGCalleeInfo(), imp);
+  CGPointerAuthInfo pointerAuth; // TODO
+  CGCallee callee(CGCalleeInfo(), imp, pointerAuth);
 
   llvm::CallBase *call;
   RValue msgRet = CGF.EmitCall(MSI.CallInfo, callee, Return, ActualArgs, &call);
@@ -2810,7 +2811,8 @@ CGObjCGNU::GenerateMessageSend(CodeGenFunction &CGF,
   imp = EnforceType(Builder, imp, MSI.MessengerType);
 
   llvm::CallBase *call;
-  CGCallee callee(CGCalleeInfo(), imp);
+  CGPointerAuthInfo pointerAuth; // TODO
+  CGCallee callee(CGCalleeInfo(), imp, pointerAuth);
   RValue msgRet = CGF.EmitCall(MSI.CallInfo, callee, Return, ActualArgs, &call);
   call->setMetadata(msgSendMDKind, node);
 
