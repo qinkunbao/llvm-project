@@ -62,12 +62,26 @@ template <typename T> T jitTargetAddressToFunction(JITTargetAddress Addr) {
   static_assert(std::is_pointer<T>::value &&
                     std::is_function<std::remove_pointer_t<T>>::value,
                 "T must be a function pointer type");
-  return jitTargetAddressToPointer<T>(Addr);
+  auto VoidPtrResult = jitTargetAddressToPointer<void*>(Addr);
+
+  // If this process uses ptrauth then sign the pointer.
+#if __has_feature(ptrauth_calls)
+  VoidPtrResult =
+    __builtin_ptrauth_sign_unauthenticated(VoidPtrResult, 0, 0);
+#endif
+
+  return reinterpret_cast<T>(VoidPtrResult);
 }
 
 /// Convert a pointer to a JITTargetAddress.
 template <typename T> JITTargetAddress pointerToJITTargetAddress(T *Ptr) {
-  return static_cast<JITTargetAddress>(reinterpret_cast<uintptr_t>(Ptr));
+  // If this process uses ptrauth then sign the pointer.
+  const void *Tmp = reinterpret_cast<const void*>(Ptr);
+#if __has_feature(ptrauth_calls)
+  Tmp = __builtin_ptrauth_strip(Tmp, 0);
+#endif
+
+  return static_cast<JITTargetAddress>(reinterpret_cast<uintptr_t>(Tmp));
 }
 
 /// Flags for symbols in the JIT.

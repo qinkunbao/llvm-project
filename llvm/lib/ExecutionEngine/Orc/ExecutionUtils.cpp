@@ -258,6 +258,12 @@ Error DynamicLibrarySearchGenerator::tryToGenerate(
     std::string Tmp((*Name).data() + HasGlobalPrefix,
                     (*Name).size() - HasGlobalPrefix);
     if (void *Addr = Dylib.getAddressOfSymbol(Tmp.c_str())) {
+
+      // If this process uses ptrauth then strip the pointer.
+#if __has_feature(ptrauth_calls)
+      Addr = __builtin_ptrauth_strip(Addr, 0);
+#endif
+
       NewSymbols[Name] = JITEvaluatedSymbol(
           static_cast<JITTargetAddress>(reinterpret_cast<uintptr_t>(Addr)),
           JITSymbolFlags::Exported);

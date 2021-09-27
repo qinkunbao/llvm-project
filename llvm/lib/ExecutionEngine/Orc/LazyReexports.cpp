@@ -113,6 +113,11 @@ createLocalLazyCallThroughManager(const Triple &T, ExecutionSession &ES,
 
   case Triple::aarch64:
   case Triple::aarch64_32:
+    // arm64e doesn't support lazy call.
+    if (T.isArm64e())
+      return make_error<StringError>(
+          std::string("No callback manager available for ") + T.str(),
+          inconvertibleErrorCode());
     return LocalLazyCallThroughManager::Create<OrcAArch64>(ES,
                                                            ErrorHandlerAddr);
 

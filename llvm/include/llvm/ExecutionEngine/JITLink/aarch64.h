@@ -26,6 +26,7 @@ enum EdgeKind_aarch64 : Edge::Kind {
   Pointer32,
   Pointer64,
   Pointer64Anon,
+  Pointer64Authenticated,
   Page21,
   PageOffset12,
   MoveWide16,

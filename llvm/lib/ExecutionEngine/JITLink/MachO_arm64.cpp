@@ -26,7 +26,7 @@ namespace {
 class MachOLinkGraphBuilder_arm64 : public MachOLinkGraphBuilder {
 public:
   MachOLinkGraphBuilder_arm64(const object::MachOObjectFile &Obj)
-      : MachOLinkGraphBuilder(Obj, Triple("arm64-apple-darwin"),
+      : MachOLinkGraphBuilder(Obj, getObjectTriple(Obj),
                               aarch64::getEdgeKindName),
         NumSymbols(Obj.getSymtabLoadCommand().nsyms) {}
 
@@ -36,6 +36,7 @@ private:
     MachOPointer32,
     MachOPointer64,
     MachOPointer64Anon,
+    MachOPointer64Authenticated,
     MachOPage21,
     MachOPageOffset12,
     MachOGOTPage21,
@@ -50,6 +51,18 @@ private:
     MachONegDelta32,
     MachONegDelta64,
   };
+
+
+  static Triple getObjectTriple(const object::MachOObjectFile &Obj) {
+    // Get the CPU sub-type from the header.
+    // jitLink_MachO should already have validated that the buffer is big enough
+    // to cover a mach_header64 so this is safe.
+    uint32_t CPUSubType =
+      *(const support::ulittle32_t *)(Obj.getData().data() + 8);
+    if (CPUSubType == MachO::CPU_SUBTYPE_ARM64E)
+      return Triple("arm64e-apple-darwin");
+    return Triple("arm64-apple-darwin");
+  }
 
   static Expected<MachOARM64RelocationKind>
   getRelocationKind(const MachO::relocation_info &RI) {
@@ -108,6 +121,10 @@ private:
     case MachO::ARM64_RELOC_TLVP_LOAD_PAGEOFF12:
       if (!RI.r_pcrel && RI.r_extern && RI.r_length == 2)
         return MachOTLVPageOffset12;
+      break;
+    case MachO::ARM64_RELOC_AUTHENTICATED_POINTER:
+      if (!RI.r_pcrel && RI.r_extern && RI.r_length == 3)
+        return MachOPointer64Authenticated;
       break;
     }
 
@@ -344,12 +361,14 @@ private:
           Kind = aarch64::Pointer32;
           break;
         case MachOPointer64:
+        case MachOPointer64Authenticated:
           if (auto TargetSymbolOrErr = findSymbolByIndex(RI.r_symbolnum))
             TargetSymbol = TargetSymbolOrErr->GraphSymbol;
           else
             return TargetSymbolOrErr.takeError();
           Addend = *(const ulittle64_t *)FixupContent;
-          Kind = aarch64::Pointer64;
+          Kind = *MachORelocKind == MachOPointer64 ?
+            aarch64::Pointer64 : aarch64::Pointer64Authenticated;
           break;
         case MachOPointer64Anon: {
           orc::ExecutorAddr TargetAddress(*(const ulittle64_t *)FixupContent);
@@ -471,6 +490,8 @@ private:
       return "MachOPointer64";
     case MachOPointer64Anon:
       return "MachOPointer64Anon";
+    case MachOPointer64Authenticated:
+      return "MachOPointer64Authenticated";
     case MachOPage21:
       return "MachOPage21";
     case MachOPageOffset12:
@@ -536,6 +557,111 @@ private:
   uint64_t NullValue = 0;
 };
 
+#if __has_feature(ptrauth_calls)
+Error applyPointer64AuthenticatedFixupsInProcess(LinkGraph &G) {
+  LLVM_DEBUG({
+      dbgs() << "Applying Pointer64Authenticated fixups\n";
+  });
+
+  for (auto *B : G.blocks()) {
+    for (auto EI = B->edges().begin(); EI != B->edges().end();) {
+      if (EI->getKind() == Pointer64Authenticated) {
+
+        auto &E = *EI;
+        LLVM_DEBUG({
+            dbgs() << "  "
+                   << formatv("{0:x16}", B->getAddress() + E.getOffset())
+                   << ": addend = "
+                   << formatv("{0:x16}", (uint64_t)E.getAddend()) << "\n";
+          });
+
+        uint64_t EncodedInfo = E.getAddend();
+        int32_t RealAddend = (uint32_t)(EncodedInfo & 0xffffffff);
+        uint32_t InitialDiscriminator = (EncodedInfo >> 32) & 0xffff;
+        bool AddressDiversify = (EncodedInfo >> 48) & 0x1;
+        uint32_t Key = (EncodedInfo >> 49) & 0x3;
+        uint32_t HighBits = EncodedInfo >> 51;
+
+        if (HighBits != 0x1000)
+          return make_error<JITLinkError>("Pointer64Auth edge has invalid "
+                                          "info: " +
+                                          formatv("{0:x16}", EncodedInfo));
+
+        LLVM_DEBUG({
+            dbgs() << "    Addend: "
+                   << formatv("{0:x8}", (uint32_t)RealAddend)
+                   << "\n    Discriminator: "
+                   << formatv("{0:x4}", InitialDiscriminator)
+                   << "\n    Address diversified: "
+                   << (AddressDiversify ? "yes" : "no")
+                   << "\n    Key: ";
+            switch (Key) {
+              case 0: dbgs() << "IA\n"; break;
+              case 1: dbgs() << "IB\n"; break;
+              case 2: dbgs() << "DA\n"; break;
+              case 3: dbgs() << "DB\n"; break;
+            }
+          });
+
+        uint64_t FixupAddr = B->getAddress() + E.getOffset();
+        char *FixupLoc = jitTargetAddressToPointer<char*>(FixupAddr);
+        uint64_t TargetAddr = E.getTarget().getAddress() + RealAddend;
+
+        if (TargetAddr) {
+          uint64_t FinalDiscriminator;
+          if (AddressDiversify) {
+            if (InitialDiscriminator)
+              FinalDiscriminator =
+                  __builtin_ptrauth_blend_discriminator(FixupLoc,
+                                                        InitialDiscriminator);
+            else
+              FinalDiscriminator = FixupAddr;
+          } else
+            FinalDiscriminator = InitialDiscriminator;
+
+          void *AuthPtr;
+          // We need a switch here since the Key argument to the builtin has to
+          // be a constant.
+          switch (Key) {
+            case 0: AuthPtr =
+                __builtin_ptrauth_sign_unauthenticated(
+                  jitTargetAddressToPointer<void*>(TargetAddr), 0,
+                 FinalDiscriminator);
+              break;
+            case 1: AuthPtr =
+                __builtin_ptrauth_sign_unauthenticated(
+                  jitTargetAddressToPointer<void*>(TargetAddr), 1,
+                 FinalDiscriminator);
+              break;
+            case 2: AuthPtr =
+                __builtin_ptrauth_sign_unauthenticated(
+                  jitTargetAddressToPointer<void*>(TargetAddr), 2,
+                 FinalDiscriminator);
+              break;
+            case 3: AuthPtr =
+                __builtin_ptrauth_sign_unauthenticated(
+                  jitTargetAddressToPointer<void*>(TargetAddr), 3,
+                 FinalDiscriminator);
+              break;
+          }
+
+          *(support::ulittle64_t*)FixupLoc = pointerToJITTargetAddress(AuthPtr);
+        } else {
+          // Don't sign null pointers.
+          *(support::ulittle64_t*)FixupLoc = 0;
+        }
+
+        // Remove this edge -- it no longer needs to be fixed up.
+        EI = B->removeEdge(EI);
+      } else
+        ++EI;
+    }
+  }
+
+  return Error::success();
+}
+#endif
+
 Expected<std::unique_ptr<LinkGraph>>
 createLinkGraphFromMachOObject_arm64(MemoryBufferRef ObjectBuffer) {
   auto MachOObj = object::ObjectFile::createMachOObjectFile(ObjectBuffer);
@@ -546,8 +672,18 @@ createLinkGraphFromMachOObject_arm64(MemoryBufferRef ObjectBuffer) {
 
 void link_MachO_arm64(std::unique_ptr<LinkGraph> G,
                       std::unique_ptr<JITLinkContext> Ctx) {
-
   PassConfiguration Config;
+
+  if (G->getTargetTriple().isArm64e()) {
+ #if __has_feature(ptrauth_calls)
+     Config.PreFixupPasses.push_back(
+       applyPointer64AuthenticatedFixupsInProcess);
+ #else
+     Ctx->notifyFailed(make_error<JITLinkError>(
+       "arm64e object but JITLink built without PAC support"));
+     return;
+ #endif
+   }
 
   if (Ctx->shouldAddDefaultTargetPasses(G->getTargetTriple())) {
     // Add a mark-live pass.
