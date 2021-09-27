@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "AArch64CallLowering.h"
+#include "AArch64GlobalISelUtils.h"
 #include "AArch64ISelLowering.h"
 #include "AArch64MachineFunctionInfo.h"
 #include "AArch64Subtarget.h"
@@ -49,6 +50,7 @@
 #define DEBUG_TYPE "aarch64-call-lowering"
 
 using namespace llvm;
+using namespace AArch64GISelUtils;
 
 AArch64CallLowering::AArch64CallLowering(const AArch64TargetLowering &TLI)
   : CallLowering(&TLI) {}
@@ -897,19 +899,32 @@ bool AArch64CallLowering::isEligibleForTailCallOptimization(
   return true;
 }
 
-static unsigned getCallOpcode(const MachineFunction &CallerF, bool IsIndirect,
-                              bool IsTailCall) {
-  if (!IsTailCall)
-    return IsIndirect ? getBLRCallOpcode(CallerF) : (unsigned)AArch64::BL;
+static unsigned
+getCallOpcode(const MachineFunction &CallerF, bool IsIndirect, bool IsTailCall,
+              llvm::Optional<CallLowering::PointerAuthInfo> &PAI,
+              MachineRegisterInfo &MRI) {
+  if (!IsTailCall) {
+    if (!PAI)
+      return IsIndirect ? getBLRCallOpcode(CallerF) : (unsigned)AArch64::BL;
+
+    assert(IsIndirect && "authenticated direct call");
+    assert(PAI->Key == 0 || PAI->Key == 1 && "invalid ptrauth key");
+    return AArch64::BLRA;
+  }
 
   if (!IsIndirect)
     return AArch64::TCRETURNdi;
 
   // When BTI is enabled, we need to use TCRETURNriBTI to make sure that we use
   // x16 or x17.
-  if (CallerF.getInfo<AArch64FunctionInfo>()->branchTargetEnforcement())
+  if (CallerF.getInfo<AArch64FunctionInfo>()->branchTargetEnforcement()) {
+    if (PAI)
+      return AArch64::AUTH_TCRETURN_BTI;
     return AArch64::TCRETURNriBTI;
+  }
 
+  if (PAI)
+    return AArch64::AUTH_TCRETURN;
   return AArch64::TCRETURNri;
 }
 
@@ -945,14 +960,6 @@ bool AArch64CallLowering::lowerTailCall(
                    Info.CallConv != CallingConv::Tail &&
                    Info.CallConv != CallingConv::SwiftTail;
 
-  // TODO: Right now, regbankselect doesn't know how to handle the rtcGPR64
-  // register class. Until we can do that, we should fall back here.
-  if (MF.getInfo<AArch64FunctionInfo>()->branchTargetEnforcement()) {
-    LLVM_DEBUG(
-        dbgs() << "Cannot lower indirect tail calls with BTI enabled yet.\n");
-    return false;
-  }
-
   // Find out which ABI gets to decide where things go.
   CallingConv::ID CalleeCC = Info.CallConv;
   CCAssignFn *AssignFnFixed;
@@ -963,17 +970,39 @@ bool AArch64CallLowering::lowerTailCall(
   if (!IsSibCall)
     CallSeqStart = MIRBuilder.buildInstr(AArch64::ADJCALLSTACKDOWN);
 
-  unsigned Opc = getCallOpcode(MF, Info.Callee.isReg(), true);
+  unsigned Opc = getCallOpcode(MF, Info.Callee.isReg(), true, Info.PAI, MRI);
   auto MIB = MIRBuilder.buildInstrNoInsert(Opc);
   MIB.add(Info.Callee);
+
+  // Tell the call which registers are clobbered.
+  const AArch64Subtarget &Subtarget = MF.getSubtarget<AArch64Subtarget>();
+  auto TRI = Subtarget.getRegisterInfo();
 
   // Byte offset for the tail call. When we are sibcalling, this will always
   // be 0.
   MIB.addImm(0);
 
+  // Authenticated tail calls always take key/discriminator arguments.
+  if (Opc == AArch64::AUTH_TCRETURN || Opc == AArch64::AUTH_TCRETURN_BTI) {
+    assert(Info.PAI->Key == 0 || Info.PAI->Key == 1 && "invalid key");
+    MIB.addImm(Info.PAI->Key);
+
+    Register AddrDisc = 0;
+    uint16_t IntDisc = 0;
+    std::tie(IntDisc, AddrDisc) =
+      extractPtrauthBlendDiscriminators(Info.PAI->Discriminator, MRI);
+
+    MIB.addImm(IntDisc);
+    MIB.addUse(AddrDisc);
+    if (AddrDisc != AArch64::NoRegister) {
+      MIB->getOperand(4).setReg(constrainOperandRegClass(
+          MF, *TRI, MRI, *MF.getSubtarget().getInstrInfo(),
+          *MF.getSubtarget().getRegBankInfo(), *MIB, MIB->getDesc(),
+          MIB->getOperand(4), 4));
+    }
+  }
+
   // Tell the call which registers are clobbered.
-  const AArch64Subtarget &Subtarget = MF.getSubtarget<AArch64Subtarget>();
-  auto TRI = Subtarget.getRegisterInfo();
   const uint32_t *Mask = TRI->getCallPreservedMask(MF, CalleeCC);
   if (Subtarget.hasCustomCallingConv())
     TRI->UpdateCustomCallPreservedMask(MF, &Mask);
@@ -1163,7 +1192,7 @@ bool AArch64CallLowering::lowerCall(MachineIRBuilder &MIRBuilder,
   // be expanded to the call, directly followed by a special marker sequence and
   // a call to an ObjC library function.
   if (Info.CB && objcarc::hasAttachedCallOpBundle(Info.CB))
-    Opc = AArch64::BLR_RVMARKER;
+    Opc = Info.PAI ? AArch64::BLRA_RVMARKER : AArch64::BLR_RVMARKER;
   // A call to a returns twice function like setjmp must be followed by a bti
   // instruction.
   else if (Info.CB &&
@@ -1172,12 +1201,12 @@ bool AArch64CallLowering::lowerCall(MachineIRBuilder &MIRBuilder,
            MF.getInfo<AArch64FunctionInfo>()->branchTargetEnforcement())
     Opc = AArch64::BLR_BTI;
   else
-    Opc = getCallOpcode(MF, Info.Callee.isReg(), false);
+    Opc = getCallOpcode(MF, Info.Callee.isReg(), false, Info.PAI, MRI);
 
   auto MIB = MIRBuilder.buildInstrNoInsert(Opc);
   unsigned CalleeOpNo = 0;
 
-  if (Opc == AArch64::BLR_RVMARKER) {
+  if (Opc == AArch64::BLR_RVMARKER || Opc == AArch64::BLRA_RVMARKER) {
     // Add a target global address for the retainRV/claimRV runtime function
     // just before the call target.
     Function *ARCFn = *objcarc::getAttachedARCFunction(Info.CB);
@@ -1203,6 +1232,26 @@ bool AArch64CallLowering::lowerCall(MachineIRBuilder &MIRBuilder,
 
   Mask = getMaskForArgs(OutArgs, Info, *TRI, MF);
 
+  if (Opc == AArch64::BLRA || Opc == AArch64::BLRA_RVMARKER) {
+    assert(Info.PAI->Key == 0 || Info.PAI->Key == 1 && "invalid key");
+    MIB.addImm(Info.PAI->Key);
+
+    Register AddrDisc = 0;
+    uint16_t IntDisc = 0;
+    std::tie(IntDisc, AddrDisc) =
+      extractPtrauthBlendDiscriminators(Info.PAI->Discriminator, MRI);
+
+    MIB.addImm(IntDisc);
+    MIB.addUse(AddrDisc);
+    if (AddrDisc != AArch64::NoRegister) {
+      constrainOperandRegClass(
+          MF, *TRI, MRI, *MF.getSubtarget().getInstrInfo(),
+          *MF.getSubtarget().getRegBankInfo(), *MIB, MIB->getDesc(),
+          MIB->getOperand(CalleeOpNo + 3), CalleeOpNo + 3);
+    }
+  }
+
+  // Tell the call which registers are clobbered.
   if (MF.getSubtarget<AArch64Subtarget>().hasCustomCallingConv())
     TRI->UpdateCustomCallPreservedMask(MF, &Mask);
   MIB.addRegMask(Mask);

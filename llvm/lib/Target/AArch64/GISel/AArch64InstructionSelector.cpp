@@ -5903,10 +5903,10 @@ bool AArch64InstructionSelector::selectIntrinsic(MachineInstr &I,
     MIB.buildInstr(AArch64::AUTPAC)
         .addImm(AUTKey)
         .addImm(AUTConstDiscC)
-        .addUse(AUTAddrDisc)
+        .addUse(AUTAddrDisc == AArch64::NoRegister ? AArch64::XZR : AUTAddrDisc)
         .addImm(PACKey)
         .addImm(PACConstDiscC)
-        .addUse(PACAddrDisc)
+        .addUse(PACAddrDisc == AArch64::NoRegister ? AArch64::XZR : PACAddrDisc)
         .constrainAllUses(TII, TRI, RBI);
     MIB.buildCopy({DstReg}, Register(AArch64::X16));
 
@@ -5930,7 +5930,7 @@ bool AArch64InstructionSelector::selectIntrinsic(MachineInstr &I,
     MIB.buildInstr(AArch64::AUT)
         .addImm(AUTKey)
         .addImm(AUTConstDiscC)
-        .addUse(AUTAddrDisc)
+        .addUse(AUTAddrDisc == AArch64::NoRegister ? AArch64::XZR : AUTAddrDisc)
         .constrainAllUses(TII, TRI, RBI);
     MIB.buildCopy({DstReg}, Register(AArch64::X16));
 

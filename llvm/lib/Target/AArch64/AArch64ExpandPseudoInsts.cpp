@@ -725,12 +725,37 @@ bool AArch64ExpandPseudo::expandCALL_RVMARKER(
   assert((CallTarget.isGlobal() || CallTarget.isReg()) &&
          "invalid operand for regular call");
   assert(RVTarget.isGlobal() && "invalid operand for attached call");
-  unsigned Opc = CallTarget.isGlobal() ? AArch64::BL : AArch64::BLR;
-  OriginalCall = BuildMI(MBB, MBBI, MI.getDebugLoc(), TII->get(Opc)).getInstr();
-  OriginalCall->addOperand(CallTarget);
 
-  unsigned RegMaskStartIdx = 2;
-  // Skip register arguments. Those are added during ISel, but are not
+  unsigned RegMaskStartIdx;
+  if (MI.getOpcode() == AArch64::BLRA_RVMARKER) {
+    // Pointer auth call.
+    MachineOperand &Key = MI.getOperand(2);
+    assert((Key.getImm() == 0 || Key.getImm() == 1) &&
+           "invalid key for ptrauth call");
+    MachineOperand &IntDisc = MI.getOperand(3);
+    MachineOperand &AddrDisc = MI.getOperand(4);
+
+    OriginalCall =
+      BuildMI(MBB, MBBI, MI.getDebugLoc(), TII->get(AArch64::BLRA)).getInstr();
+    OriginalCall->addOperand(CallTarget);
+    OriginalCall->addOperand(Key);
+    OriginalCall->addOperand(IntDisc);
+    OriginalCall->addOperand(AddrDisc);
+
+    RegMaskStartIdx = 5;
+  } else {
+    assert(MI.getOpcode() == AArch64::BLR_RVMARKER && "unknown rvmarker MI");
+    // Regular call.
+    assert((CallTarget.isGlobal() || CallTarget.isReg()) &&
+           "invalid operand for regular call");
+    unsigned Opc = CallTarget.isGlobal() ? AArch64::BL : AArch64::BLR;
+    OriginalCall =
+        BuildMI(MBB, MBBI, MI.getDebugLoc(), TII->get(Opc)).getInstr();
+    OriginalCall->addOperand(CallTarget);
+    RegMaskStartIdx = 2;
+  }
+
+  // Skip argument register arguments. Those are added during ISel, but are not
   // needed for the concrete branch.
   while (!MI.getOperand(RegMaskStartIdx).isRegMask()) {
     auto MOP = MI.getOperand(RegMaskStartIdx);
@@ -1397,6 +1422,7 @@ bool AArch64ExpandPseudo::expandMI(MachineBasicBlock &MBB,
    case AArch64::LDR_ZZXI:
      return expandSVESpillFill(MBB, MBBI, AArch64::LDR_ZXI, 2);
    case AArch64::BLR_RVMARKER:
+   case AArch64::BLRA_RVMARKER:
      return expandCALL_RVMARKER(MBB, MBBI);
    case AArch64::BLR_BTI:
      return expandCALL_BTI(MBB, MBBI);

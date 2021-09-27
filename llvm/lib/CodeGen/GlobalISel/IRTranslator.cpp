@@ -2372,11 +2372,25 @@ bool IRTranslator::translateCallBase(const CallBase &CB,
     }
   }
 
+  Optional<CallLowering::PointerAuthInfo> PAI;
+  if (CB.countOperandBundlesOfType(LLVMContext::OB_ptrauth)) {
+    // Functions should never be ptrauth-called directly.
+    assert(!CB.getCalledFunction() && "invalid direct ptrauth call");
+
+    auto PAB = CB.getOperandBundle("ptrauth");
+    Value *Key = PAB->Inputs[0];
+    Value *Discriminator = PAB->Inputs[1];
+
+    Register DiscReg = getOrCreateVReg(*Discriminator);
+    PAI = CallLowering::PointerAuthInfo{
+        DiscReg, cast<ConstantInt>(Key)->getZExtValue()};
+  }
+
   // We don't set HasCalls on MFI here yet because call lowering may decide to
   // optimize into tail calls. Instead, we defer that to selection where a final
   // scan is done to check if any instructions are calls.
   bool Success =
-      CLI->lowerCall(MIRBuilder, CB, Res, Args, SwiftErrorVReg,
+      CLI->lowerCall(MIRBuilder, CB, Res, Args, SwiftErrorVReg, PAI,
                      [&]() { return getOrCreateVReg(*CB.getCalledOperand()); });
 
   // Check if we just inserted a tail call.
