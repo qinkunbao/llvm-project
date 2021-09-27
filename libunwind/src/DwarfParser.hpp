@@ -23,6 +23,10 @@
 
 #include "config.h"
 
+#if __has_feature(ptrauth_calls)
+#include <ptrauth.h>
+#endif
+
 namespace libunwind {
 
 /// CFI_Parser does basic parsing of a CFI (Call Frame Information) records.
@@ -366,6 +370,7 @@ const char *CFI_Parser<A>::parseCIE(A &addressSpace, pint_t cie,
   cieInfo->returnAddressRegister = (uint8_t)raReg;
   // parse augmentation data based on augmentation string
   const char *result = NULL;
+  pint_t resultAddr = 0;
   if (addressSpace.get8(strStart) == 'z') {
     // parse augmentation data length
     addressSpace.getULEB128(p, cieContentEnd);
@@ -379,7 +384,20 @@ const char *CFI_Parser<A>::parseCIE(A &addressSpace, pint_t cie,
         ++p;
         cieInfo->personalityOffsetInCIE = (uint8_t)(p - cie);
         cieInfo->personality = addressSpace
-            .getEncodedP(p, cieContentEnd, cieInfo->personalityEncoding);
+            .getEncodedP(p, cieContentEnd, cieInfo->personalityEncoding,
+                         /*datarelBase=*/0, &resultAddr);
+#if __has_feature(ptrauth_calls)
+              // The GOT for the personality function was signed address authenticated.
+              // Resign is as a regular function pointer.
+              if (cieInfo->personality) {
+                  void* signedPtr = ptrauth_auth_and_resign((void*)cieInfo->personality,
+                                                            ptrauth_key_function_pointer,
+                                                            resultAddr,
+                                                            ptrauth_key_function_pointer,
+                                                            0);
+                  cieInfo->personality = (__typeof(cieInfo->personality))signedPtr;
+              }
+#endif
         break;
       case 'L':
         cieInfo->lsdaEncoding = addressSpace.get8(p);

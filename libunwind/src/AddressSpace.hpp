@@ -192,7 +192,8 @@ public:
   static int64_t  getSLEB128(pint_t &addr, pint_t end);
 
   pint_t getEncodedP(pint_t &addr, pint_t end, uint8_t encoding,
-                     pint_t datarelBase = 0);
+                     pint_t datarelBase = 0,
+                     pint_t *resultAddr = nullptr);
   bool findFunctionName(pint_t addr, char *buf, size_t bufLen,
                         unw_word_t *offset);
   bool findUnwindSections(pint_t targetAddr, UnwindInfoSections &info);
@@ -265,7 +266,7 @@ inline int64_t LocalAddressSpace::getSLEB128(pint_t &addr, pint_t end) {
 
 inline LocalAddressSpace::pint_t
 LocalAddressSpace::getEncodedP(pint_t &addr, pint_t end, uint8_t encoding,
-                               pint_t datarelBase) {
+                               pint_t datarelBase, pint_t *resultAddr) {
   pint_t startAddr = addr;
   const uint8_t *p = (uint8_t *)addr;
   pint_t result;
@@ -349,8 +350,14 @@ LocalAddressSpace::getEncodedP(pint_t &addr, pint_t end, uint8_t encoding,
     break;
   }
 
-  if (encoding & DW_EH_PE_indirect)
+  if (encoding & DW_EH_PE_indirect) {
+    if (resultAddr)
+      *resultAddr = result;
     result = getP(result);
+  } else {
+    if (resultAddr)
+      *resultAddr = startAddr;
+  }
 
   return result;
 }

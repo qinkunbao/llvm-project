@@ -14,6 +14,10 @@
 #include "config.h"
 #include "libunwind_ext.h"
 
+#if __has_feature(ptrauth_calls)
+#include <libc_private.h>
+#endif
+
 #include <stdlib.h>
 
 // Define the __has_feature extension for compilers that do not support it so
@@ -116,22 +120,63 @@ _LIBUNWIND_HIDDEN int __unw_set_reg(unw_cursor_t *cursor, unw_regnum_t regNum,
   typedef LocalAddressSpace::pint_t pint_t;
   AbstractUnwindCursor *co = (AbstractUnwindCursor *)cursor;
   if (co->validReg(regNum)) {
-    co->setReg(regNum, (pint_t)value);
     // special case altering IP to re-find info (being called by personality
     // function)
     if (regNum == UNW_REG_IP) {
       unw_proc_info_t info;
       // First, get the FDE for the old location and then update it.
       co->getInfo(&info);
-      co->setInfoBasedOnIPRegister(false);
+
+#if __has_feature(ptrauth_calls)
+      // It is only valid to set the IP within the current function.
+      // This is important for ptrauth, otherwise the IP cannot be correctly
+      // signed.
+      assert(value >= info.start_ip && value <= info.end_ip);
+#endif
+
+      pint_t sp = (pint_t)co->getReg(UNW_REG_SP);
+
+#if __has_feature(ptrauth_calls)
+    // If we are in an arm64e frame, then the PC should have been signed with the sp
+    {
+        const mach_header_64 *mh = (const mach_header_64 *)info.extra;
+        // Note, if we don't have mh, we assume this was created by unw_init_local inside
+        // libunwind.dylib itself, and we know we are arm64e.
+        pint_t pc = (pint_t)co->getReg(UNW_REG_IP);
+        if ((mh->cpusubtype & ~CPU_SUBTYPE_MASK) == CPU_SUBTYPE_ARM64_E) {
+            if (ptrauth_auth_and_resign((void*)pc, ptrauth_key_return_address, sp,
+                                        ptrauth_key_return_address, sp) != (void*)pc) {
+                abort_report_np("Bad unwind through arm64e (0x%llX, 0x%llX)->0x%llX\n",
+                                pc, sp, (pint_t)ptrauth_auth_data((void*)pc, ptrauth_key_return_address, sp));
+            }
+        }
+    }
+#endif
+
+      pint_t orgArgSize = (pint_t)info.gp;
+      uint64_t orgFuncStart = info.start_ip;
+      // and adjust REG_SP if there was a DW_CFA_GNU_args_size
       // If the original call expects stack adjustment, perform this now.
       // Normal frame unwinding would have included the offset already in the
       // CFA computation.
       // Note: for PA-RISC and other platforms where the stack grows up,
       // this should actually be - info.gp. LLVM doesn't currently support
       // any such platforms and Clang doesn't export a macro for them.
-      if (info.gp)
-        co->setReg(UNW_REG_SP, co->getReg(UNW_REG_SP) + info.gp);
+      if ((orgFuncStart == info.start_ip) && (orgArgSize != 0)) {
+        co->setReg(UNW_REG_SP, sp + orgArgSize);
+#if __has_feature(ptrauth_calls)
+        value = (pint_t)ptrauth_sign_unauthenticated((void*)value, ptrauth_key_return_address, sp + orgArgSize);
+#endif
+        co->setReg(UNW_REG_IP, value);
+      } else {
+#if __has_feature(ptrauth_calls)
+          value = (pint_t)ptrauth_sign_unauthenticated((void*)value, ptrauth_key_return_address, sp);
+#endif
+          co->setReg(UNW_REG_IP, value);
+      }
+      co->setInfoBasedOnIPRegister(false);
+    } else {
+        co->setReg(regNum, (pint_t)value);
     }
     return UNW_ESUCCESS;
   }
