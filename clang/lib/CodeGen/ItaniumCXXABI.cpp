@@ -1446,8 +1446,16 @@ void ItaniumCXXABI::emitThrow(CodeGenFunction &CGF, const CXXThrowExpr *E) {
   if (const RecordType *RecordTy = ThrowType->getAs<RecordType>()) {
     CXXRecordDecl *Record = cast<CXXRecordDecl>(RecordTy->getDecl());
     if (!Record->hasTrivialDestructor()) {
+      // __cxa_throw is declared to take its destructor as void (*)(void *). We
+      // must match that if function pointers can be authenticated with a
+      // discriminator based on their type.
+      ASTContext &Ctx = getContext();
+      QualType DtorTy = Ctx.getFunctionType(Ctx.VoidTy, {Ctx.VoidPtrTy},
+                                            FunctionProtoType::ExtProtoInfo());
+
       CXXDestructorDecl *DtorD = Record->getDestructor();
       Dtor = CGM.getAddrOfCXXStructor(GlobalDecl(DtorD, Dtor_Complete));
+      Dtor = CGM.getFunctionPointer(Dtor, DtorTy);
       Dtor = llvm::ConstantExpr::getBitCast(Dtor, CGM.Int8PtrTy);
     }
   }
