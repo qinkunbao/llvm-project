@@ -14,6 +14,8 @@ At the IR level, it is represented using:
 
 * a [set of intrinsics](#intrinsics) (to sign/authenticate pointers)
 * a [call operand bundle](#operand-bundle) (to authenticate called pointers)
+* a [special section and relocation](#authenticated-global-relocation)
+  (to sign globals)
 * a [set of function attributes](#attributes) (to describe what pointers are
   signed and how, to control implicit codegen in the backend, as well as
   preserve invariants in the mid-level optimizer)
@@ -295,6 +297,41 @@ this attribute, as they should already be annotated with the
 
 The ``ptrauth-calls`` attribute only describes calls emitted by the backend,
 as part of target-specific lowering (e.g., runtime calls for TLS accesses).
+
+
+### Authenticated Global Relocation
+
+[Intrinsics](#intrinsics) can be used to produce signed pointers dynamically,
+in code, but not for signed pointers referenced by constants, in, e.g., global
+initializers.
+
+The latter are represented using a special kind of global describing an
+authenticated relocation (producing a signed pointer).
+
+These special global must live in section '``llvm.ptrauth``', and have a
+specific type.
+
+```llvm
+@fp.ptrauth = constant { i8*, i32, i64, i64 }
+                       { i8* <value>,
+                         i32 <key>,
+                         i64 <address discriminator>,
+                         i64 <integer discriminator>
+                       }, section "llvm.ptrauth"
+```
+
+is equivalent to ``@fp.ptrauth`` being initialized with:
+
+```llvm
+  %disc = call i64 @llvm.ptrauth.blend.i64(i64 <address discriminator>, i64 <integer discriminator>)
+  %signed_fp = call i64 @llvm.ptrauth.sign.i64(i64 bitcast (i8* <value> to i64), i32 <key>, i64 %disc)
+  %fp_p_loc = bitcast { i8*, i32, i64, i64 }* @fp.ptrauth to i64*
+  store i64 %signed_fp, i8* %fp_p_loc
+```
+
+Note that this is a temporary representation, chosen to minimize divergence with
+upstream.  Ideally, this would simply be a new kind of ConstantExpr.
+
 
 
 ## AArch64 Support
