@@ -103,6 +103,7 @@ FEATURE(ptrauth_intrinsics, LangOpts.PointerAuthIntrinsics)
 FEATURE(ptrauth_calls, LangOpts.PointerAuthCalls)
 FEATURE(ptrauth_returns, LangOpts.PointerAuthReturns)
 FEATURE(ptrauth_function_pointer_type_discrimination, LangOpts.FunctionPointerTypeDiscrimination)
+FEATURE(ptrauth_signed_block_descriptors, LangOpts.PointerAuthBlockDescriptorPointers)
 FEATURE(swiftasynccc,
   PP.getTargetInfo().checkCallingConvention(CC_SwiftAsync) ==
   clang::TargetInfo::CCCR_OK)

@@ -1331,6 +1331,17 @@ bool CompilerInvocation::setDefaultPointerAuthOptions(
                             LangOpts.FunctionPointerTypeDiscrimination
                                 ? Discrimination::Type
                                 : Discrimination::None);
+      Opts.BlockInvocationFunctionPointers =
+          PointerAuthSchema(Key::ASIA, true, Discrimination::None);
+      Opts.BlockHelperFunctionPointers =
+          PointerAuthSchema(Key::ASIA, true, Discrimination::None);
+      Opts.BlockByrefHelperFunctionPointers =
+          PointerAuthSchema(Key::ASIA, true, Discrimination::None);
+      if (LangOpts.PointerAuthBlockDescriptorPointers) {
+        Opts.BlockDescriptorPointers =
+            PointerAuthSchema(Key::ASDA, true, Discrimination::Constant,
+                              BlockDescriptorConstantDiscriminator);
+      }
     }
     Opts.ReturnAddresses = LangOpts.PointerAuthReturns;
     Opts.AuthTraps = LangOpts.PointerAuthAuthTraps;
@@ -3263,6 +3274,8 @@ static void GeneratePointerAuthArgs(LangOptions &Opts,
     GenerateArg(Args, OPT_fptrauth_auth_traps, SA);
   if (Opts.FunctionPointerTypeDiscrimination)
     GenerateArg(Args, OPT_fptrauth_function_pointer_type_discrimination, SA);
+  if (Opts.PointerAuthBlockDescriptorPointers)
+    GenerateArg(Args, OPT_fptrauth_block_descriptor_pointers, SA);
 
   if (Opts.PointerAuthABIVersionEncoded) {
     GenerateArg(Args, OPT_fptrauth_abi_version_EQ,
@@ -3278,6 +3291,8 @@ static void ParsePointerAuthArgs(LangOptions &Opts, ArgList &Args,
   Opts.PointerAuthCalls = Args.hasArg(OPT_fptrauth_calls);
   Opts.PointerAuthReturns = Args.hasArg(OPT_fptrauth_returns);
   Opts.PointerAuthAuthTraps = Args.hasArg(OPT_fptrauth_auth_traps);
+  Opts.PointerAuthBlockDescriptorPointers =
+      Args.hasArg(OPT_fptrauth_block_descriptor_pointers);
 
   Opts.PointerAuthABIVersionEncoded =
       Args.hasArg(OPT_fptrauth_abi_version_EQ) ||

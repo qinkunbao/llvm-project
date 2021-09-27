@@ -1175,6 +1175,11 @@ void DarwinClang::addClangTargetOptions(
     if (DriverArgs.hasArg(options::OPT_fapple_kext) ||
         DriverArgs.hasArg(options::OPT_mkernel)) {
       if (!DriverArgs.hasArg(
+              options::OPT_fptrauth_block_descriptor_pointers,
+              options::OPT_fno_ptrauth_block_descriptor_pointers))
+        CC1Args.push_back("-fptrauth-block-descriptor-pointers");
+
+      if (!DriverArgs.hasArg(
           options::OPT_fptrauth_function_pointer_type_discrimination,
           options::OPT_fno_ptrauth_function_pointer_type_discrimination))
         CC1Args.push_back("-fptrauth-function-pointer-type-discrimination");

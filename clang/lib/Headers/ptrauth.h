@@ -52,6 +52,22 @@ typedef enum {
      (or, in other words, the value of the stack pointer on function entry) */
   ptrauth_key_frame_pointer = ptrauth_key_process_dependent_data,
 
+  /* The key used to sign block function pointers, including:
+       invocation functions,
+       block object copy functions,
+       block object destroy functions,
+       __block variable copy functions, and
+       __block variable destroy functions.
+     The extra data is always the address at which the function pointer
+     is stored.
+
+     Note that block object pointers themselves (i.e. the direct
+     representations of values of block-pointer type) are not signed. */
+  ptrauth_key_block_function = ptrauth_key_asia,
+
+  /* The key used to sign block descriptor pointers. */
+  ptrauth_key_block_descriptor_pointer = ptrauth_key_asda,
+
   /* Other pointers signed under the ABI use private ABI rules. */
 
 } ptrauth_key;
