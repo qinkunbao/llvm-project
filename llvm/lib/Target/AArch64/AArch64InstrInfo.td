@@ -1478,8 +1478,8 @@ let Predicates = [HasPAuth] in {
     let Uses = [X16];
   }
 
-  // Size 16: 4 fixed + 8 variable, to compute discriminator.
-  let isCall = 1, isTerminator = 1, isReturn = 1, isBarrier = 1, Size = 16,
+  // Size 24: 4 + 12 variable to check LR + 8 variable to compute discriminator.
+  let isCall = 1, isTerminator = 1, isReturn = 1, isBarrier = 1, Size = 24,
       Uses = [SP] in {
     def AUTH_TCRETURN
       : Pseudo<(outs), (ins tcGPR64:$dst, i32imm:$FPDiff, i32imm:$Key,
@@ -8305,7 +8305,9 @@ def : Pat<(nontemporalstore GPR64:$Rt,
 
 // Tail call return handling. These are all compiler pseudo-instructions,
 // so no encoding information or anything like that.
-let isCall = 1, isTerminator = 1, isReturn = 1, isBarrier = 1, Uses = [SP] in {
+// Size 12: 4 fixed + 12 variable to check LR.
+let isCall = 1, isTerminator = 1, isReturn = 1, isBarrier = 1, Size = 16,
+    Uses = [SP] in {
   def TCRETURNdi : Pseudo<(outs), (ins i64imm:$dst, i32imm:$FPDiff), []>,
                    Sched<[WriteBrReg]>;
   def TCRETURNri : Pseudo<(outs), (ins tcGPR64:$dst, i32imm:$FPDiff), []>,
