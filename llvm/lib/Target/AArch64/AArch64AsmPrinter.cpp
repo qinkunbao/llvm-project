@@ -1988,6 +1988,22 @@ void AArch64AsmPrinter::emitInstruction(const MachineInstr *MI) {
     LowerJumpTableDest(*OutStreamer, *MI);
     return;
 
+  case AArch64::JumpTableAnchor: {
+    int JTI = MI->getOperand(1).getIndex();
+    assert(!AArch64FI->getJumpTableEntryPCRelSymbol(JTI) &&
+           "unsupported compressed jump table");
+
+    auto Label = MF->getContext().createTempSymbol();
+    auto LabelE = MCSymbolRefExpr::create(Label, MF->getContext());
+    AArch64FI->setJumpTableEntryInfo(JTI, 4, Label);
+
+    OutStreamer->emitLabel(Label);
+    EmitToStreamer(*OutStreamer, MCInstBuilder(AArch64::ADR)
+                                     .addReg(MI->getOperand(0).getReg())
+                                     .addExpr(LabelE));
+    return;
+  }
+
   case AArch64::FMOVH0:
   case AArch64::FMOVS0:
   case AArch64::FMOVD0:

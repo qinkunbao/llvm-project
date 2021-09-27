@@ -19,6 +19,7 @@
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineInstr.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
+#include "llvm/CodeGen/MachineJumpTableInfo.h"
 #include "llvm/CodeGen/MachineOperand.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/IR/DebugLoc.h"
@@ -132,6 +133,100 @@ bool AArch64ExpandHardenedPseudos::expandPtrAuthPseudo(MachineInstr &MI) {
 
   const AArch64Subtarget &STI = MF.getSubtarget<AArch64Subtarget>();
   const AArch64InstrInfo *TII = STI.getInstrInfo();
+
+  if (MI.getOpcode() == AArch64::BR_JumpTable) {
+    LLVM_DEBUG(dbgs() << "Expanding: " << MI << "\n");
+    const MachineJumpTableInfo *MJTI = MF.getJumpTableInfo();
+    assert(MJTI && "Can't lower jump-table dispatch without JTI");
+
+    const std::vector<MachineJumpTableEntry> &JTs = MJTI->getJumpTables();
+    assert(!JTs.empty() && "Invalid JT index for jump-table dispatch");
+
+    // Emit:
+    //     adrp xTable, Ltable@PAGE
+    //     add xTable, Ltable@PAGEOFF
+    //     mov xEntry, #<size of table> ; depending on table size, with MOVKs
+    //     cmp xEntry, #<size of table> ; if table size fits in 12-bit immediate
+    //     csel xEntry, xEntry, xzr, ls
+    //     ldrsw xScratch, [xTable, xEntry, lsl #2] ; kill xEntry, xScratch = xEntry
+    //   Ltmp:
+    //     adr xTable, Ltmp
+    //     add xDest, xTable, xScratch ; kill xTable, xDest = xTable
+    //     br xDest
+
+    MachineOperand JTOp = MI.getOperand(0);
+
+    unsigned JTI = JTOp.getIndex();
+    const uint64_t NumTableEntries = JTs[JTI].MBBs.size();
+
+    // cmp only supports a 12-bit immediate.  If we need more, materialize the
+    // immediate, using TableReg as a scratch register.
+    uint64_t MaxTableEntry = NumTableEntries - 1;
+    if (isUInt<12>(MaxTableEntry)) {
+      BuildMI(MBB, MBBI, DL, TII->get(AArch64::SUBSXri), AArch64::XZR)
+        .addReg(AArch64::X16)
+        .addImm(MaxTableEntry)
+        .addImm(0);
+    } else {
+      BuildMI(MBB, MBBI, DL, TII->get(AArch64::MOVZXi), AArch64::X17)
+        .addImm(static_cast<uint16_t>(MaxTableEntry))
+        .addImm(0);
+      // It's sad that we have to manually materialize instructions, but we can't
+      // trivially reuse the main pseudo expansion logic.
+      // A MOVK sequence is easy enough to generate and handles the general case.
+      for (int Offset = 16; Offset < 64; Offset += 16) {
+        if ((MaxTableEntry >> Offset) == 0)
+          break;
+        BuildMI(MBB, MBBI, DL, TII->get(AArch64::MOVKXi), AArch64::X17)
+          .addReg(AArch64::X17)
+          .addImm(static_cast<uint16_t>(MaxTableEntry >> Offset))
+          .addImm(Offset);
+      }
+      BuildMI(MBB, MBBI, DL, TII->get(AArch64::SUBSXrs), AArch64::XZR)
+        .addReg(AArch64::X16)
+        .addReg(AArch64::X17)
+        .addImm(0);
+    }
+
+    // This picks entry #0 on failure.
+    // We might want to trap instead.
+    BuildMI(MBB, MBBI, DL, TII->get(AArch64::CSELXr), AArch64::X16)
+      .addReg(AArch64::X16)
+      .addReg(AArch64::XZR)
+      .addImm(AArch64CC::LS);
+
+    MachineOperand JTHiOp(JTOp);
+    MachineOperand JTLoOp(JTOp);
+    JTHiOp.setTargetFlags(AArch64II::MO_PAGE);
+    JTLoOp.setTargetFlags(AArch64II::MO_PAGEOFF | AArch64II::MO_NC);
+
+    BuildMI(MBB, MBBI, DL, TII->get(AArch64::ADRP), AArch64::X17)
+      .add(JTHiOp);
+    BuildMI(MBB, MBBI, DL, TII->get(AArch64::ADDXri), AArch64::X17)
+      .addReg(AArch64::X17)
+      .add(JTLoOp)
+      .addImm(0);
+
+    BuildMI(MBB, MBBI, DL, TII->get(AArch64::LDRSWroX), AArch64::X16)
+      .addReg(AArch64::X17)
+      .addReg(AArch64::X16)
+      .addImm(0)
+      .addImm(1);
+
+    // Really an ADR with a label attached.
+    BuildMI(MBB, MBBI, DL, TII->get(AArch64::JumpTableAnchor), AArch64::X17)
+      .addJumpTableIndex(JTI);
+
+    BuildMI(MBB, MBBI, DL, TII->get(AArch64::ADDXrs), AArch64::X16)
+      .addReg(AArch64::X17)
+      .addReg(AArch64::X16)
+      .addImm(0);
+
+    BuildMI(MBB, MBBI, DL, TII->get(AArch64::BR))
+      .addReg(AArch64::X16);
+
+    return true;
+  }
 
   if (MI.getOpcode() == AArch64::LOADauthptrgot) {
     LLVM_DEBUG(dbgs() << "Expanding: " << MI << "\n");
@@ -277,6 +372,7 @@ bool AArch64ExpandHardenedPseudos::expandMI(MachineInstr &MI) {
   switch (MI.getOpcode()) {
   case AArch64::BLRA:
     return expandAuthCall(MI);
+  case AArch64::BR_JumpTable:
   case AArch64::LOADauthptrgot:
   case AArch64::LOADgotPAC:
   case AArch64::MOVaddrPAC:
