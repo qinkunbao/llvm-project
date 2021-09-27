@@ -6,6 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "AArch64ExpandImm.h"
 #include "AArch64InstrInfo.h"
 #include "AArch64MachineFunctionInfo.h"
 #include "AArch64Subtarget.h"
@@ -55,6 +56,7 @@ public:
 private:
   bool expandAuthCall(MachineInstr &MI);
   bool expandPtrAuthPseudo(MachineInstr &MI);
+  bool expandAuthLoad(MachineInstr &MI);
   bool expandMI(MachineInstr &MI);
 };
 
@@ -368,6 +370,125 @@ bool AArch64ExpandHardenedPseudos::expandPtrAuthPseudo(MachineInstr &MI) {
   return true;
 }
 
+bool AArch64ExpandHardenedPseudos::expandAuthLoad(MachineInstr &MI) {
+  MachineBasicBlock &MBB = *MI.getParent();
+  MachineFunction &MF = *MBB.getParent();
+  DebugLoc DL = MI.getDebugLoc();
+  auto MBBI = MI.getIterator();
+
+  const AArch64Subtarget &STI = MF.getSubtarget<AArch64Subtarget>();
+  const AArch64InstrInfo *TII = STI.getInstrInfo();
+
+  LLVM_DEBUG(dbgs() << "Expanding: " << MI << "\n");
+
+  bool IsPre = MI.getOpcode() == AArch64::LDRApre;
+
+  MachineOperand DstOp = MI.getOperand(0);
+  int64_t Offset = MI.getOperand(1).getImm();
+  auto Key = (AArch64PACKey::ID)MI.getOperand(2).getImm();
+  uint64_t Disc = MI.getOperand(3).getImm();
+  unsigned AddrDisc = MI.getOperand(4).getReg();
+
+  unsigned DiscReg = AddrDisc;
+  if (Disc) {
+    assert(isUInt<16>(Disc) && "Integer discriminator is too wide");
+
+    if (AddrDisc != AArch64::XZR) {
+      BuildMI(MBB, MBBI, DL, TII->get(AArch64::ORRXrs), AArch64::X17)
+        .addReg(AArch64::XZR)
+        .addReg(AddrDisc)
+        .addImm(0);
+      BuildMI(MBB, MBBI, DL, TII->get(AArch64::MOVKXi), AArch64::X17)
+        .addReg(AArch64::X17)
+        .addImm(Disc)
+        .addImm(/*shift=*/48);
+    } else {
+      BuildMI(MBB, MBBI, DL, TII->get(AArch64::MOVZXi), AArch64::X17)
+        .addImm(Disc)
+        .addImm(/*shift=*/0);
+    }
+    DiscReg = AArch64::X17;
+  }
+
+  unsigned AUTOpc = getAUTOpcodeForKey(Key, DiscReg == AArch64::XZR);
+  auto MIB = BuildMI(MBB, MBBI, DL, TII->get(AUTOpc), AArch64::X16)
+      .addReg(AArch64::X16);
+  if (DiscReg != AArch64::XZR)
+    MIB.addReg(DiscReg);
+
+  // We have a few options for offset folding:
+  // - 0 offset: LDRXui
+  // - no wb, uimm12s8 offset: LDRXui
+  // - no wb, simm9 offset: LDURXi
+  // - wb, simm9 offset: LDRXpre
+  // - no wb, any offset: expanded MOVImm + LDRXroX
+  // - wb, any offset: expanded MOVImm + ADD + LDRXui
+  if (!Offset || (!IsPre && isShiftedUInt<12, 3>(Offset))) {
+    BuildMI(MBB, MBBI, DL, TII->get(AArch64::LDRXui))
+        .add(DstOp)
+        .addUse(AArch64::X16)
+        .addImm(Offset / 8);
+  } else if (!IsPre && Offset && isInt<9>(Offset)) {
+    BuildMI(MBB, MBBI, DL, TII->get(AArch64::LDURXi))
+        .add(DstOp)
+        .addUse(AArch64::X16)
+        .addImm(Offset);
+  } else if (IsPre && Offset && isInt<9>(Offset)) {
+    BuildMI(MBB, MBBI, DL, TII->get(AArch64::LDRXpre), AArch64::X16)
+        .add(DstOp)
+        .addUse(AArch64::X16)
+        .addImm(Offset);
+  } else {
+    SmallVector<AArch64_IMM::ImmInsnModel, 4> ImmInsns;
+    AArch64_IMM::expandMOVImm(Offset, 64, ImmInsns);
+
+    // X17 is dead at this point, use it as the offset register
+    for (auto &ImmI : ImmInsns) {
+      switch (ImmI.Opcode) {
+      default: llvm_unreachable("invalid ldra imm expansion opc!"); break;
+
+      case AArch64::ORRXri:
+        BuildMI(MBB, MBBI, DL, TII->get(ImmI.Opcode), AArch64::X17)
+          .addReg(AArch64::XZR)
+          .addImm(ImmI.Op2);
+        break;
+      case AArch64::MOVNXi:
+      case AArch64::MOVZXi: {
+        BuildMI(MBB, MBBI, DL, TII->get(ImmI.Opcode), AArch64::X17)
+          .addImm(ImmI.Op1)
+          .addImm(ImmI.Op2);
+        } break;
+      case AArch64::MOVKXi: {
+        BuildMI(MBB, MBBI, DL, TII->get(ImmI.Opcode), AArch64::X17)
+          .addReg(AArch64::X17)
+          .addImm(ImmI.Op1)
+          .addImm(ImmI.Op2);
+        } break;
+      }
+    }
+
+    if (IsPre) {
+      BuildMI(MBB, MBBI, DL, TII->get(AArch64::ADDXrs), AArch64::X16)
+        .addReg(AArch64::X16)
+        .addReg(AArch64::X17)
+        .addImm(0);
+      BuildMI(MBB, MBBI, DL, TII->get(AArch64::LDRXui))
+        .add(DstOp)
+        .addUse(AArch64::X16)
+        .addImm(/*Offset=*/0);
+    } else {
+      BuildMI(MBB, MBBI, DL, TII->get(AArch64::LDRXroX))
+        .add(DstOp)
+        .addReg(AArch64::X16)
+        .addReg(AArch64::X17)
+        .addImm(0)
+        .addImm(0);
+    }
+  }
+
+  return true;
+}
+
 bool AArch64ExpandHardenedPseudos::expandMI(MachineInstr &MI) {
   switch (MI.getOpcode()) {
   case AArch64::BLRA:
@@ -377,6 +498,9 @@ bool AArch64ExpandHardenedPseudos::expandMI(MachineInstr &MI) {
   case AArch64::LOADgotPAC:
   case AArch64::MOVaddrPAC:
     return expandPtrAuthPseudo(MI);
+  case AArch64::LDRA:
+  case AArch64::LDRApre:
+    return expandAuthLoad(MI);
   default:
     return false;
   }
