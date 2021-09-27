@@ -36,6 +36,7 @@
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
+#include "llvm/IR/GlobalPtrAuthInfo.h"
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/InlineAsm.h"
 #include "llvm/IR/InstrTypes.h"
@@ -2043,6 +2044,7 @@ Instruction *InstCombinerImpl::visitCallInst(CallInst &CI) {
     // (sign|resign) + (auth|resign) can be folded by omitting the middle
     // sign+auth component if the key and discriminator match.
     bool NeedSign = II->getIntrinsicID() == Intrinsic::ptrauth_resign;
+    Value *Ptr = II->getArgOperand(0);
     Value *Key = II->getArgOperand(1);
     Value *Disc = II->getArgOperand(2);
 
@@ -2061,6 +2063,30 @@ Instruction *InstCombinerImpl::visitCallInst(CallInst &CI) {
         AuthDisc = CI->getArgOperand(2);
       } else
         break;
+    } else if (auto PIC = dyn_cast<ConstantExpr>(Ptr)) {
+      // @var.ptrauth is equivalent to a call to @llvm.ptrauth.sign for our
+      // purposes, so check for that too.
+      if (PIC->getOpcode() != Instruction::PtrToInt)
+        break;
+
+      auto PAI = GlobalPtrAuthInfo::analyze(PIC->getOperand(0));
+      if (!PAI || !PAI->isCompatibleWith(Key, Disc, DL))
+        break;
+
+      if (NeedSign && isa<ConstantInt>(II->getArgOperand(4))) {
+        auto Key = cast<ConstantInt>(II->getArgOperand(3));
+        auto Disc = cast<ConstantInt>(II->getArgOperand(4));
+        auto AddrDisc = ConstantInt::get(Disc->getType(), 0);
+        replaceInstUsesWith(*II, ConstantExpr::getPointerCast(
+                                     GlobalPtrAuthInfo::create(
+                                         *II->getModule(), PAI->getPointer(),
+                                         Key, AddrDisc, Disc),
+                                     II->getType()));
+        eraseInstFromFunction(*II);
+        return nullptr;
+      }
+
+      BasePtr = Builder.CreatePtrToInt(PAI->getPointer(), II->getType());
     } else
       break;
 
