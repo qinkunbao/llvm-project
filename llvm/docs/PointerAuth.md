@@ -393,3 +393,45 @@ the object:
 | ----- | ------------ | -------------- |
 |  0000 |  ABI version | 0000 0000 0010 |
 ```
+
+
+#### Assembly Representation
+
+At the assembly level,
+[Authenticated Relocations](#authenticated-global-relocation) are represented
+using the ``@AUTH`` modifier:
+
+```asm
+    .quad _target@AUTH(<key>,<discriminator>[,addr])
+```
+
+where:
+* ``key`` is the Armv8.3-A key identifier (``ia``, ``ib``, ``da``, ``db``)
+* ``discriminator`` is the 16-bit unsigned discriminator value
+* ``addr`` signifies that the authenticated pointer is address-discriminated
+  (that is, that the relocation's target address is to be blended into the
+  ``discriminator`` before it is used in the sign operation.
+
+For example:
+```asm
+  _authenticated_reference_to_sym:
+    .quad _sym@AUTH(db,0)
+
+  _authenticated_reference_to_sym_addr_disc:
+    .quad _sym@AUTH(ia,12,addr)
+```
+
+#### Object File Representation
+
+At the binary object file level,
+[Authenticated Relocations](#authenticated-global-relocation) are represented
+using the ``ARM64_RELOC_AUTHENTICATED_POINTER`` relocation kind (with value
+``11``).
+
+The pointer authentication information is encoded into the addend, as such:
+
+```
+| 63 | 62 | 61-51 | 50-49 |   48   | 47     -     32 | 31  -  0 |
+| -- | -- | ----- | ----- | ------ | --------------- | -------- |
+|  1 |  0 |   0   |  key  |  addr  |  discriminator  |  addend  |
+```
