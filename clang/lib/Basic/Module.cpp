@@ -282,6 +282,10 @@ bool Module::directlyUses(const Module *Requested) {
   if (!Requested->Parent && Requested->Name == "_Builtin_stddef_max_align_t")
     return true;
 
+  // Anyone is allowed to use our builtin ptrauth.h and its accompanying module.
+  if (!Requested->Parent && Requested->Name == "ptrauth")
+    return true;
+
   if (NoUndeclaredIncludes)
     UndeclaredUses.insert(Requested);
 

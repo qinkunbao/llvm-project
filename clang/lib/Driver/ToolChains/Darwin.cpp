@@ -1115,6 +1115,20 @@ void DarwinClang::addClangWarningOptions(ArgStringList &CC1Args) const {
   }
 }
 
+void DarwinClang::addClangTargetOptions(
+  const llvm::opt::ArgList &DriverArgs, llvm::opt::ArgStringList &CC1Args,
+  Action::OffloadKind DeviceOffloadKind) const{
+
+  Darwin::addClangTargetOptions(DriverArgs, CC1Args, DeviceOffloadKind);
+
+  // On arm64e, enable pointer authentication intrinsics.
+  if (getTriple().isArm64e()) {
+    if (!DriverArgs.hasArg(options::OPT_fptrauth_intrinsics,
+                           options::OPT_fno_ptrauth_intrinsics))
+      CC1Args.push_back("-fptrauth-intrinsics");
+  }
+}
+
 /// Take a path that speculatively points into Xcode and return the
 /// `XCODE/Contents/Developer` path if it is an Xcode path, or an empty path
 /// otherwise.
