@@ -21,7 +21,7 @@ At the IR level, it is represented using:
 The current implementation leverages the
 [Armv8.3-A PAuth/Pointer Authentication Code](#armv8-3-a-pauth-pointer-authentication-code)
 instructions in the [AArch64 backend](#aarch64-support).
-This support is used to implement the Darwin arm64e ABI, as well as the
+This support is used to implement the Darwin [arm64e](#arm64e) ABI, as well as the
 [PAuth ABI Extension to ELF](https://github.com/ARM-software/abi-aa/blob/main/pauthabielf64/pauthabielf64.rst).
 
 
@@ -335,3 +335,24 @@ instructions as such:
 * [``llvm.ptrauth.resign``](#llvm-ptrauth-resign): ``AUT*+PAC*``.  These are
   represented as a single pseudo-instruction in the backend to guarantee that
   the intermediate raw pointer value is not spilled and attackable.
+
+### arm64e
+
+Darwin supports Armv8.3-A Pointer Authentication Codes via the arm64e MachO
+architecture slice.
+
+#### CPU Subtype
+
+The arm64e slice is an extension of the ``arm64`` slice (so uses the same
+MachO ``cpu_type``, ``CPU_TYPE_ARM64``).
+
+It is mainly represented using the ``cpu_subtype`` 2, or ``CPU_SUBTYPE_ARM64E``.
+
+The subtype also encodes the version of the pointer authentication ABI used in
+the object:
+
+```
+| 31-28 |     28-25    |      24-0      |
+| ----- | ------------ | -------------- |
+|  0000 |  ABI version | 0000 0000 0010 |
+```
