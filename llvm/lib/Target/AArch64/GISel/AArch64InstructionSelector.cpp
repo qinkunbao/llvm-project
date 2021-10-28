@@ -5880,6 +5880,28 @@ bool AArch64InstructionSelector::selectIntrinsic(MachineInstr &I,
     I.eraseFromParent();
     return true;
   }
+  case Intrinsic::ptrauth_blend: {
+    MachineFunction &MF = *I.getParent()->getParent();
+    auto RHS = getIConstantVRegVal(I.getOperand(3).getReg(), MRI);
+    if (RHS) {
+      // The integer discriminator value must be 16-bit wide.
+      if (RHS->getZExtValue() > 0xffff)
+        return false;
+      I.setDesc(TII.get(AArch64::MOVKXi));
+      I.removeOperand(1);
+      I.removeOperand(2);
+      MachineInstrBuilder(MF, I)
+          .addImm(RHS->getZExtValue() & 0xffff)
+          .addImm(48)
+          .constrainAllUses(TII, TRI, RBI);
+    } else {
+      I.setDesc(TII.get(AArch64::BFMXri));
+      I.removeOperand(1);
+      MachineInstrBuilder(MF, I).addImm(16).addImm(15).constrainAllUses(
+          TII, TRI, RBI);
+    }
+    return true;
+  }
   case Intrinsic::frameaddress:
   case Intrinsic::returnaddress: {
     MachineFunction &MF = *I.getParent()->getParent();
