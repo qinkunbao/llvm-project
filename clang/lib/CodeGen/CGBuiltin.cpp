@@ -4607,6 +4607,9 @@ RValue CodeGenFunction::EmitBuiltinExpr(const GlobalDecl GD, unsigned BuiltinID,
   case Builtin::BI__iso_volatile_store64:
     return RValue::get(EmitISOVolatileStore(*this, E));
 
+  case Builtin::BI__builtin_ptrauth_sign_constant:
+    return RValue::get(ConstantEmitter(*this).emitAbstract(E, E->getType()));
+
   case Builtin::BI__builtin_ptrauth_auth:
   case Builtin::BI__builtin_ptrauth_auth_and_resign:
   case Builtin::BI__builtin_ptrauth_blend_discriminator:
@@ -4630,6 +4633,7 @@ RValue CodeGenFunction::EmitBuiltinExpr(const GlobalDecl GD, unsigned BuiltinID,
         LLVM_FALLTHROUGH;
 
       case Builtin::BI__builtin_ptrauth_auth:
+      case Builtin::BI__builtin_ptrauth_sign_constant:
       case Builtin::BI__builtin_ptrauth_sign_unauthenticated:
         if (args[2]->getType()->isPointerTy())
           args[2] = Builder.CreatePtrToInt(args[2], IntPtrTy);
@@ -4656,6 +4660,7 @@ RValue CodeGenFunction::EmitBuiltinExpr(const GlobalDecl GD, unsigned BuiltinID,
         return llvm::Intrinsic::ptrauth_blend;
       case Builtin::BI__builtin_ptrauth_sign_generic_data:
         return llvm::Intrinsic::ptrauth_sign_generic;
+      case Builtin::BI__builtin_ptrauth_sign_constant:
       case Builtin::BI__builtin_ptrauth_sign_unauthenticated:
         return llvm::Intrinsic::ptrauth_sign;
       case Builtin::BI__builtin_ptrauth_strip:

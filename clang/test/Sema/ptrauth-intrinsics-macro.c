@@ -14,6 +14,7 @@ void test(int *dp, int value) {
   dp = ptrauth_strip(dp, VALID_DATA_KEY);
   ptrauth_extra_data_t t0 = ptrauth_blend_discriminator(dp, value);
   (void)t0;
+  dp = ptrauth_sign_constant(&dv, VALID_DATA_KEY, 0);
   dp = ptrauth_sign_unauthenticated(dp, VALID_DATA_KEY, 0);
   dp = ptrauth_auth_and_resign(dp, VALID_DATA_KEY, dp, VALID_DATA_KEY, dp);
   dp = ptrauth_auth_data(dp, VALID_DATA_KEY, 0);

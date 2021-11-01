@@ -77,11 +77,29 @@ typedef __UINTPTR_TYPE__ ptrauth_generic_signature_t;
    On arm64e, the integer must fall within the range of a uint16_t;
    other bits may be ignored.
 
+   For the purposes of ptrauth_sign_constant, the result of calling
+   this function is considered a constant expression if the arguments
+   are constant.  Some restrictions may be imposed on the pointer.
+
    The first argument must be an expression of pointer type.
    The second argument must be an expression of integer type.
    The result will have type uintptr_t. */
 #define ptrauth_blend_discriminator(__pointer, __integer) \
   __builtin_ptrauth_blend_discriminator(__pointer, __integer)
+
+/* Add a signature to the given pointer value using a specific key,
+   using the given extra data as a salt to the signing process.
+
+   The value must be a constant expression of pointer type.
+   The key must be a constant expression of type ptrauth_key.
+   The extra data must be a constant expression of pointer or integer type;
+   if an integer, it will be coerced to ptrauth_extra_data_t.
+   The result will have the same type as the original value.
+
+   This is a constant expression if the extra data is an integer or
+   null pointer constant. */
+#define ptrauth_sign_constant(__value, __key, __data) \
+  __builtin_ptrauth_sign_constant(__value, __key, __data)
 
 /* Add a signature to the given pointer value using a specific key,
    using the given extra data as a salt to the signing process.
@@ -157,6 +175,7 @@ typedef __UINTPTR_TYPE__ ptrauth_generic_signature_t;
 
 #define ptrauth_strip(__value, __key) ({(void)__key; __value;})
 #define ptrauth_blend_discriminator(__pointer, __integer) ({(void)__pointer; (void)__integer; ((ptrauth_extra_data_t)0);})
+#define ptrauth_sign_constant(__value, __key, __data) ({(void)__key; (void)__data; __value;})
 #define ptrauth_sign_unauthenticated(__value, __key, __data) ({(void)__key; (void)__data; __value;})
 #define ptrauth_auth_and_resign(__value, __old_key, __old_data, __new_key, __new_data) ({(void)__old_key; (void)__old_data; (void)__new_key; (void)__new_data; __value;})
 #define ptrauth_auth_data(__value, __old_key, __old_data) ({(void)__old_key;(void)__old_data;__value;})
