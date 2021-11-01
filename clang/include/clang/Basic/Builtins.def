@@ -1649,7 +1649,6 @@ LANGBUILTIN(__builtin_coro_suspend, "cIb", "n", COR_LANG)
 // Pointer authentication builtins.
 BUILTIN(__builtin_ptrauth_strip, "v*v*i", "tnc")
 BUILTIN(__builtin_ptrauth_blend_discriminator, "zv*i", "tnc")
-BUILTIN(__builtin_ptrauth_sign_constant, "v*v*iv*", "tnc")
 BUILTIN(__builtin_ptrauth_sign_unauthenticated, "v*v*iv*", "tnc")
 BUILTIN(__builtin_ptrauth_sign_generic_data, "zv*v*", "tnc")
 BUILTIN(__builtin_ptrauth_auth_and_resign, "v*v*iv*iv*", "tn")
