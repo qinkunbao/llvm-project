@@ -226,6 +226,11 @@ namespace llvm {
                       Optional<unsigned> DWARFAddressSpace = None,
                       StringRef Name = "", DINodeArray Annotations = nullptr);
 
+    /// Create a __ptrauth qualifier.
+    DIDerivedType *createPtrAuthQualifiedType(DIType *FromTy, unsigned Key,
+                                              bool IsAddressDiscriminated,
+                                              unsigned ExtraDiscriminator);
+
     /// Create debugging information entry for a pointer to member.
     /// \param PointeeTy Type pointed to by this pointer.
     /// \param SizeInBits  Size.
