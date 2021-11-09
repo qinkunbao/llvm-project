@@ -320,12 +320,29 @@ static uint64_t adjustFixupValue(const MCFixup &Fixup, const MCValue &Target,
     if (Value & 0x3)
       Ctx.reportError(Fixup.getLoc(), "fixup not sufficiently aligned");
     return (Value >> 2) & 0x3ffffff;
+  case FK_Data_8:
+    if (TheTriple.isOSBinFormatELF()) {
+      AArch64MCExpr::VariantKind RefKind =
+          static_cast<AArch64MCExpr::VariantKind>(Target.getRefKind());
+      AArch64MCExpr::VariantKind SymLoc = AArch64MCExpr::getSymbolLoc(RefKind);
+      if (SymLoc == AArch64AuthMCExpr::VK_AUTH ||
+          SymLoc == AArch64AuthMCExpr::VK_AUTHADDR) {
+        auto *Expr = cast<AArch64AuthMCExpr>(Fixup.getValue());
+        uint16_t Discriminator = Expr->getDiscriminator();
+        AArch64PACKey::ID Key = Expr->getKey();
+
+        return (uint64_t(Discriminator) |
+                (uint64_t(Expr->hasAddressDiversity()) << 16) |
+                (uint64_t(Key) << 17));
+      }
+    }
+    LLVM_FALLTHROUGH;
   case FK_Data_1:
   case FK_Data_2:
   case FK_Data_4:
-  case FK_Data_8:
   case FK_SecRel_2:
   case FK_SecRel_4:
+  case FirstLiteralRelocationKind + ELF::R_AARCH64_TLSDESC_CALL:
     return Value;
   }
 }
@@ -391,8 +408,6 @@ void AArch64AsmBackend::applyFixup(const MCAssembler &Asm, const MCFixup &Fixup,
                                    MutableArrayRef<char> Data, uint64_t Value,
                                    bool IsResolved,
                                    const MCSubtargetInfo *STI) const {
-  if (!Value)
-    return; // Doesn't change encoding.
   unsigned Kind = Fixup.getKind();
   if (Kind >= FirstLiteralRelocationKind)
     return;
@@ -402,6 +417,8 @@ void AArch64AsmBackend::applyFixup(const MCAssembler &Asm, const MCFixup &Fixup,
   int64_t SignedValue = static_cast<int64_t>(Value);
   // Apply any target-specific value adjustments.
   Value = adjustFixupValue(Fixup, Target, Value, Ctx, TheTriple, IsResolved);
+  if (!Value)
+    return; // Doesn't change encoding.
 
   // Shift the value into position.
   Value <<= Info.TargetOffset;

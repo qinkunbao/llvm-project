@@ -535,6 +535,13 @@ template <class ELFT> void elf::createSyntheticSections() {
       config->isRela ? ".rela.plt" : ".rel.plt", /*sort=*/false);
   add(in.relaPlt);
 
+  if (config->emachine == EM_AARCH64 && partitions.size() == 1 &&
+      !config->androidPackDynRelocs) {
+    in.relaAuth =
+        make<RelocationSection<ELFT>>(relaDynName, config->zCombreloc);
+    add(in.relaAuth);
+  }
+
   // The relaIplt immediately follows .rel[a].dyn to ensure that the IRelative
   // relocations are processed last by the dynamic loader. We cannot place the
   // iplt section in .rel.dyn when Android relocation packing is enabled because
@@ -1082,7 +1089,18 @@ void PhdrEntry::add(OutputSection *sec) {
 // need these symbols, since IRELATIVE relocs are resolved through GOT
 // and PLT. For details, see http://www.airs.com/blog/archives/403.
 template <class ELFT> void Writer<ELFT>::addRelIpltSymbols() {
-  if (config->relocatable || config->isPic)
+  if (config->relocatable)
+    return;
+
+  if (in.relaAuth) {
+    ElfSym::relaAuthStart =
+        addOptionalRegular("__rela_auth_start", Out::elfHeader, 0, STV_HIDDEN);
+
+    ElfSym::relaAuthEnd =
+        addOptionalRegular("__rela_auth_end", Out::elfHeader, 0, STV_HIDDEN);
+  }
+
+  if (config->isPic)
     return;
 
   // By default, __rela_iplt_{start,end} belong to a dummy section 0
@@ -1139,6 +1157,12 @@ template <class ELFT> void Writer<ELFT>::setReservedSymbolSections() {
     ElfSym::relaIpltStart->section = in.relaIplt;
     ElfSym::relaIpltEnd->section = in.relaIplt;
     ElfSym::relaIpltEnd->value = in.relaIplt->getSize();
+  }
+
+  if (ElfSym::relaAuthStart && in.relaAuth && in.relaAuth->isNeeded()) {
+    ElfSym::relaAuthStart->section = in.relaAuth;
+    ElfSym::relaAuthEnd->section = in.relaAuth;
+    ElfSym::relaAuthEnd->value = in.relaAuth->getSize();
   }
 
   PhdrEntry *last = nullptr;
@@ -2164,6 +2188,7 @@ template <class ELFT> void Writer<ELFT>::finalizeSections() {
     finalizeSynthetic(in.gotPlt);
     finalizeSynthetic(in.relaIplt);
     finalizeSynthetic(in.relaPlt);
+    finalizeSynthetic(in.relaAuth);
     finalizeSynthetic(in.plt);
     finalizeSynthetic(in.iplt);
     finalizeSynthetic(in.ppc32Got2);

@@ -84,6 +84,7 @@ RelExpr AArch64::getRelExpr(RelType type, const Symbol &s,
   case R_AARCH64_ABS16:
   case R_AARCH64_ABS32:
   case R_AARCH64_ABS64:
+  case R_AARCH64_AUTH64:
   case R_AARCH64_ADD_ABS_LO12_NC:
   case R_AARCH64_LDST128_ABS_LO12_NC:
   case R_AARCH64_LDST16_ABS_LO12_NC:

@@ -1261,6 +1261,7 @@ struct InStruct {
   IBTPltSection *ibtPlt;
   RelocationBaseSection *relaPlt;
   RelocationBaseSection *relaIplt;
+  RelocationBaseSection *relaAuth;
   StringTableSection *shStrTab;
   StringTableSection *strTab;
   SymbolTableBaseSection *symTab;
