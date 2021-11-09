@@ -361,6 +361,10 @@ bool AArch64ExpandHardenedPseudos::expandPtrAuthPseudo(MachineInstr &MI) {
     DiscReg = AArch64::X17;
   }
 
+  if (GAOp.getGlobal()->hasExternalWeakLinkage())
+    BuildMI(MBB, MBBI, DL, TII->get(AArch64::CBZX), AArch64::X16)
+      .addImm(2);
+
   unsigned PACOpc = getPACOpcodeForKey(Key, DiscReg == AArch64::XZR);
   auto MIB = BuildMI(MBB, MBBI, DL, TII->get(PACOpc), AArch64::X16)
       .addReg(AArch64::X16);

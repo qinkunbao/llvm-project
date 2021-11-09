@@ -516,6 +516,9 @@ struct ElfSym {
   static Defined *relaIpltStart;
   static Defined *relaIpltEnd;
 
+  static Defined *relaAuthStart;
+  static Defined *relaAuthEnd;
+
   // __global_pointer$ for RISC-V.
   static Defined *riscvGlobalPointer;
 

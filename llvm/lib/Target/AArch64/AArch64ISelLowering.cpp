@@ -8081,7 +8081,7 @@ AArch64TargetLowering::LowerPtrAuthGlobalAddress(SDValue Op,
   SDLoc DL(Op);
 
   // Both key allocation and the wrapper usage support are target-specific.
-  if (!Subtarget->isTargetMachO())
+  if (!Subtarget->isTargetMachO() && !Subtarget->isTargetELF())
     llvm_unreachable("Unimplemented ptrauth global lowering");
 
   uint64_t PtrOffsetC = 0;
@@ -8091,6 +8091,8 @@ AArch64TargetLowering::LowerPtrAuthGlobalAddress(SDValue Op,
   }
   GlobalAddressSDNode *PtrN = cast<GlobalAddressSDNode>(Ptr.getNode());
   const GlobalValue *PtrGV = PtrN->getGlobal();
+  bool RequiresStaticMaterialization =
+      Subtarget->isTargetMachO() && PtrGV->hasExternalWeakLinkage();
 
   // Classify the reference to determine whether it needs a GOT load.
   const unsigned OpFlags =
@@ -8111,7 +8113,7 @@ AArch64TargetLowering::LowerPtrAuthGlobalAddress(SDValue Op,
 
   // The shared cache severely constrains the offset, to 5 bits, which prevents
   // us from using LOADauthptrgot, our only option for extern_weak.
-  if (!isUInt<5>(PtrOffsetC) && PtrGV->hasExternalWeakLinkage())
+  if (!isUInt<5>(PtrOffsetC) && RequiresStaticMaterialization)
     report_fatal_error("Offset in weak ptrauth global reference is too large");
 
   // Blend only works if the integer discriminator is 16-bit wide.
@@ -8135,9 +8137,9 @@ AArch64TargetLowering::LowerPtrAuthGlobalAddress(SDValue Op,
   }
 
   // GOT load, "dynamic" materialization allowed -> LOADgotPAC
-  // Note that we disallow extern_weak refs to avoid null checks later.
+  // Note that on MachO we disallow extern_weak refs to avoid null checks later.
   // We also require this for offsets >=32, because of shared cache constraints.
-  if ((AArch64PtrAuthGlobalDynamicMat && !PtrGV->hasExternalWeakLinkage()) ||
+  if ((AArch64PtrAuthGlobalDynamicMat && !RequiresStaticMaterialization) ||
       !isUInt<5>(PtrOffsetC))
     return SDValue(
         DAG.getMachineNode(AArch64::LOADgotPAC, DL, MVT::i64,

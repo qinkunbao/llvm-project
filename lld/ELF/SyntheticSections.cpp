@@ -1267,6 +1267,8 @@ static uint64_t addRelaSz(const RelocationBaseSection &relaDyn) {
     size += in.relaIplt->getSize();
   if (in.relaPlt->getParent() == relaDyn.getParent())
     size += in.relaPlt->getSize();
+  if (in.relaAuth && in.relaAuth->getParent() == relaDyn.getParent())
+    size += in.relaAuth->getSize();
   return size;
 }
 
@@ -1369,7 +1371,9 @@ DynamicSection<ELFT>::computeContents() {
 
   if (part.relaDyn->isNeeded() ||
       (in.relaIplt->isNeeded() &&
-       part.relaDyn->getParent() == in.relaIplt->getParent())) {
+       part.relaDyn->getParent() == in.relaIplt->getParent()) ||
+      (in.relaAuth && in.relaAuth->isNeeded() &&
+       part.relaDyn->getParent() == in.relaAuth->getParent())) {
     addInSec(part.relaDyn->dynamicTag, *part.relaDyn);
     entries.emplace_back(part.relaDyn->sizeDynamicTag,
                          addRelaSz(*part.relaDyn));
@@ -1633,7 +1637,7 @@ void RelocationBaseSection::finalizeContents() {
     getParent()->flags |= ELF::SHF_INFO_LINK;
     getParent()->info = in.gotPlt->getParent()->sectionIndex;
   }
-  if (in.relaIplt.get() == this && in.igotPlt->getParent()) {
+  if (in.relaIplt.get() == this && in.igotPlt->getParent()->isLive()) {
     getParent()->flags |= ELF::SHF_INFO_LINK;
     getParent()->info = in.igotPlt->getParent()->sectionIndex;
   }
@@ -3816,6 +3820,7 @@ void InStruct::reset() {
   ibtPlt.reset();
   relaPlt.reset();
   relaIplt.reset();
+  relaAuth.reset();
   shStrTab.reset();
   strTab.reset();
   symTab.reset();

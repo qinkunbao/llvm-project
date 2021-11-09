@@ -2192,7 +2192,7 @@ bool AsmPrinter::doFinalization(Module &M) {
 
     // Print out module-level global objects here.
     for (const auto &GO : M.global_objects()) {
-      if (!GO.hasExternalWeakLinkage())
+      if (!GO.hasExternalWeakLinkage() || GO.getSection() == "llvm.ptrauth")
         continue;
       OutStreamer->emitSymbolAttribute(getSymbol(&GO), MCSA_WeakReference);
     }
@@ -2264,7 +2264,9 @@ bool AsmPrinter::doFinalization(Module &M) {
     for (const GlobalValue &GV : M.global_values()) {
       if (!GV.use_empty() && !GV.isTransitiveUsedByMetadataOnly() &&
           !GV.isThreadLocal() && !GV.hasDLLImportStorageClass() &&
-          !GV.getName().startswith("llvm.") && !GV.hasAtLeastLocalUnnamedAddr())
+          !GV.getName().startswith("llvm.") &&
+          !GV.hasAtLeastLocalUnnamedAddr() &&
+          !(isa<GlobalVariable>(GV) && GV.getSection() == "llvm.ptrauth"))
         OutStreamer->emitAddrsigSym(getSymbol(&GV));
     }
   }

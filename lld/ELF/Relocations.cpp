@@ -1425,6 +1425,21 @@ template <class ELFT, class RelTy> void RelocationScanner::scanOne(RelTy *&i) {
     }
   }
 
+  if (config->emachine == EM_AARCH64 && type == R_AARCH64_AUTH64) {
+    std::lock_guard<std::mutex> lock(relocMutex);
+    if (sym.isPreemptible) {
+      sec->getPartition().relaDyn->addSymbolReloc(type, *sec, offset, sym,
+                                                  addend, type);
+    } else {
+      RelocationBaseSection *relSec =
+          in.relaAuth ? in.relaAuth.get() : sec->getPartition().relaDyn.get();
+      relSec->addReloc(
+          {sym.isUndefined() ? R_AARCH64_AUTH64 : R_AARCH64_AUTH_RELATIVE, sec,
+           offset, DynamicReloc::AddendOnlyWithTargetVA, sym, addend, R_ABS});
+    }
+    return;
+  }
+
   // We were asked not to generate PLT entries for ifuncs. Instead, pass the
   // direct relocation on through.
   if (LLVM_UNLIKELY(isIfunc) && config->zIfuncNoplt) {
