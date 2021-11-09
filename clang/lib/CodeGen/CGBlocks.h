@@ -241,7 +241,8 @@ public:
   /// The mapping of allocated indexes within the block.
   llvm::DenseMap<const VarDecl*, Capture> Captures;
 
-  Address LocalAddress;
+  // Currently we assume that block-pointer types are never signed.
+  RawAddress LocalAddress;
   llvm::StructType *StructureType;
   const BlockDecl *Block;
   const BlockExpr *BlockExpression;

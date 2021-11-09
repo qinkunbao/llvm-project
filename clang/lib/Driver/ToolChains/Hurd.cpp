@@ -62,7 +62,7 @@ static StringRef getOSLibDir(const llvm::Triple &Triple, const ArgList &Args) {
 }
 
 Hurd::Hurd(const Driver &D, const llvm::Triple &Triple, const ArgList &Args)
-    : Generic_ELF(D, Triple, Args) {
+    : Linux(D, Triple, Args) {
   GCCInstallation.init(Triple, Args);
   Multilibs = GCCInstallation.getMultilibs();
   SelectedMultilib = GCCInstallation.getMultilib();

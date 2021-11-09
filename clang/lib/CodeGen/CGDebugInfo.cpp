@@ -959,7 +959,7 @@ llvm::DIType *CGDebugInfo::CreateQualifiedType(QualType Ty, llvm::DIFile *Unit,
   // We will create one Derived type for one qualifier and recurse to handle any
   // additional ones.
   llvm::dwarf::Tag Tag = getNextQualifier(Qc);
-  if (!Tag) {
+  if (!Tag && !Qc.getPointerAuth().isPresent()) {
     assert(Qc.empty() && "Unknown type qualifier for debug info");
     return getOrCreateType(QualType(T, 0), Unit);
   }
@@ -973,6 +973,17 @@ llvm::DIType *CGDebugInfo::CreateQualifiedType(QualType Ty, llvm::DIFile *Unit,
       NextTL = StripMacroAttributed(QTL.getNextTypeLoc());
   }
   auto *FromTy = getOrCreateType(NextTy, Unit, NextTL);
+
+  if (!Tag) {
+    assert(Qc.getPointerAuth().isPresent());
+    unsigned Key = Qc.getPointerAuth().getKey();
+    bool IsDiscr = Qc.getPointerAuth().isAddressDiscriminated();
+    unsigned ExtraDiscr = Qc.getPointerAuth().getExtraDiscriminator();
+    Qc.removePtrAuth();
+    assert(Qc.empty() && "Unknown type qualifier for debug info");
+    return DBuilder.createPtrAuthQualifiedType(FromTy, Key, IsDiscr,
+                                               ExtraDiscr);
+  }
 
   // No need to fill in the Name, Line, Size, Alignment, Offset in case of
   // CVR derived types.

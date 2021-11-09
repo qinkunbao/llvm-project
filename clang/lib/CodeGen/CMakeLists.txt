@@ -62,6 +62,7 @@ add_clang_library(clangCodeGen
   CGOpenMPRuntimeAMDGCN.cpp
   CGOpenMPRuntimeGPU.cpp
   CGOpenMPRuntimeNVPTX.cpp
+  CGPointerAuth.cpp
   CGRecordLayoutBuilder.cpp
   CGStmt.cpp
   CGStmtOpenMP.cpp

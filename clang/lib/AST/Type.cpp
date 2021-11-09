@@ -2536,6 +2536,8 @@ QualType::PrimitiveCopyKind QualType::isNonTrivialToPrimitiveCopy() const {
   case Qualifiers::OCL_Weak:
     return PCK_ARCWeak;
   default:
+    if (hasAddressDiscriminatedPointerAuth())
+      return PCK_PtrAuth;
     return Qs.hasVolatile() ? PCK_VolatileTrivial : PCK_Trivial;
   }
 }
@@ -4202,6 +4204,12 @@ Optional<NullabilityKind> AttributedType::stripOuterNullability(QualType &T) {
   }
 
   return None;
+}
+
+bool Type::isSignableInteger(const ASTContext &ctx) const {
+  if (!isIntegralType(ctx) || isEnumeralType())
+    return false;
+  return ctx.getTypeSize(this) == ctx.getTypeSize(ctx.VoidPtrTy);
 }
 
 bool Type::isBlockCompatibleObjCPointerType(ASTContext &ctx) const {

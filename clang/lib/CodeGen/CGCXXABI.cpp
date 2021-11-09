@@ -20,6 +20,12 @@ using namespace CodeGen;
 
 CGCXXABI::~CGCXXABI() { }
 
+Address CGCXXABI::getThisAddress(CodeGenFunction &CGF) {
+  return CGF.makeNaturalAddressForPointer(CGF.CXXABIThisValue,
+                                          CGF.CXXABIThisDecl->getType(),
+                                          CGF.CXXABIThisAlignment);
+}
+
 void CGCXXABI::ErrorUnsupportedABI(CodeGenFunction &CGF, StringRef S) {
   DiagnosticsEngine &Diags = CGF.CGM.getDiags();
   unsigned DiagID = Diags.getCustomDiagID(DiagnosticsEngine::Error,
@@ -40,15 +46,16 @@ CGCXXABI::ConvertMemberPointerType(const MemberPointerType *MPT) {
 
 CGCallee CGCXXABI::EmitLoadOfMemberFunctionPointer(
     CodeGenFunction &CGF, const Expr *E, Address This,
-    llvm::Value *&ThisPtrForCall,
-    llvm::Value *MemPtr, const MemberPointerType *MPT) {
+    llvm::Value *&ThisPtrForCall, llvm::Value *MemPtr,
+    const MemberPointerType *MPT) {
   ErrorUnsupportedABI(CGF, "calls through member pointers");
 
-  ThisPtrForCall = This.getPointer();
-  const FunctionProtoType *FPT =
-    MPT->getPointeeType()->getAs<FunctionProtoType>();
   const auto *RD =
       cast<CXXRecordDecl>(MPT->getClass()->castAs<RecordType>()->getDecl());
+  ThisPtrForCall =
+      CGF.getAsNaturalPointerTo(This, CGF.getContext().getRecordType(RD));
+  const FunctionProtoType *FPT =
+      MPT->getPointeeType()->getAs<FunctionProtoType>();
   llvm::FunctionType *FTy = CGM.getTypes().GetFunctionType(
       CGM.getTypes().arrangeCXXMethodType(RD, FPT, /*FD=*/nullptr));
   llvm::Constant *FnPtr = llvm::Constant::getNullValue(FTy->getPointerTo());
@@ -210,16 +217,15 @@ void CGCXXABI::ReadArrayCookie(CodeGenFunction &CGF, Address ptr,
 
   // If we don't need an array cookie, bail out early.
   if (!requiresArrayCookie(expr, eltTy)) {
-    allocPtr = ptr.getPointer();
+    allocPtr = ptr.getRawPointer(CGF);
     numElements = nullptr;
     cookieSize = CharUnits::Zero();
     return;
   }
 
   cookieSize = getArrayCookieSizeImpl(eltTy);
-  Address allocAddr =
-    CGF.Builder.CreateConstInBoundsByteGEP(ptr, -cookieSize);
-  allocPtr = allocAddr.getPointer();
+  Address allocAddr = CGF.Builder.CreateConstInBoundsByteGEP(ptr, -cookieSize);
+  allocPtr = allocAddr.getRawPointer(CGF);
   numElements = readArrayCookieImpl(CGF, allocAddr, cookieSize);
 }
 

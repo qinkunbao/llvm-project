@@ -29,6 +29,19 @@
 
 namespace clang {
 
+enum class PointerAuthenticationMode : unsigned {
+  None,
+  Strip,
+  SignAndStrip,
+  SignAndAuth
+};
+
+static constexpr llvm::StringLiteral PointerAuthenticationOptionStrip = "strip";
+static constexpr llvm::StringLiteral PointerAuthenticationOptionSignAndStrip =
+    "sign-and-strip";
+static constexpr llvm::StringLiteral PointerAuthenticationOptionSignAndAuth =
+    "sign-and-auth";
+
 /// Bitfields of LangOptions, split out from LangOptions in order to ensure that
 /// this large collection of bitfields is a trivial class type.
 class LangOptionsBase {
@@ -271,6 +284,8 @@ public:
     /// Return address signing uses APIB key.
     BKey
   };
+
+  using PointerAuthenticationMode = ::clang::PointerAuthenticationMode;
 
   enum class ThreadModelKind {
     /// POSIX Threads.
