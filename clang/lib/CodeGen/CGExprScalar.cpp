@@ -2190,7 +2190,7 @@ Value *ScalarExprEmitter::VisitCastExpr(CastExpr *CE) {
     }
 
     llvm::Value *Result = Builder.CreateBitCast(Src, DstTy);
-    return CGF.AuthPointerToPointerCast(Result, E->getType(), DestTy);
+    return CGF.AuthPointerToPointerCast(Result, E, DestTy);
   }
   case CK_AddressSpaceConversion: {
     Expr::EvalResult Result;
@@ -2349,7 +2349,7 @@ Value *ScalarExprEmitter::VisitCastExpr(CastExpr *CE) {
         IntToPtr = Builder.CreateLaunderInvariantGroup(IntToPtr);
     }
 
-    IntToPtr = CGF.AuthPointerToPointerCast(IntToPtr, E->getType(), DestTy);
+    IntToPtr = CGF.AuthPointerToPointerCast(IntToPtr, E, DestTy);
     return IntToPtr;
   }
   case CK_PointerToIntegral: {
@@ -2365,7 +2365,7 @@ Value *ScalarExprEmitter::VisitCastExpr(CastExpr *CE) {
         PtrExpr = Builder.CreateStripInvariantGroup(PtrExpr);
     }
 
-    PtrExpr = CGF.AuthPointerToPointerCast(PtrExpr, E->getType(), DestTy);
+    PtrExpr = CGF.AuthPointerToPointerCast(PtrExpr, E, DestTy);
     return Builder.CreatePtrToInt(PtrExpr, ConvertType(DestTy));
   }
   case CK_ToVoid: {
