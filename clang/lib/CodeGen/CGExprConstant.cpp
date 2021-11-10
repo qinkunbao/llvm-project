@@ -2002,6 +2002,16 @@ ConstantLValueEmitter::tryEmitAbsolute(llvm::Type *destTy) {
   C = llvm::ConstantExpr::getIntegerCast(getOffset(), intptrTy,
                                          /*isSigned*/ false);
   C = llvm::ConstantExpr::getIntToPtr(C, destPtrTy);
+
+  // Integer constants casted to function pointer type are signed in order to
+  // accommodate APIs such as the POSIX signal handling API that use integer
+  // constants casted to function pointer type as part of the API.
+  if (DestType->isFunctionPointerType())
+    if (auto authInfo = CGM.getFunctionPointerAuthInfo(DestType))
+      C = CGM.getConstantSignedPointer(
+          C, authInfo.getKey(), nullptr,
+          cast_or_null<llvm::Constant>(authInfo.getDiscriminator()));
+
   return C;
 }
 

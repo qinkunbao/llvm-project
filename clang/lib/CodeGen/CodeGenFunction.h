@@ -4236,7 +4236,7 @@ public:
   EmitOrigPointerRValue(const Expr *E);
 
   llvm::Value *AuthPointerToPointerCast(llvm::Value *ResultPtr,
-                                        QualType SourceType, QualType DestType);
+                                        Expr *E, QualType DestType);
   Address AuthPointerToPointerCast(Address Ptr,
                                    QualType SourceType, QualType DestType);
 

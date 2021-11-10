@@ -1693,49 +1693,22 @@ const MCExpr *
 AArch64AsmPrinter::lowerPtrAuthGlobalConstant(const GlobalPtrAuthInfo &PAI) {
   MCContext &Ctx = OutContext;
 
-  // Figure out the base symbol and the addend, if any.
-  APInt Offset(64, 0);
-  const Value *BaseGV =
-    PAI.getPointer()->stripAndAccumulateConstantOffsets(
-      getDataLayout(), Offset, /*AllowNonInbounds=*/true);
-
-  auto *BaseGVB = dyn_cast<GlobalValue>(BaseGV);
-
-  // If we can't understand the referenced ConstantExpr, there's nothing
-  // else we can do: emit an error.
-  if (!BaseGVB) {
-    BaseGVB = PAI.getGV();
-
-    std::string Buf;
-    raw_string_ostream OS(Buf);
-    OS << "Couldn't resolve target base/addend of llvm.ptrauth global '"
-      << *BaseGVB << "'";
-    BaseGV->getContext().emitError(OS.str());
-  }
-
-  // If there is an addend, turn that into the appropriate MCExpr.
-  const MCExpr *Sym = MCSymbolRefExpr::create(getSymbol(BaseGVB), Ctx);
-  if (Offset.sgt(0))
-    Sym = MCBinaryExpr::createAdd(
-        Sym, MCConstantExpr::create(Offset.getSExtValue(), Ctx), Ctx);
-  else if (Offset.slt(0))
-    Sym = MCBinaryExpr::createSub(
-        Sym, MCConstantExpr::create((-Offset).getSExtValue(), Ctx), Ctx);
+  const MCExpr *Ptr = lowerConstant(PAI.getPointer());
 
   uint64_t KeyID = PAI.getKey()->getZExtValue();
   if (!isUInt<2>(KeyID))
-    BaseGV->getContext().emitError(
-        "Invalid AArch64 PAC Key ID '" + utostr(KeyID) + "' in llvm.ptrauth global '" +
-        BaseGV->getName() + "'");
+    PAI.getPointer()->getContext().emitError(
+        "Invalid AArch64 PAC Key ID '" + utostr(KeyID) +
+        "' in llvm.ptrauth global '" + PAI.getPointer()->getName() + "'");
 
   uint64_t Disc = PAI.getDiscriminator()->getZExtValue();
   if (!isUInt<16>(Disc))
-    BaseGV->getContext().emitError("Invalid AArch64 Discriminator '" +
-                                   utostr(Disc) + "' in llvm.ptrauth global '" +
-                                   BaseGV->getName() + "'");
+    PAI.getPointer()->getContext().emitError(
+        "Invalid AArch64 Discriminator '" + utostr(Disc) +
+        "' in llvm.ptrauth global '" + PAI.getPointer()->getName() + "'");
 
   // Finally build the complete @AUTH expr.
-  return AArch64AuthMCExpr::create(Sym, Disc, AArch64PACKey::ID(KeyID),
+  return AArch64AuthMCExpr::create(Ptr, Disc, AArch64PACKey::ID(KeyID),
                                    PAI.hasAddressDiversity(), Ctx);
 }
 

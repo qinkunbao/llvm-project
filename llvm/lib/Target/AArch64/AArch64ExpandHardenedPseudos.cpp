@@ -55,6 +55,10 @@ public:
 
 private:
   bool expandAuthCall(MachineInstr &MI);
+  void materializeConstant(MachineBasicBlock &MBB,
+                           MachineBasicBlock::instr_iterator MBBI, DebugLoc DL,
+                           const AArch64InstrInfo *TII, unsigned Reg,
+                           uint64_t Val);
   bool expandPtrAuthPseudo(MachineInstr &MI);
   bool expandAuthLoad(MachineInstr &MI);
   bool expandMI(MachineInstr &MI);
@@ -127,6 +131,25 @@ bool AArch64ExpandHardenedPseudos::expandAuthCall(MachineInstr &MI) {
   return true;
 }
 
+void AArch64ExpandHardenedPseudos::materializeConstant(
+    MachineBasicBlock &MBB, MachineBasicBlock::instr_iterator MBBI, DebugLoc DL,
+    const AArch64InstrInfo *TII, unsigned Reg, uint64_t Val) {
+  BuildMI(MBB, MBBI, DL, TII->get(AArch64::MOVZXi), Reg)
+      .addImm(static_cast<uint16_t>(Val))
+      .addImm(0);
+  // It's sad that we have to manually materialize instructions, but we can't
+  // trivially reuse the main pseudo expansion logic.
+  // A MOVK sequence is easy enough to generate and handles the general case.
+  for (int Offset = 16; Offset < 64; Offset += 16) {
+    if ((Val >> Offset) == 0)
+      break;
+    BuildMI(MBB, MBBI, DL, TII->get(AArch64::MOVKXi), Reg)
+        .addReg(AArch64::X17)
+        .addImm(static_cast<uint16_t>(Val >> Offset))
+        .addImm(Offset);
+  }
+}
+
 bool AArch64ExpandHardenedPseudos::expandPtrAuthPseudo(MachineInstr &MI) {
   MachineBasicBlock &MBB = *MI.getParent();
   MachineFunction &MF = *MBB.getParent();
@@ -170,20 +193,7 @@ bool AArch64ExpandHardenedPseudos::expandPtrAuthPseudo(MachineInstr &MI) {
         .addImm(MaxTableEntry)
         .addImm(0);
     } else {
-      BuildMI(MBB, MBBI, DL, TII->get(AArch64::MOVZXi), AArch64::X17)
-        .addImm(static_cast<uint16_t>(MaxTableEntry))
-        .addImm(0);
-      // It's sad that we have to manually materialize instructions, but we can't
-      // trivially reuse the main pseudo expansion logic.
-      // A MOVK sequence is easy enough to generate and handles the general case.
-      for (int Offset = 16; Offset < 64; Offset += 16) {
-        if ((MaxTableEntry >> Offset) == 0)
-          break;
-        BuildMI(MBB, MBBI, DL, TII->get(AArch64::MOVKXi), AArch64::X17)
-          .addReg(AArch64::X17)
-          .addImm(static_cast<uint16_t>(MaxTableEntry >> Offset))
-          .addImm(Offset);
-      }
+      materializeConstant(MBB, MBBI, DL, TII, AArch64::X17, MaxTableEntry);
       BuildMI(MBB, MBBI, DL, TII->get(AArch64::SUBSXrs), AArch64::XZR)
         .addReg(AArch64::X16)
         .addReg(AArch64::X17)
@@ -281,62 +291,67 @@ bool AArch64ExpandHardenedPseudos::expandPtrAuthPseudo(MachineInstr &MI) {
   unsigned AddrDisc = MI.getOperand(2).getReg();
   uint64_t Disc = MI.getOperand(3).getImm();
 
-  uint64_t Offset = GAOp.getOffset();
-  GAOp.setOffset(0);
-
-  // Emit:
-  // target materialization:
-  //   via GOT:
-  //     adrp x16, _target@GOTPAGE
-  //     ldr x16, [x16, _target@GOTPAGEOFF]
-  //     add x16, x16, #<offset> ; if offset != 0; up to 3 depending on width
-  //
-  //   direct:
-  //     adrp x16, _target@PAGE
-  //     add x16, x16, _target@PAGEOFF
-  //     add x16, x16, #<offset> ; if offset != 0; up to 3 depending on width
-  //
-  // signing:
-  // - 0 discriminator:
-  //     paciza x16
-  // - Non-0 discriminator, no address discriminator:
-  //     mov x17, #Disc
-  //     pacia x16, x17
-  // - address discriminator (with potentially folded immediate discriminator):
-  //     pacia x16, xAddrDisc
-
-  MachineOperand GAHiOp(GAOp);
-  MachineOperand GALoOp(GAOp);
-  GAHiOp.setTargetFlags(AArch64II::MO_PAGE);
-  GALoOp.setTargetFlags(AArch64II::MO_PAGEOFF | AArch64II::MO_NC);
-  if (IsGOTLoad) {
-    GAHiOp.addTargetFlag(AArch64II::MO_GOT);
-    GALoOp.addTargetFlag(AArch64II::MO_GOT);
-  }
-
-  BuildMI(MBB, MBBI, DL, TII->get(AArch64::ADRP), AArch64::X16)
-    .add(GAHiOp);
-
-  if (IsGOTLoad) {
-    BuildMI(MBB, MBBI, DL, TII->get(AArch64::LDRXui), AArch64::X16)
-      .addReg(AArch64::X16)
-      .add(GALoOp);
+  if (GAOp.isImm()) {
+    materializeConstant(MBB, MBBI, DL, TII, AArch64::X16, GAOp.getImm());
   } else {
-    BuildMI(MBB, MBBI, DL, TII->get(AArch64::ADDXri), AArch64::X16)
-      .addReg(AArch64::X16)
-      .add(GALoOp)
-      .addImm(0);
-  }
+    uint64_t Offset = GAOp.getOffset();
+    GAOp.setOffset(0);
 
-  if (Offset) {
-    if (!isUInt<32>(Offset))
-      report_fatal_error("ptrauth global offset too large, 32bit max encoding");
+    // Emit:
+    // target materialization:
+    //   via GOT:
+    //     adrp x16, _target@GOTPAGE
+    //     ldr x16, [x16, _target@GOTPAGEOFF]
+    //     add x16, x16, #<offset> ; if offset != 0; up to 3 depending on width
+    //
+    //   direct:
+    //     adrp x16, _target@PAGE
+    //     add x16, x16, _target@PAGEOFF
+    //     add x16, x16, #<offset> ; if offset != 0; up to 3 depending on width
+    //
+    // signing:
+    // - 0 discriminator:
+    //     paciza x16
+    // - Non-0 discriminator, no address discriminator:
+    //     mov x17, #Disc
+    //     pacia x16, x17
+    // - address discriminator (with potentially folded immediate
+    // discriminator):
+    //     pacia x16, xAddrDisc
 
-    for (int BitPos = 0; BitPos < 32 && (Offset >> BitPos); BitPos += 12) {
+    MachineOperand GAHiOp(GAOp);
+    MachineOperand GALoOp(GAOp);
+    GAHiOp.setTargetFlags(AArch64II::MO_PAGE);
+    GALoOp.setTargetFlags(AArch64II::MO_PAGEOFF | AArch64II::MO_NC);
+    if (IsGOTLoad) {
+      GAHiOp.addTargetFlag(AArch64II::MO_GOT);
+      GALoOp.addTargetFlag(AArch64II::MO_GOT);
+    }
+
+    BuildMI(MBB, MBBI, DL, TII->get(AArch64::ADRP), AArch64::X16).add(GAHiOp);
+
+    if (IsGOTLoad) {
+      BuildMI(MBB, MBBI, DL, TII->get(AArch64::LDRXui), AArch64::X16)
+          .addReg(AArch64::X16)
+          .add(GALoOp);
+    } else {
       BuildMI(MBB, MBBI, DL, TII->get(AArch64::ADDXri), AArch64::X16)
-        .addReg(AArch64::X16)
-        .addImm((Offset >> BitPos) & 0xfff)
-        .addImm(AArch64_AM::getShifterImm(AArch64_AM::LSL, BitPos));
+          .addReg(AArch64::X16)
+          .add(GALoOp)
+          .addImm(0);
+    }
+
+    if (Offset) {
+      if (!isUInt<32>(Offset))
+        report_fatal_error(
+            "ptrauth global offset too large, 32bit max encoding");
+
+      for (int BitPos = 0; BitPos < 32 && (Offset >> BitPos); BitPos += 12) {
+        BuildMI(MBB, MBBI, DL, TII->get(AArch64::ADDXri), AArch64::X16)
+            .addReg(AArch64::X16)
+            .addImm((Offset >> BitPos) & 0xfff)
+            .addImm(AArch64_AM::getShifterImm(AArch64_AM::LSL, BitPos));
+      }
     }
   }
 
@@ -361,7 +376,7 @@ bool AArch64ExpandHardenedPseudos::expandPtrAuthPseudo(MachineInstr &MI) {
     DiscReg = AArch64::X17;
   }
 
-  if (GAOp.getGlobal()->hasExternalWeakLinkage())
+  if (GAOp.isGlobal() && GAOp.getGlobal()->hasExternalWeakLinkage())
     BuildMI(MBB, MBBI, DL, TII->get(AArch64::CBZX), AArch64::X16)
       .addImm(2);
 

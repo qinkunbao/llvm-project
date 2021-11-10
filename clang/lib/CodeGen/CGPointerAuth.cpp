@@ -945,8 +945,10 @@ CodeGenModule::getMemberFunctionPointer(const FunctionDecl *FD, llvm::Type *Ty) 
 }
 
 llvm::Value *CodeGenFunction::AuthPointerToPointerCast(llvm::Value *ResultPtr,
-                                                       QualType SourceType,
+                                                       Expr *E,
                                                        QualType DestType) {
+  QualType SourceType = E->getType();
+
   CGPointerAuthInfo CurAuthInfo, NewAuthInfo;
   if (SourceType->isSignableValue(CGM.getContext()))
     CurAuthInfo = getPointerAuthInfoForType(CGM, SourceType);
@@ -958,8 +960,12 @@ llvm::Value *CodeGenFunction::AuthPointerToPointerCast(llvm::Value *ResultPtr,
     return ResultPtr;
 
   // If only one side of the cast is a function pointer, then we still need to
-  // resign to handle casts to/from opaque pointers.
-  if (!CurAuthInfo && DestType->isFunctionPointerType())
+  // resign to handle casts to/from opaque pointers. As a special case, integral
+  // constant expressions are not authenticated in order to accommodate APIs
+  // such as the POSIX signal handling API that use integer constants casted to
+  // function pointer type as part of the API.
+  if (!CurAuthInfo && DestType->isFunctionPointerType() &&
+      !E->isIntegerConstantExpr(CGM.getContext()))
     CurAuthInfo = CGM.getFunctionPointerAuthInfo(SourceType);
 
   if (!NewAuthInfo && SourceType->isFunctionPointerType())

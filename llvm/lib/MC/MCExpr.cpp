@@ -581,7 +581,7 @@ bool MCExpr::evaluateAsAbsolute(int64_t &Res, const MCAssembler *Asm,
   // Record the current value.
   Res = Value.getConstant();
 
-  return IsRelocatable && Value.isAbsolute();
+  return IsRelocatable && Value.isAbsolute() && Value.getRefKind() == 0;
 }
 
 /// Helper method for \see EvaluateSymbolAdd().

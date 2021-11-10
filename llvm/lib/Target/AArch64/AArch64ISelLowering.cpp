@@ -8089,23 +8089,34 @@ AArch64TargetLowering::LowerPtrAuthGlobalAddress(SDValue Op,
     PtrOffsetC = Ptr.getConstantOperandVal(1);
     Ptr = Ptr.getOperand(0);
   }
-  GlobalAddressSDNode *PtrN = cast<GlobalAddressSDNode>(Ptr.getNode());
-  const GlobalValue *PtrGV = PtrN->getGlobal();
-  bool RequiresStaticMaterialization =
-      Subtarget->isTargetMachO() && PtrGV->hasExternalWeakLinkage();
 
-  // Classify the reference to determine whether it needs a GOT load.
-  const unsigned OpFlags =
-    Subtarget->ClassifyGlobalReference(PtrGV, getTargetMachine());
-  const bool NeedsGOTLoad = ((OpFlags & AArch64II::MO_GOT) != 0);
-  assert(((OpFlags & (~AArch64II::MO_GOT)) == 0) &&
-         "Unsupported non-GOT op flags on ptrauth global reference");
+  SDValue TPtr;
+  bool RequiresStaticMaterialization = false;
+  bool NeedsGOTLoad = false;
+  if (auto *PtrN = dyn_cast<GlobalAddressSDNode>(Ptr.getNode())) {
+    const GlobalValue *PtrGV = PtrN->getGlobal();
+    RequiresStaticMaterialization =
+        Subtarget->isTargetMachO() && PtrGV->hasExternalWeakLinkage();
 
-  // Fold any offset into the GV; our pseudos expect it there.
-  PtrOffsetC += PtrN->getOffset();
-  SDValue TPtr = DAG.getTargetGlobalAddress(PtrGV, DL, VT, PtrOffsetC,
-                                            /*TargetFlags=*/0);
-  assert(PtrN->getTargetFlags() == 0 && "Unsupported tflags on ptrauth global");
+    // Classify the reference to determine whether it needs a GOT load.
+    const unsigned OpFlags =
+        Subtarget->ClassifyGlobalReference(PtrGV, getTargetMachine());
+    NeedsGOTLoad = ((OpFlags & AArch64II::MO_GOT) != 0);
+    assert(((OpFlags & (~AArch64II::MO_GOT)) == 0) &&
+           "Unsupported non-GOT op flags on ptrauth global reference");
+    if (!NeedsGOTLoad)
+      assert(!PtrGV->hasExternalWeakLinkage() && "extern_weak should use GOT");
+
+    // Fold any offset into the GV; our pseudos expect it there.
+    PtrOffsetC += PtrN->getOffset();
+    TPtr = DAG.getTargetGlobalAddress(PtrGV, DL, VT, PtrOffsetC,
+                                      /*TargetFlags=*/0);
+    assert(PtrN->getTargetFlags() == 0 &&
+           "Unsupported tflags on ptrauth global");
+  } else {
+    TPtr = DAG.getTargetConstant(cast<ConstantSDNode>(Ptr)->getZExtValue(), DL,
+                                 MVT::i64);
+  }
 
   // None of our lowerings support an offset larger than 32-bit.
   if (!isUInt<32>(PtrOffsetC))
@@ -8129,7 +8140,6 @@ AArch64TargetLowering::LowerPtrAuthGlobalAddress(SDValue Op,
 
   // No GOT load needed -> MOVaddrPAC
   if (!NeedsGOTLoad) {
-    assert(!PtrGV->hasExternalWeakLinkage() && "extern_weak should use GOT");
     return SDValue(
         DAG.getMachineNode(AArch64::MOVaddrPAC, DL, MVT::i64,
                            {TPtr, Key, TAddrDiscriminator, Discriminator}),

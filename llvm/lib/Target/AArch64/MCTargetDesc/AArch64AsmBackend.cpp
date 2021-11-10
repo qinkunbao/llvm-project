@@ -513,6 +513,12 @@ bool AArch64AsmBackend::shouldForceRelocation(const MCAssembler &Asm,
   if (Kind == AArch64::fixup_aarch64_pcrel_adrp_imm21)
     return true;
 
+  // Pointer authentication fixups are resolved at runtime using the current key
+  // values and therefore must be represented using a relocation.
+  if (Target.getRefKind() == AArch64MCExpr::VK_AUTH ||
+      Target.getRefKind() == AArch64MCExpr::VK_AUTHADDR) 
+    return true;
+
   return false;
 }
 
