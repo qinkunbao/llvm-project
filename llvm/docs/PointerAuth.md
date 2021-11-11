@@ -14,6 +14,9 @@ At the IR level, it is represented using:
 
 * a [set of intrinsics](#intrinsics) (to sign/authenticate pointers)
 * a [call operand bundle](#operand-bundle) (to authenticate called pointers)
+* a [set of function attributes](#attributes) (to describe what pointers are
+  signed and how, to control implicit codegen in the backend, as well as
+  preserve invariants in the mid-level optimizer)
 
 The current implementation leverages the
 [Armv8.3-A PAuth/Pointer Authentication Code](#armv8-3-a-pauth-pointer-authentication-code)
@@ -260,6 +263,38 @@ define void @f(void ()* %fp) {
 
 but with the added guarantee that ``%fp_i``, ``%fp_auth``, and ``%fp_auth_p``
 are not stored to (and reloaded from) memory.
+
+
+### Function Attributes
+
+Two function attributes are used to describe other pointer authentication
+operations that are not otherwise explicitly expressed in IR.
+
+#### ``ptrauth-returns``
+
+``ptrauth-returns`` specifies that returns from functions should be
+authenticated, and that saved return addresses should be signed.
+
+Note that this describes the execution environment that can be assumed by
+this function, not the semantics of return instructions in this function alone.
+
+The semantics of
+[``llvm.returnaddress``](LangRef.html#llvm-returnaddress-intrinsic) are not
+changed (it still returns a raw, unauthenticated, return address), so it might
+require an implicit strip/authenticate operation.  This applies to return
+addresses stored in deeper stack frames.
+
+#### ``ptrauth-calls``
+
+``ptrauth-calls`` specifies that calls emitted in this function should be
+authenticated according to the platform ABI.
+
+Calls represented by ``call``/``invoke`` instructions in IR are not affected by
+this attribute, as they should already be annotated with the
+[``ptrauth`` operand bundle](#operand-bundle).
+
+The ``ptrauth-calls`` attribute only describes calls emitted by the backend,
+as part of target-specific lowering (e.g., runtime calls for TLS accesses).
 
 
 ## AArch64 Support
