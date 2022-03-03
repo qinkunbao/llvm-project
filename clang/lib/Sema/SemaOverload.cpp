@@ -420,7 +420,7 @@ NarrowingKind StandardConversionSequence::getNarrowingKind(
   //    value when converted back to the original type.
   case ICK_Integral_Conversion:
   IntegralConversion: {
-    assert(FromType->isIntegralOrUnscopedEnumerationType());
+    assert(FromType->isIntegralOrEnumerationType());
     assert(ToType->isIntegralOrUnscopedEnumerationType());
     const bool FromSigned = FromType->isSignedIntegerOrEnumerationType();
     const unsigned FromWidth = Ctx.getIntWidth(FromType);
