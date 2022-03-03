@@ -44,7 +44,9 @@ cp $builddir/bin/lld $treepath/bin/ld.lld
 cp $builddir/bin/llvm-ar $treepath/bin/llvm-ar
 cp $builddir/bin/llvm-objcopy $treepath/bin/llvm-objcopy
 
-cp $builddir/lib/libclang.so $treepath/lib64/libclang.so.${majorver}git
+for i in $treepath/lib64/libclang.so*; do
+  cp $builddir/lib/libclang.so $i
+done
 
 rm -rf $treepath/lib64/clang/$shortver/include
 cp -r $builddir/lib/clang/$builddirver/include $treepath/lib64/clang/$shortver/

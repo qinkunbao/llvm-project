@@ -37,7 +37,7 @@ Patching AOSP
 Apply aosp/0001-PAC.patch to the root of your AOSP checkout with
 "patch -p1". This patch applies cleanly to aosp/master as of:
 
-Fri Nov 5 23:04:41 2021 +0000
+Wed Mar 2 22:14:16 2022 +000
 
 Patching the kernel
 -------------------
