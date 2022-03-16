@@ -1646,6 +1646,8 @@ enum : unsigned {
 enum : unsigned {
   GNU_PROPERTY_AARCH64_FEATURE_1_BTI = 1 << 0,
   GNU_PROPERTY_AARCH64_FEATURE_1_PAC = 1 << 1,
+
+  GNU_PROPERTY_AARCH64_FEATURE_1_ANDROID_PAUTH_ABI = 1U << 31,
 };
 
 // x86 processor feature bits.

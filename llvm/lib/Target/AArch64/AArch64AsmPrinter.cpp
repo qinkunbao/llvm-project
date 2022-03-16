@@ -276,6 +276,12 @@ void AArch64AsmPrinter::emitStartOfAsmFile(Module &M) {
     if (Sign->getZExtValue())
       Flags |= ELF::GNU_PROPERTY_AARCH64_FEATURE_1_PAC;
 
+  if (TT.isAndroid())
+    if (const auto *PAuthCalls = mdconst::extract_or_null<ConstantInt>(
+            M.getModuleFlag("ptrauth-calls")))
+      if (PAuthCalls->getZExtValue())
+        Flags |= ELF::GNU_PROPERTY_AARCH64_FEATURE_1_ANDROID_PAUTH_ABI;
+
   if (Flags == 0)
     return;
 

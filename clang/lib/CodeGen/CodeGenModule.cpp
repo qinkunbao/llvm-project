@@ -808,6 +808,8 @@ void CodeGenModule::Release() {
     if (!LangOpts.isSignReturnAddressWithAKey())
       getModule().addModuleFlag(llvm::Module::Min,
                                 "sign-return-address-with-bkey", 1);
+    if (CodeGenOpts.PointerAuth.FunctionPointers.isEnabled())
+      getModule().addModuleFlag(llvm::Module::Min, "ptrauth-calls", 1);
   }
 
   if (!CodeGenOpts.MemoryProfileOutput.empty()) {
