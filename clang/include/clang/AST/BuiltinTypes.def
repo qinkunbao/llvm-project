@@ -32,6 +32,10 @@
 //
 //===----------------------------------------------------------------------===//
 
+#ifndef BUILTIN_TYPE
+#define BUILTIN_TYPE(Id, SingletonId)
+#endif
+
 #ifndef SIGNED_TYPE
 #define SIGNED_TYPE(Id, SingletonId) BUILTIN_TYPE(Id, SingletonId)
 #endif

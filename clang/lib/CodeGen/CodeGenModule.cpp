@@ -6464,9 +6464,9 @@ void CodeGenModule::EmitOMPThreadPrivateDecl(const OMPThreadPrivateDecl *D) {
   }
 }
 
-llvm::Metadata *
-CodeGenModule::CreateMetadataIdentifierImpl(QualType T, MetadataTypeMap &Map,
-                                            StringRef Suffix) {
+llvm::Metadata *CodeGenModule::CreateMetadataIdentifierImpl(
+    QualType T, MetadataTypeMap &Map,
+    std::function<void(llvm::raw_ostream &, QualType)> PrintType) {
   if (auto *FnType = T->getAs<FunctionProtoType>())
     T = getContext().getFunctionType(
         FnType->getReturnType(), FnType->getParamTypes(),
@@ -6479,8 +6479,7 @@ CodeGenModule::CreateMetadataIdentifierImpl(QualType T, MetadataTypeMap &Map,
   if (isExternallyVisible(T->getLinkage())) {
     std::string OutName;
     llvm::raw_string_ostream Out(OutName);
-    getCXXABI().getMangleContext().mangleTypeName(T, Out);
-    Out << Suffix;
+    PrintType(Out, T);
 
     InternalId = llvm::MDString::get(getLLVMContext(), Out.str());
   } else {
@@ -6492,12 +6491,19 @@ CodeGenModule::CreateMetadataIdentifierImpl(QualType T, MetadataTypeMap &Map,
 }
 
 llvm::Metadata *CodeGenModule::CreateMetadataIdentifierForType(QualType T) {
-  return CreateMetadataIdentifierImpl(T, MetadataIdMap, "");
+  return CreateMetadataIdentifierImpl(
+      T, MetadataIdMap, [&](llvm::raw_ostream &Out, QualType T) {
+        getCXXABI().getMangleContext().mangleTypeName(T, Out);
+      });
 }
 
 llvm::Metadata *
 CodeGenModule::CreateMetadataIdentifierForVirtualMemPtrType(QualType T) {
-  return CreateMetadataIdentifierImpl(T, VirtualMetadataIdMap, ".virtual");
+  return CreateMetadataIdentifierImpl(
+      T, VirtualMetadataIdMap, [&](llvm::raw_ostream &Out, QualType T) {
+        getCXXABI().getMangleContext().mangleTypeName(T, Out);
+        Out << ".virtual";
+      });
 }
 
 // Generalize pointer types to a void pointer with the qualifiers of the
@@ -6533,8 +6539,10 @@ static QualType GeneralizeFunctionType(ASTContext &Ctx, QualType Ty) {
 }
 
 llvm::Metadata *CodeGenModule::CreateMetadataIdentifierGeneralized(QualType T) {
-  return CreateMetadataIdentifierImpl(GeneralizeFunctionType(getContext(), T),
-                                      GeneralizedMetadataIdMap, ".generalized");
+  return CreateMetadataIdentifierImpl(
+      T, GeneralizedMetadataIdMap, [&](llvm::raw_ostream &Out, QualType T) {
+        getContext().encodeFunctionTypeForInterop(Out, cast<FunctionType>(T));
+      });
 }
 
 /// Returns whether this module needs the "all-vtables" type identifier.
