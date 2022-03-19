@@ -3398,6 +3398,7 @@ public:
                                StringRef mangledName);
 
   StringRef getCUIDHash() const;
+  void encodeFunctionTypeForInterop(raw_ostream &OS, const FunctionType *FT);
 
 private:
   /// All OMPTraitInfo objects live in this collection, one per

@@ -1811,8 +1811,9 @@ private:
                                     bool AttrOnCallSite,
                                     llvm::AttrBuilder &FuncAttrs);
 
-  llvm::Metadata *CreateMetadataIdentifierImpl(QualType T, MetadataTypeMap &Map,
-                                               StringRef Suffix);
+  llvm::Metadata *CreateMetadataIdentifierImpl(
+      QualType T, MetadataTypeMap &Map,
+      std::function<void(llvm::raw_ostream &, QualType)> PrintType);
 };
 
 }  // end namespace CodeGen

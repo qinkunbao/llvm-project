@@ -13820,3 +13820,248 @@ bool ASTContext::useAbbreviatedThunkName(GlobalDecl virtualMethodDecl,
   thunksToBeAbbreviated[virtualMethodDecl] = std::move(simplifiedThunkNames);
   return result;
 }
+
+/*
+ * The purpose of this function is to encode a function argument type, a
+ * function return type or the type of a field of a struct being passed by
+ * value, for the interoperable function type encoding.
+ *
+ * The interoperable function type encoding has two main goals. The first is to
+ * ensure that two types have the same encoding if they are "compatible" as
+ * defined by the C standard. This generally requires that if two types are "the
+ * same", they have the same encoding.
+ *
+ * The second is that it should generally be possible to produce the same
+ * encoding from a foreign language with an FFI scheme for interfacing with C.
+ * This enables interoperability between C and other languages in cases where
+ * the function type encoding is used as part of an ABI.
+ *
+ * The assumption is that the foreign language has sized integer types, sized
+ * IEEE floating point types, sized vector types, pointer types
+ * (undiscriminated by element type) and struct types (for passing structs by
+ * value); everything else is undiscriminated. This is considered a "lowest
+ * common denominator" in terms of type safety, as passing anything in violation
+ * of the type rules would generally result in uninitialized or ill-formed data
+ * being passed from the foreign language. It means that, for example, we do not
+ * create a distinction between int and unsigned int (because the foreign
+ * language may not necessarily have a concept of signedness in its type
+ * system), nor do we discriminate between integer types on platforms where they
+ * have the same size in C, because the foreign language may not make a
+ * distinction between the different C types.
+ */
+static void encodeTypeForInterop(ASTContext &Ctx, raw_ostream &OS,
+                                 QualType QT) {
+  const Type *T = QT.getCanonicalType().getTypePtr();
+
+  auto EncodeSizedType = [&](char C) {
+    OS << C << Ctx.getTypeSizeInChars(T).getQuantity();
+  };
+
+  switch (T->getTypeClass()) {
+#define NON_CANONICAL_TYPE(Class, Base) case Type::Class:
+#define DEPENDENT_TYPE(Class, Base) case Type::Class:
+#define NON_CANONICAL_UNLESS_DEPENDENT_TYPE(Class, Base) case Type::Class:
+#define TYPE(Class, Base)
+#include "clang/AST/TypeNodes.inc"
+    llvm_unreachable("unexpected non-canonical or dependent type!");
+    return;
+
+  case Type::DeducedTemplateSpecialization:
+  case Type::Auto:
+    llvm_unreachable("deduced types should be canonicalized away!");
+
+  case Type::Atomic:
+    return encodeTypeForInterop(Ctx, OS, cast<AtomicType>(T)->getValueType());
+
+  case Type::LValueReference:
+  case Type::RValueReference:
+  case Type::Pointer:
+  case Type::ObjCObjectPointer:
+  case Type::BlockPointer:
+    OS << 'P';
+    return;
+
+  case Type::Complex: {
+    // Complex types are equivalent to a struct of a pair of the element type.
+    QualType ET = cast<ComplexType>(T)->getElementType();
+    OS << 'S';
+    encodeTypeForInterop(Ctx, OS, ET);
+    encodeTypeForInterop(Ctx, OS, ET);
+    OS << 'E';
+  }
+
+  case Type::IncompleteArray:
+    // This can only appear as a flexible array member when producing an
+    // encoding for an unnamed struct that is passed by value. Because flexible
+    // array members are generally not passed by value (for most purposes,
+    // including pass by value, the struct acts as if the flexible array member
+    // is not present), we simply ignore it.
+    //
+    // Although function argument types can syntactically have the incomplete
+    // array syntax, they are semantically pointers and decay to pointers by the
+    // time we see them.
+    break;
+
+  case Type::VariableArray:
+    // May only appear as the type of an automatic variable, not a function
+    // argument or return type.
+
+  case Type::FunctionNoProto:
+  case Type::FunctionProto:
+    // May only appear at the top level (we do not recurse into pointer element
+    // types).
+    llvm_unreachable("unexpected type");
+    break;
+
+  case Type::ConstantArray: {
+    // C11 6.7.6.2p6:
+    //   For two array types to be compatible, both shall have compatible
+    //   element types, and if both size specifiers are present, and are integer
+    //   constant expressions, then both size specifiers shall have the same
+    //   constant value [...]
+    //
+    // This may appear to imply that sized array types must be encoded so as to
+    // be compatible with incomplete array types. However, as explained above,
+    // incomplete array types may not appear in circumstances where sized arrays
+    // need to be compatible with them. This means that we can encode the size
+    // of the array without being concerned about compatibility with incomplete
+    // array types.
+    auto *AT = cast<ConstantArrayType>(T);
+    OS << 'A' << AT->getSize();
+    return encodeTypeForInterop(Ctx, OS, AT->getElementType());
+  }
+
+  case Type::BitInt:
+    // _BitInt() is a sized integer type.
+
+  case Type::Enum:
+    // C11 6.7.2.2p4:
+    //   Each enumerated type shall be compatible with char, a signed integer
+    //   type, or an unsigned integer type.
+    //
+    // This will be one of the integer types with the same size as this enum
+    // type, so we can use the integer type encoding.
+    return EncodeSizedType('I');
+
+  case Type::ExtVector:
+  case Type::Vector:
+    return EncodeSizedType('V');
+
+  // Don't bother discriminating based on these types.
+  case Type::MemberPointer:
+  case Type::ObjCInterface:
+  case Type::ObjCObject:
+  case Type::Pipe:
+  case Type::ConstantMatrix:
+    OS << '?';
+    return;
+
+  case Type::Builtin: {
+    const BuiltinType *BTy = T->getAs<BuiltinType>();
+    switch (BTy->getKind()) {
+#define SIGNED_TYPE(Id, SingletonId) case BuiltinType::Id:
+#define UNSIGNED_TYPE(Id, SingletonId) case BuiltinType::Id:
+#include "clang/AST/BuiltinTypes.def"
+      return EncodeSizedType('I');
+
+#define PLACEHOLDER_TYPE(Id, SingletonId) case BuiltinType::Id:
+#include "clang/AST/BuiltinTypes.def"
+    llvm_unreachable("placeholder types should not appear here.");
+
+    case BuiltinType::Half:
+    case BuiltinType::Float:
+    case BuiltinType::Double:
+    case BuiltinType::LongDouble:
+    case BuiltinType::Float16:
+    case BuiltinType::Float128:
+      return EncodeSizedType('F');
+      break;
+
+    case BuiltinType::Void:
+      OS << 'v';
+      return;
+
+    case BuiltinType::ObjCId:
+    case BuiltinType::ObjCClass:
+    case BuiltinType::ObjCSel:
+    case BuiltinType::NullPtr:
+      OS << 'P';
+      return;
+
+    // Don't bother discriminating based on OpenCL and non-IEEE float types.
+    case BuiltinType::OCLSampler:
+    case BuiltinType::OCLEvent:
+    case BuiltinType::OCLClkEvent:
+    case BuiltinType::OCLQueue:
+    case BuiltinType::OCLReserveID:
+    case BuiltinType::BFloat16:
+    case BuiltinType::Ibm128:
+
+    // Don't bother discriminating based on these seldom-used types.
+#define IMAGE_TYPE(ImgType, Id, SingletonId, Access, Suffix)                   \
+    case BuiltinType::Id:
+#include "clang/Basic/OpenCLImageTypes.def"
+#define EXT_OPAQUE_TYPE(ExtType, Id, Ext) case BuiltinType::Id:
+#include "clang/Basic/OpenCLExtensionTypes.def"
+#define SVE_TYPE(Name, Id, SingletonId) case BuiltinType::Id:
+#include "clang/Basic/AArch64SVEACLETypes.def"
+#define PPC_VECTOR_TYPE(Name, Id, Size) case BuiltinType::Id:
+#include "clang/Basic/PPCTypes.def"
+#define RVV_TYPE(Name, Id, SingletonId) case BuiltinType::Id:
+#include "clang/Basic/RISCVVTypes.def"
+      OS << '?';
+      return;
+
+    case BuiltinType::Dependent:
+      llvm_unreachable("should never get here");
+    }
+  }
+  case Type::Record: {
+    RecordDecl *RD = T->getAs<RecordType>()->getDecl();
+
+    if (IdentifierInfo *II = RD->getIdentifier()) {
+      // Ideally we would encode the struct type's fields here, but this would
+      // require us to have a complete definition of the struct type, and
+      // there are some circumstances where we need to be able to produce a type
+      // where the struct definition is unavailable. This has the consequence
+      // that the foreign language needs to know which structs are named in C,
+      // as well as the name of the struct type in C.
+      OS << 's';
+      OS << II->getLength() << II->getName();
+    } else {
+      OS << 'S';
+      RD = RD->getDefinition();
+      assert(RD && "unexpected incomplete definition of an unnamed struct");
+      for (FieldDecl *FD : RD->fields())
+        encodeTypeForInterop(Ctx, OS, FD->getType());
+      OS << 'E';
+    }
+    return;
+  }
+  }
+}
+
+void ASTContext::encodeFunctionTypeForInterop(raw_ostream &OS,
+                                              const FunctionType *FT) {
+  // C11 6.7.6.3p15:
+  //   For two function types to be compatible, both shall specify compatible
+  //   return types. Moreover, the parameter type lists, if both are present,
+  //   shall agree in the number of parameters and in the use of the ellipsis
+  //   terminator; corresponding parameters shall have compatible types.
+  //
+  // That paragraph goes on to describe how unprototyped functions are to be
+  // handled, which we ignore here. Unprototyped function pointers are hashed
+  // as though they were prototyped nullary functions since that's probably
+  // what the user meant. This also means that a function type written using
+  // the same token stream has the same encoding in C and C++. However, this
+  // behavior is non-conforming.
+  encodeTypeForInterop(*this, OS, FT->getReturnType());
+  if (auto *FPT = dyn_cast<FunctionProtoType>(FT)) {
+    for (QualType Param : FPT->param_types()) {
+      Param = getSignatureParameterType(Param);
+      encodeTypeForInterop(*this, OS, Param);
+    }
+    if (FPT->isVariadic())
+      OS << "z";
+  }
+}
