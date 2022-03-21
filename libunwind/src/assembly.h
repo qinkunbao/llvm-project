@@ -82,19 +82,29 @@
 #define PPC64_OPD2
 #endif
 
-#if defined(__aarch64__) && defined(__ARM_FEATURE_BTI_DEFAULT)
-  .pushsection ".note.gnu.property", "a" SEPARATOR                             \
-  .balign 8 SEPARATOR                                                          \
-  .long 4 SEPARATOR                                                            \
-  .long 0x10 SEPARATOR                                                         \
-  .long 0x5 SEPARATOR                                                          \
-  .asciz "GNU" SEPARATOR                                                       \
-  .long 0xc0000000 SEPARATOR /* GNU_PROPERTY_AARCH64_FEATURE_1_AND */          \
-  .long 4 SEPARATOR                                                            \
-  .long 3 SEPARATOR /* GNU_PROPERTY_AARCH64_FEATURE_1_BTI AND */               \
-                    /* GNU_PROPERTY_AARCH64_FEATURE_1_PAC */                   \
-  .long 0 SEPARATOR                                                            \
-  .popsection SEPARATOR
+#ifdef __aarch64__
+.Lfeatures = 2 /* GNU_PROPERTY_AARCH64_FEATURE_1_PAC */
+#if defined(__ARM_FEATURE_BTI_DEFAULT)
+.Lfeatures = .Lfeatures | 1 /* GNU_PROPERTY_AARCH64_FEATURE_1_BTI */
+#endif
+#if __has_feature(ptrauth_calls) && defined(__ANDROID__)
+.Lfeatures = .Lfeatures | (1 << 31) /* GNU_PROPERTY_AARCH64_FEATURE_1_ANDROID_PAUTH_ABI */
+#endif
+
+.pushsection ".note.gnu.property", "a"
+.balign 8
+.long 4
+.long 0x10
+.long 0x5
+.asciz "GNU"
+.long 0xc0000000
+.long 4
+.long .Lfeatures
+.long 0
+.popsection
+#endif 
+
+#if defined(__ARM_FEATURE_BTI_DEFAULT)
 #define AARCH64_BTI  bti c
 #else
 #define AARCH64_BTI
