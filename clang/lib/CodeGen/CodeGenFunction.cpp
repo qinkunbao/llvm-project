@@ -185,26 +185,39 @@ CodeGenFunction::CGFPOptionsRAII::~CGFPOptionsRAII() {
   CGF.Builder.setDefaultConstrainedRounding(OldRounding);
 }
 
-LValue CodeGenFunction::MakeNaturalAlignAddrLValue(llvm::Value *V, QualType T) {
+static LValue MakeNaturalAlignAddrLValue(llvm::Value *V, QualType T,
+                                         bool ForPointeeType,
+                                         CodeGenFunction &CGF) {
   LValueBaseInfo BaseInfo;
   TBAAAccessInfo TBAAInfo;
-  CharUnits Alignment = CGM.getNaturalTypeAlignment(T, &BaseInfo, &TBAAInfo);
-  Address Addr(V, ConvertTypeForMem(T), Alignment);
-  return LValue::MakeAddr(Addr, T, getContext(), BaseInfo, TBAAInfo);
+  CharUnits Alignment =
+      CGF.CGM.getNaturalTypeAlignment(T, &BaseInfo, &TBAAInfo, ForPointeeType);
+  Address Addr = Address(V, CGF.ConvertTypeForMem(T), Alignment);
+  return CGF.MakeAddrLValue(Addr, T, BaseInfo, TBAAInfo);
+}
+
+LValue CodeGenFunction::MakeNaturalAlignAddrLValue(llvm::Value *V, QualType T) {
+  return ::MakeNaturalAlignAddrLValue(V, T, /*ForPointeeType*/ false, *this);
 }
 
 /// Given a value of type T* that may not be to a complete object,
 /// construct an l-value with the natural pointee alignment of T.
 LValue
 CodeGenFunction::MakeNaturalAlignPointeeAddrLValue(llvm::Value *V, QualType T) {
-  LValueBaseInfo BaseInfo;
-  TBAAAccessInfo TBAAInfo;
-  CharUnits Align = CGM.getNaturalTypeAlignment(T, &BaseInfo, &TBAAInfo,
-                                                /* forPointeeType= */ true);
-  Address Addr(V, ConvertTypeForMem(T), Align);
-  return MakeAddrLValue(Addr, T, BaseInfo, TBAAInfo);
+  return ::MakeNaturalAlignAddrLValue(V, T, /*ForPointeeType*/ true, *this);
 }
 
+LValue CodeGenFunction::MakeNaturalAlignRawAddrLValue(llvm::Value *V,
+                                                      QualType T) {
+  return ::MakeNaturalAlignAddrLValue(V, T, /*ForPointeeType*/ false, *this);
+}
+
+/// Given a value of type T* that may not be to a complete object,
+/// construct an l-value with the natural pointee alignment of T.
+LValue CodeGenFunction::MakeNaturalAlignPointeeRawAddrLValue(llvm::Value *V,
+                                                             QualType T) {
+  return ::MakeNaturalAlignAddrLValue(V, T, /*ForPointeeType*/ true, *this);
+}
 
 llvm::Type *CodeGenFunction::ConvertTypeForMem(QualType T) {
   return CGM.getTypes().ConvertTypeForMem(T);
@@ -512,7 +525,8 @@ void CodeGenFunction::FinishFunction(SourceLocation EndLoc) {
     ReturnBlock.getBlock()->eraseFromParent();
   }
   if (ReturnValue.isValid()) {
-    auto *RetAlloca = dyn_cast<llvm::AllocaInst>(ReturnValue.getPointer());
+    auto *RetAlloca =
+      dyn_cast<llvm::AllocaInst>(ReturnValue.getRawPointer(*this));
     if (RetAlloca && RetAlloca->use_empty()) {
       RetAlloca->eraseFromParent();
       ReturnValue = Address::invalid();
@@ -1095,13 +1109,13 @@ void CodeGenFunction::StartFunction(GlobalDecl GD, QualType RetTy,
     auto AI = CurFn->arg_begin();
     if (CurFnInfo->getReturnInfo().isSRetAfterThis())
       ++AI;
-    ReturnValue = Address(&*AI, ConvertType(RetTy),
-                          CurFnInfo->getReturnInfo().getIndirectAlign());
+    ReturnValue = makeNaturalAddressForPointer(
+        &*AI, RetTy, CurFnInfo->getReturnInfo().getIndirectAlign());
     if (!CurFnInfo->getReturnInfo().getIndirectByVal()) {
       ReturnValuePointer =
           CreateDefaultAlignTempAlloca(Int8PtrTy, "result.ptr");
       Builder.CreateStore(Builder.CreatePointerBitCastOrAddrSpaceCast(
-                              ReturnValue.getPointer(), Int8PtrTy),
+                              ReturnValue.getRawPointer(*this), Int8PtrTy),
                           ReturnValuePointer);
     }
   } else if (CurFnInfo->getReturnInfo().getKind() == ABIArgInfo::InAlloca &&
@@ -1116,8 +1130,7 @@ void CodeGenFunction::StartFunction(GlobalDecl GD, QualType RetTy,
         cast<llvm::GetElementPtrInst>(Addr)->getResultElementType();
     ReturnValuePointer = Address(Addr, Ty, getPointerAlign());
     Addr = Builder.CreateAlignedLoad(Ty, Addr, getPointerAlign(), "agg.result");
-    ReturnValue =
-        Address(Addr, ConvertType(RetTy), CGM.getNaturalTypeAlignment(RetTy));
+    ReturnValue = makeNaturalAddressForPointer(Addr, RetTy);
   } else {
     ReturnValue = CreateIRTemp(RetTy, "retval");
 
@@ -1162,8 +1175,9 @@ void CodeGenFunction::StartFunction(GlobalDecl GD, QualType RetTy,
         // or contains the address of the enclosing object).
         LValue ThisFieldLValue = EmitLValueForLambdaField(LambdaThisCaptureField);
         if (!LambdaThisCaptureField->getType()->isPointerType()) {
-          // If the enclosing object was captured by value, just use its address.
-          CXXThisValue = ThisFieldLValue.getAddress(*this).getPointer();
+          // If the enclosing object was captured by value, just use its
+          // address. Sign this pointer.
+          CXXThisValue = ThisFieldLValue.getPointer(*this);
         } else {
           // Load the lvalue pointed to by the field, since '*this' was captured
           // by reference.
@@ -1928,7 +1942,7 @@ static void emitNonZeroVLAInit(CodeGenFunction &CGF, QualType baseType,
   Address begin =
     Builder.CreateElementBitCast(dest, CGF.Int8Ty, "vla.begin");
   llvm::Value *end = Builder.CreateInBoundsGEP(
-      begin.getElementType(), begin.getPointer(), sizeInChars, "vla.end");
+      begin.getElementType(), begin.getRawPointer(CGF), sizeInChars, "vla.end");
 
   llvm::BasicBlock *originBB = CGF.Builder.GetInsertBlock();
   llvm::BasicBlock *loopBB = CGF.createBasicBlock("vla-init.loop");
@@ -1939,7 +1953,7 @@ static void emitNonZeroVLAInit(CodeGenFunction &CGF, QualType baseType,
   CGF.EmitBlock(loopBB);
 
   llvm::PHINode *cur = Builder.CreatePHI(begin.getType(), 2, "vla.cur");
-  cur->addIncoming(begin.getPointer(), originBB);
+  cur->addIncoming(begin.getRawPointer(CGF), originBB);
 
   CharUnits curAlign =
     dest.getAlignment().alignmentOfArrayElement(baseSize);
@@ -2136,7 +2150,7 @@ llvm::Value *CodeGenFunction::emitArrayLength(const ArrayType *origArrayType,
   } else {
     // Create the actual GEP.
     addr = Address(Builder.CreateInBoundsGEP(
-        addr.getElementType(), addr.getPointer(), gepIndices, "array.begin"),
+        addr.getElementType(), addr.getRawPointer(*this), gepIndices, "array.begin"),
         ConvertTypeForMem(eltType),
         addr.getAlignment());
   }
@@ -2479,7 +2493,7 @@ void CodeGenFunction::EmitVarAnnotations(const VarDecl *D, llvm::Value *V) {
 Address CodeGenFunction::EmitFieldAnnotations(const FieldDecl *D,
                                               Address Addr) {
   assert(D->hasAttr<AnnotateAttr>() && "no annotate attribute");
-  llvm::Value *V = Addr.getPointer();
+  llvm::Value *V = Addr.getRawPointer(*this);
   llvm::Type *VTy = V->getType();
   auto *PTy = dyn_cast<llvm::PointerType>(VTy);
   unsigned AS = PTy ? PTy->getAddressSpace() : 0;

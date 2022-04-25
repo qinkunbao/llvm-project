@@ -375,6 +375,7 @@ public:
   Address getValue() const { return Addr; }
   bool isUnused() const { return IsUnused; }
   bool isExternallyDestructed() const { return IsExternallyDestructed; }
+  Address getAddress() const { return Addr; }
 };
 
 } // end namespace CodeGen

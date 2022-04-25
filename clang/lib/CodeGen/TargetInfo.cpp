@@ -349,7 +349,7 @@ static Address emitVoidPtrDirectVAArg(CodeGenFunction &CGF,
   CharUnits FullDirectSize = DirectSize.alignTo(SlotSize);
   Address NextPtr =
       CGF.Builder.CreateConstInBoundsByteGEP(Addr, FullDirectSize, "argp.next");
-  CGF.Builder.CreateStore(NextPtr.getPointer(), VAListAddr);
+  CGF.Builder.CreateStore(NextPtr.getRawPointer(CGF), VAListAddr);
 
   // If the argument is smaller than a slot, and this is a big-endian
   // target, the argument will be right-adjusted in its slot.
@@ -442,8 +442,8 @@ static Address emitMergePHI(CodeGenFunction &CGF,
                             const llvm::Twine &Name = "") {
   assert(Addr1.getType() == Addr2.getType());
   llvm::PHINode *PHI = CGF.Builder.CreatePHI(Addr1.getType(), 2, Name);
-  PHI->addIncoming(Addr1.getPointer(), Block1);
-  PHI->addIncoming(Addr2.getPointer(), Block2);
+  PHI->addIncoming(Addr1.getRawPointer(CGF), Block1);
+  PHI->addIncoming(Addr2.getRawPointer(CGF), Block2);
   CharUnits Align = std::min(Addr1.getAlignment(), Addr2.getAlignment());
   return Address(PHI, Addr1.getElementType(), Align);
 }
@@ -710,7 +710,7 @@ Address EmitVAArgInstr(CodeGenFunction &CGF, Address VAListAddr, QualType Ty,
     llvm::Type *ElementTy = CGF.ConvertTypeForMem(Ty);
     llvm::Type *BaseTy = llvm::PointerType::getUnqual(ElementTy);
     llvm::Value *Addr =
-        CGF.Builder.CreateVAArg(VAListAddr.getPointer(), BaseTy);
+        CGF.Builder.CreateVAArg(VAListAddr.getRawPointer(CGF), BaseTy);
     return Address(Addr, ElementTy, TyAlignForABI);
   } else {
     assert((AI.isDirect() || AI.isExtend()) &&
@@ -726,7 +726,7 @@ Address EmitVAArgInstr(CodeGenFunction &CGF, Address VAListAddr, QualType Ty,
            "Unexpected CoerceToType seen in arginfo in generic VAArg emitter!");
 
     Address Temp = CGF.CreateMemTemp(Ty, "varet");
-    Val = CGF.Builder.CreateVAArg(VAListAddr.getPointer(),
+    Val = CGF.Builder.CreateVAArg(VAListAddr.getRawPointer(CGF),
                                   CGF.ConvertTypeForMem(Ty));
     CGF.Builder.CreateStore(Val, Temp);
     return Temp;
@@ -4877,9 +4877,9 @@ Address PPC32_SVR4_ABIInfo::EmitVAArg(CodeGenFunction &CGF, Address VAList,
     CharUnits RegSize = CharUnits::fromQuantity((isInt || IsSoftFloatABI) ? 4 : 8);
     llvm::Value *RegOffset =
         Builder.CreateMul(NumRegs, Builder.getInt8(RegSize.getQuantity()));
-    RegAddr = Address(
-        Builder.CreateInBoundsGEP(CGF.Int8Ty, RegAddr.getPointer(), RegOffset),
-        CGF.Int8Ty, RegAddr.getAlignment().alignmentOfArrayElement(RegSize));
+    RegAddr = Builder.CreateInBoundsGEP(
+        RegAddr, RegOffset, RegAddr.getElementType(),
+        RegAddr.getAlignment().alignmentOfArrayElement(RegSize));
     RegAddr = Builder.CreateElementBitCast(RegAddr, DirectTy);
 
     // Increase the used-register count.
@@ -4916,7 +4916,7 @@ Address PPC32_SVR4_ABIInfo::EmitVAArg(CodeGenFunction &CGF, Address VAList,
     // Round up address of argument to alignment
     CharUnits Align = CGF.getContext().getTypeAlignInChars(Ty);
     if (Align > OverflowAreaAlign) {
-      llvm::Value *Ptr = OverflowArea.getPointer();
+      llvm::Value *Ptr = OverflowArea.getRawPointer(CGF);
       OverflowArea = Address(emitRoundPointerUpToAlignment(CGF, Ptr, Align),
                              OverflowArea.getElementType(), Align);
     }
@@ -4925,7 +4925,7 @@ Address PPC32_SVR4_ABIInfo::EmitVAArg(CodeGenFunction &CGF, Address VAList,
 
     // Increase the overflow area.
     OverflowArea = Builder.CreateConstInBoundsByteGEP(OverflowArea, Size);
-    Builder.CreateStore(OverflowArea.getPointer(), OverflowAreaAddr);
+    Builder.CreateStore(OverflowArea.getRawPointer(CGF), OverflowAreaAddr);
     CGF.EmitBranch(Cont);
   }
 
@@ -7141,7 +7141,7 @@ private:
                                            LValue Src) {
     llvm::Value *Handle = nullptr;
     llvm::Constant *C =
-        llvm::dyn_cast<llvm::Constant>(Src.getAddress(CGF).getPointer());
+        llvm::dyn_cast<llvm::Constant>(Src.getAddress(CGF).getRawPointer(CGF));
     // Lookup `addrspacecast` through the constant pointer if any.
     if (auto *ASC = llvm::dyn_cast_or_null<llvm::AddrSpaceCastOperator>(C))
       C = llvm::cast<llvm::Constant>(ASC->getPointerOperand());
@@ -7603,7 +7603,7 @@ Address SystemZABIInfo::EmitVAArg(CodeGenFunction &CGF, Address VAListAddr,
 
     // Update overflow_arg_area_ptr pointer
     llvm::Value *NewOverflowArgArea = CGF.Builder.CreateGEP(
-        OverflowArgArea.getElementType(), OverflowArgArea.getPointer(),
+        OverflowArgArea.getElementType(), OverflowArgArea.getRawPointer(CGF),
         PaddedSizeV, "overflow_arg_area");
     CGF.Builder.CreateStore(NewOverflowArgArea, OverflowArgAreaPtr);
 
@@ -7683,7 +7683,7 @@ Address SystemZABIInfo::EmitVAArg(CodeGenFunction &CGF, Address VAListAddr,
   // Update overflow_arg_area_ptr pointer
   llvm::Value *NewOverflowArgArea =
     CGF.Builder.CreateGEP(OverflowArgArea.getElementType(),
-                          OverflowArgArea.getPointer(), PaddedSizeV,
+                          OverflowArgArea.getRawPointer(CGF), PaddedSizeV,
                           "overflow_arg_area");
   CGF.Builder.CreateStore(NewOverflowArgArea, OverflowArgAreaPtr);
   CGF.EmitBranch(ContBlock);
@@ -9843,7 +9843,7 @@ Address SparcV9ABIInfo::EmitVAArg(CodeGenFunction &CGF, Address VAListAddr,
 
   // Update VAList.
   Address NextPtr = Builder.CreateConstInBoundsByteGEP(Addr, Stride, "ap.next");
-  Builder.CreateStore(NextPtr.getPointer(), VAListAddr);
+  Builder.CreateStore(NextPtr.getRawPointer(CGF), VAListAddr);
 
   return Builder.CreateElementBitCast(ArgAddr, ArgTy, "arg.addr");
 }
@@ -10219,7 +10219,7 @@ Address XCoreABIInfo::EmitVAArg(CodeGenFunction &CGF, Address VAListAddr,
   // Increment the VAList.
   if (!ArgSize.isZero()) {
     Address APN = Builder.CreateConstInBoundsByteGEP(AP, ArgSize);
-    Builder.CreateStore(APN.getPointer(), VAListAddr);
+    Builder.CreateStore(APN.getRawPointer(CGF), VAListAddr);
   }
 
   return Val;

@@ -2231,7 +2231,7 @@ Value *ScalarExprEmitter::VisitCastExpr(CastExpr *CE) {
     // performed and the object is not of the derived type.
     if (CGF.sanitizePerformTypeCheck())
       CGF.EmitTypeCheck(CodeGenFunction::TCK_DowncastPointer, CE->getExprLoc(),
-                        Derived.getPointer(), DestTy->getPointeeType());
+                        Derived, DestTy->getPointeeType());
 
     if (CGF.SanOpts.has(SanitizerKind::CFIDerivedCast))
       CGF.EmitVTablePtrCheckForCast(DestTy->getPointeeType(), Derived,
@@ -2239,13 +2239,14 @@ Value *ScalarExprEmitter::VisitCastExpr(CastExpr *CE) {
                                     CodeGenFunction::CFITCK_DerivedCast,
                                     CE->getBeginLoc());
 
-    return Derived.getPointer();
+    return CGF.getAsNaturalPointerTo(Derived, CE->getType()->getPointeeType());
   }
   case CK_UncheckedDerivedToBase:
   case CK_DerivedToBase: {
     // The EmitPointerWithAlignment path does this fine; just discard
     // the alignment.
-    return CGF.EmitPointerWithAlignment(CE).getPointer();
+    return CGF.getAsNaturalPointerTo(CGF.EmitPointerWithAlignment(CE),
+                                     CE->getType()->getPointeeType());
   }
 
   case CK_Dynamic: {
@@ -2255,7 +2256,8 @@ Value *ScalarExprEmitter::VisitCastExpr(CastExpr *CE) {
   }
 
   case CK_ArrayToPointerDecay:
-    return CGF.EmitArrayToPointerDecay(E).getPointer();
+    return CGF.getAsNaturalPointerTo(CGF.EmitArrayToPointerDecay(E),
+                                     CE->getType()->getPointeeType());
   case CK_FunctionToPointerDecay:
     return EmitLValue(E).getPointer(CGF);
 
@@ -3611,6 +3613,22 @@ Value *ScalarExprEmitter::EmitOverflowCheckedBinOp(const BinOpInfo &Ops) {
   return phi;
 }
 
+static Value *createGEPForPointerArithmetic(Value *pointer, Value *index,
+                                            QualType ptrTy, bool isSigned,
+                                            bool isSubtraction,
+                                            SourceLocation loc,
+                                            CodeGenFunction &CGF) {
+  llvm::Type *elementTy = CGF.ConvertTypeForMem(ptrTy->getPointeeType());
+
+  if (CGF.getLangOpts().isSignedOverflowDefined())
+    pointer = CGF.Builder.CreateGEP(elementTy, pointer, index, "add.ptr");
+  else
+    pointer = CGF.EmitCheckedInBoundsGEP(elementTy, pointer, index, isSigned,
+                                         isSubtraction, loc, "add.ptr");
+
+  return pointer;
+}
+
 /// Emit pointer + index arithmetic.
 static Value *emitPointerArithmetic(CodeGenFunction &CGF,
                                     const BinOpInfo &op,
@@ -3703,14 +3721,12 @@ static Value *emitPointerArithmetic(CodeGenFunction &CGF,
     llvm::Type *elemTy = CGF.ConvertTypeForMem(vla->getElementType());
     if (CGF.getLangOpts().isSignedOverflowDefined()) {
       index = CGF.Builder.CreateMul(index, numElements, "vla.index");
-      pointer = CGF.Builder.CreateGEP(elemTy, pointer, index, "add.ptr");
-    } else {
+      (void)elemTy;
+    } else
       index = CGF.Builder.CreateNSWMul(index, numElements, "vla.index");
-      pointer = CGF.EmitCheckedInBoundsGEP(
-          elemTy, pointer, index, isSigned, isSubtraction, op.E->getExprLoc(),
-          "add.ptr");
-    }
-    return pointer;
+    return createGEPForPointerArithmetic(pointer, index, op.Ty, isSigned,
+                                         isSubtraction, op.E->getExprLoc(),
+                                         CGF);
   }
 
   // Explicitly handle GNU void* and function pointer arithmetic extensions. The
@@ -3722,13 +3738,8 @@ static Value *emitPointerArithmetic(CodeGenFunction &CGF,
     return CGF.Builder.CreateBitCast(result, pointer->getType());
   }
 
-  llvm::Type *elemTy = CGF.ConvertTypeForMem(elementType);
-  if (CGF.getLangOpts().isSignedOverflowDefined())
-    return CGF.Builder.CreateGEP(elemTy, pointer, index, "add.ptr");
-
-  return CGF.EmitCheckedInBoundsGEP(
-      elemTy, pointer, index, isSigned, isSubtraction, op.E->getExprLoc(),
-      "add.ptr");
+  return createGEPForPointerArithmetic(pointer, index, op.Ty, isSigned,
+                                       isSubtraction, op.E->getExprLoc(), CGF);
 }
 
 // Construct an fmuladd intrinsic to represent a fused mul-add of MulOp and
@@ -5380,4 +5391,17 @@ CodeGenFunction::EmitCheckedInBoundsGEP(llvm::Type *ElemTy, Value *Ptr,
   EmitCheck(Checks, SanitizerHandler::PointerOverflow, StaticArgs, DynamicArgs);
 
   return GEPVal;
+}
+
+Address CodeGenFunction::EmitCheckedInBoundsGEP(
+    Address Addr, ArrayRef<Value *> IdxList, llvm::Type *elementType,
+    bool SignedIndices, bool IsSubtraction, SourceLocation Loc, CharUnits Align,
+                                        const Twine &Name) {
+  if (!SanOpts.has(SanitizerKind::PointerOverflow))
+    return Builder.CreateInBoundsGEP(Addr, IdxList, elementType, Align, Name);
+
+  return RawAddress(
+      EmitCheckedInBoundsGEP(Addr.getElementType(), Addr.getRawPointer(*this),
+                             IdxList, SignedIndices, IsSubtraction, Loc, Name),
+      elementType, Align);
 }
