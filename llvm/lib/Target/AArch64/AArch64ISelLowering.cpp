@@ -6597,20 +6597,22 @@ bool AArch64TargetLowering::isEligibleForTailCallOptimization(
   // Byval parameters hand the function a pointer directly into the stack area
   // we want to reuse during a tail call. Working around this *is* possible (see
   // X86) but less efficient and uglier in LowerCall.
-  for (Function::const_arg_iterator i = CallerF.arg_begin(),
-                                    e = CallerF.arg_end();
-       i != e; ++i) {
-    if (i->hasByValAttr())
-      return false;
+  if (!(CLI.CB && CLI.CB->isMustTailCall() && Subtarget->isTargetDarwin())) {
+    for (Function::const_arg_iterator i = CallerF.arg_begin(),
+                                      e = CallerF.arg_end();
+         i != e; ++i) {
+      if (i->hasByValAttr())
+        return false;
 
-    // On Windows, "inreg" attributes signify non-aggregate indirect returns.
-    // In this case, it is necessary to save/restore X0 in the callee. Tail
-    // call opt interferes with this. So we disable tail call opt when the
-    // caller has an argument with "inreg" attribute.
+      // On Windows, "inreg" attributes signify non-aggregate indirect returns.
+      // In this case, it is necessary to save/restore X0 in the callee. Tail
+      // call opt interferes with this. So we disable tail call opt when the
+      // caller has an argument with "inreg" attribute.
 
-    // FIXME: Check whether the callee also has an "inreg" argument.
-    if (i->hasInRegAttr())
-      return false;
+      // FIXME: Check whether the callee also has an "inreg" argument.
+      if (i->hasInRegAttr())
+        return false;
+    }
   }
 
   if (canGuaranteeTCO(CalleeCC, getTargetMachine().Options.GuaranteedTailCallOpt))
