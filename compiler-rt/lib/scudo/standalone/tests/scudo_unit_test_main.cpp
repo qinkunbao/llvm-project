@@ -11,7 +11,7 @@
 
 // Match Android's default configuration, which disables Scudo's mismatch
 // allocation check, as it is being triggered by some third party code.
-#if SCUDO_ANDROID
+#if SCUDO_BIONIC
 #define DEALLOC_TYPE_MISMATCH "false"
 #else
 #define DEALLOC_TYPE_MISMATCH "true"

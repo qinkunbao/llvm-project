@@ -239,7 +239,7 @@ private:
   static const uptr RegionSize = 1UL << Config::PrimaryRegionSizeLog;
   static const uptr NumRegions =
       SCUDO_MMAP_RANGE_SIZE >> Config::PrimaryRegionSizeLog;
-  static const u32 MaxNumBatches = SCUDO_ANDROID ? 4U : 8U;
+  static const u32 MaxNumBatches = SCUDO_BIONIC ? 4U : 8U;
   typedef FlatByteMap<NumRegions> ByteMap;
 
   struct SizeClassStats {

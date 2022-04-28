@@ -19,10 +19,16 @@
 #endif
 
 // See https://android.googlesource.com/platform/bionic/+/master/docs/defines.md
-#if defined(__BIONIC__)
+#if defined(__ANDROID__)
 #define SCUDO_ANDROID 1
 #else
 #define SCUDO_ANDROID 0
+#endif
+
+#if defined(__BIONIC__)
+#define SCUDO_BIONIC 1
+#else
+#define SCUDO_BIONIC 0
 #endif
 
 #if defined(__Fuchsia__)

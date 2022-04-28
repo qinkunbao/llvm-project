@@ -276,7 +276,7 @@ private:
 
   static const uptr MapSizeIncrement = Config::PrimaryMapSizeIncrement;
   // Fill at most this number of batches from the newly map'd memory.
-  static const u32 MaxNumBatches = SCUDO_ANDROID ? 4U : 8U;
+  static const u32 MaxNumBatches = SCUDO_BIONIC ? 4U : 8U;
 
   struct RegionStats {
     uptr PoppedBlocks;

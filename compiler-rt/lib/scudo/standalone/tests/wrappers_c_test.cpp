@@ -92,7 +92,7 @@ TEST(ScudoWrappersCTest, Calloc) {
   EXPECT_EQ(errno, ENOMEM);
   errno = 0;
   EXPECT_EQ(calloc(static_cast<size_t>(LONG_MAX) + 1U, 2U), nullptr);
-  if (SCUDO_ANDROID)
+  if (SCUDO_BIONIC)
     EXPECT_EQ(errno, ENOMEM);
   errno = 0;
   EXPECT_EQ(calloc(SIZE_MAX, SIZE_MAX), nullptr);
@@ -135,7 +135,7 @@ TEST(ScudoWrappersCTest, Memalign) {
   EXPECT_EQ(posix_memalign(&P, 4096U, SIZE_MAX), ENOMEM);
 
   // Android's memalign accepts non power-of-2 alignments, and 0.
-  if (SCUDO_ANDROID) {
+  if (SCUDO_BIONIC) {
     for (size_t Alignment = 0U; Alignment <= 128U; Alignment++) {
       P = memalign(Alignment, 1024U);
       EXPECT_NE(P, nullptr);
@@ -200,7 +200,7 @@ TEST(ScudoWrappersCDeathTest, Realloc) {
   free(P);
 
   // Android allows realloc of memalign pointers.
-  if (SCUDO_ANDROID) {
+  if (SCUDO_BIONIC) {
     const size_t Alignment = 1024U;
     P = memalign(Alignment, Size);
     EXPECT_NE(P, nullptr);
@@ -231,7 +231,7 @@ TEST(ScudoWrappersCTest, MallOpt) {
   EXPECT_EQ(mallopt(M_DECAY_TIME, 1), 1);
   EXPECT_EQ(mallopt(M_DECAY_TIME, 0), 1);
 
-  if (SCUDO_ANDROID) {
+  if (SCUDO_BIONIC) {
     EXPECT_EQ(mallopt(M_CACHE_COUNT_MAX, 100), 1);
     EXPECT_EQ(mallopt(M_CACHE_SIZE_MAX, 1024 * 1024 * 2), 1);
     EXPECT_EQ(mallopt(M_TSDS_COUNT_MAX, 10), 1);

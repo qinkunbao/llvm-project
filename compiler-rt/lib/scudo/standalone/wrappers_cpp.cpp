@@ -9,7 +9,7 @@
 #include "platform.h"
 
 // Skip this compilation unit if compiled as part of Bionic.
-#if !SCUDO_ANDROID || !_BIONIC
+#if !SCUDO_BIONIC || !_BIONIC
 
 #include "allocator_config.h"
 #include "wrappers_c.h"
@@ -105,4 +105,4 @@ INTERFACE WEAK void operator delete[](void *ptr, size_t size,
                        static_cast<scudo::uptr>(align));
 }
 
-#endif // !SCUDO_ANDROID || !_BIONIC
+#endif // !SCUDO_BIONIC || !_BIONIC

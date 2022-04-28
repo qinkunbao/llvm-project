@@ -144,7 +144,7 @@ u32 getNumberOfCPUs() {
 }
 
 u32 getThreadID() {
-#if SCUDO_ANDROID
+#if SCUDO_BIONIC
   return static_cast<u32>(gettid());
 #else
   return static_cast<u32>(syscall(SYS_gettid));

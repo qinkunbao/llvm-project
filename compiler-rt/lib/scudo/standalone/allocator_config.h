@@ -189,7 +189,7 @@ struct TrustyConfig {
 };
 #endif
 
-#if SCUDO_ANDROID
+#if SCUDO_BIONIC
 typedef AndroidConfig Config;
 #elif SCUDO_FUCHSIA
 typedef FuchsiaConfig Config;

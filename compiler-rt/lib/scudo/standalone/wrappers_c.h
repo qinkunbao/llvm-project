@@ -13,7 +13,7 @@
 #include "stats.h"
 
 // Bionic's struct mallinfo consists of size_t (mallinfo(3) uses int).
-#if SCUDO_ANDROID
+#if SCUDO_BIONIC
 typedef size_t __scudo_mallinfo_data_t;
 #else
 typedef int __scudo_mallinfo_data_t;
@@ -54,7 +54,7 @@ struct __scudo_mallinfo2 {
 #define SCUDO_MALLINFO __scudo_mallinfo
 #endif
 
-#if !SCUDO_ANDROID || !_BIONIC
+#if !SCUDO_BIONIC || !_BIONIC
 extern "C" void malloc_postinit();
 extern HIDDEN scudo::Allocator<scudo::Config, malloc_postinit> Allocator;
 #endif

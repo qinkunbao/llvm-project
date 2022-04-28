@@ -76,7 +76,7 @@ INTERFACE WEAK void *SCUDO_PREFIX(malloc)(size_t size) {
       size, scudo::Chunk::Origin::Malloc, SCUDO_MALLOC_ALIGNMENT));
 }
 
-#if SCUDO_ANDROID
+#if SCUDO_BIONIC
 INTERFACE WEAK size_t SCUDO_PREFIX(malloc_usable_size)(const void *ptr) {
 #else
 INTERFACE WEAK size_t SCUDO_PREFIX(malloc_usable_size)(void *ptr) {
@@ -86,7 +86,7 @@ INTERFACE WEAK size_t SCUDO_PREFIX(malloc_usable_size)(void *ptr) {
 
 INTERFACE WEAK void *SCUDO_PREFIX(memalign)(size_t alignment, size_t size) {
   // Android rounds up the alignment to a power of two if it isn't one.
-  if (SCUDO_ANDROID) {
+  if (SCUDO_BIONIC) {
     if (UNLIKELY(!alignment)) {
       alignment = 1U;
     } else {
@@ -174,7 +174,7 @@ void SCUDO_PREFIX(malloc_postinit)() {
 
 INTERFACE WEAK int SCUDO_PREFIX(mallopt)(int param, int value) {
   if (param == M_DECAY_TIME) {
-    if (SCUDO_ANDROID) {
+    if (SCUDO_BIONIC) {
       if (value == 0) {
         // Will set the release values to their minimum values.
         value = INT32_MIN;

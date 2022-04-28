@@ -9,7 +9,7 @@
 #include "platform.h"
 
 // Skip this compilation unit if compiled as part of Bionic.
-#if !SCUDO_ANDROID || !_BIONIC
+#if !SCUDO_BIONIC || !_BIONIC
 
 #include "allocator_config.h"
 #include "wrappers_c.h"
@@ -34,4 +34,4 @@ scudo::Allocator<scudo::Config, SCUDO_PREFIX(malloc_postinit)> SCUDO_ALLOCATOR;
 
 extern "C" INTERFACE void __scudo_print_stats(void) { Allocator.printStats(); }
 
-#endif // !SCUDO_ANDROID || !_BIONIC
+#endif // !SCUDO_BIONIC || !_BIONIC

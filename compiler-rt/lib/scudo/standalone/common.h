@@ -119,7 +119,7 @@ inline void yieldProcessor(u8 Count) {
 extern uptr PageSizeCached;
 uptr getPageSizeSlow();
 inline uptr getPageSizeCached() {
-  // Bionic uses a hardcoded value.
+  // Android kernels have a hardcoded value.
   if (SCUDO_ANDROID)
     return 4096U;
   if (LIKELY(PageSizeCached))

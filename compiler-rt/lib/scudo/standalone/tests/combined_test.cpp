@@ -25,7 +25,7 @@ static constexpr scudo::uptr MinAlignLog = FIRST_32_SECOND_64(3U, 4U);
 
 // Fuchsia complains that the function is not used.
 UNUSED static void disableDebuggerdMaybe() {
-#if SCUDO_ANDROID
+#if SCUDO_BIONIC
   // Disable the debuggerd signal handler on Android, without this we can end
   // up spending a significant amount of time creating tombstones.
   signal(SIGSEGV, SIG_DFL);

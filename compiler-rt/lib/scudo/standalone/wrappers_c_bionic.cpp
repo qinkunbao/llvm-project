@@ -9,7 +9,7 @@
 #include "platform.h"
 
 // This is only used when compiled as part of Bionic.
-#if SCUDO_ANDROID && _BIONIC
+#if SCUDO_BIONIC && _BIONIC
 
 #include "allocator_config.h"
 #include "wrappers_c.h"
@@ -85,4 +85,4 @@ INTERFACE size_t __scudo_get_ring_buffer_size() {
   return Allocator.getRingBufferSize();
 }
 
-#endif // SCUDO_ANDROID && _BIONIC
+#endif // SCUDO_BIONIC && _BIONIC
