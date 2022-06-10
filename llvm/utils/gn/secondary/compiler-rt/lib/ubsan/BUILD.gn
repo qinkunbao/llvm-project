@@ -179,7 +179,9 @@ shared_library("ubsan_shared") {
   ]
   if (current_os != "mac" && current_os != "win") {
     inputs = [ "$target_gen_dir/ubsan.vers" ]
-    ldflags =
-        [ "-Wl,--version-script," + rebase_path(inputs[0], root_build_dir) ]
+    ldflags = [
+      "-Wl,--version-script," + rebase_path(inputs[0], root_build_dir),
+      "-Wl,-z,max-page-size=65536",
+    ]
   }
 }
