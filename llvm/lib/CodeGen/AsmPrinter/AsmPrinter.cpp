@@ -3554,6 +3554,10 @@ static void emitGlobalConstantImpl(const DataLayout &DL, const Constant *CV,
     }
   }
 
+  if (auto *GV = dyn_cast<GlobalVariable>(CV))
+    if (GV->getSection() == "llvm.ptrauth")
+      return emitPtrAuthGlobalConstant(DL, GV, AP, BaseCV, Offset, Size);
+
   if (const ConstantVector *V = dyn_cast<ConstantVector>(CV))
     return emitGlobalConstantVector(DL, V, AP, AliasList);
 
