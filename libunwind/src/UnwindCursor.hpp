@@ -1015,7 +1015,7 @@ private:
 #endif
 
   void setProcInfoFlags() {
-#if __has_feature(ptrauth_calls)
+#if defined(__APPLE__) && __has_feature(ptrauth_calls)
     // If the extra field is set, then it is set to the mach header and we can use
     // that to determine which flags to set
     if (_info.extra) {

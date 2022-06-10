@@ -14,7 +14,7 @@
 #include "config.h"
 #include "libunwind_ext.h"
 
-#if __has_feature(ptrauth_calls)
+#if defined(__APPLE__) && __has_feature(ptrauth_calls)
 #include <libc_private.h>
 #endif
 
@@ -127,7 +127,7 @@ _LIBUNWIND_HIDDEN int __unw_set_reg(unw_cursor_t *cursor, unw_regnum_t regNum,
       // First, get the FDE for the old location and then update it.
       co->getInfo(&info);
 
-#if __has_feature(ptrauth_calls)
+#if defined(__APPLE__) && __has_feature(ptrauth_calls)
       // It is only valid to set the IP within the current function.
       // This is important for ptrauth, otherwise the IP cannot be correctly
       // signed.
@@ -136,7 +136,7 @@ _LIBUNWIND_HIDDEN int __unw_set_reg(unw_cursor_t *cursor, unw_regnum_t regNum,
 
       pint_t sp = (pint_t)co->getReg(UNW_REG_SP);
 
-#if __has_feature(ptrauth_calls)
+#if defined(__APPLE__) && __has_feature(ptrauth_calls)
     // If we are in an arm64e frame, then the PC should have been signed with the sp
     {
         const mach_header_64 *mh = (const mach_header_64 *)info.extra;
@@ -164,12 +164,12 @@ _LIBUNWIND_HIDDEN int __unw_set_reg(unw_cursor_t *cursor, unw_regnum_t regNum,
       // any such platforms and Clang doesn't export a macro for them.
       if ((orgFuncStart == info.start_ip) && (orgArgSize != 0)) {
         co->setReg(UNW_REG_SP, sp + orgArgSize);
-#if __has_feature(ptrauth_calls)
+#if defined(__APPLE__) && __has_feature(ptrauth_calls)
         value = (pint_t)ptrauth_sign_unauthenticated((void*)value, ptrauth_key_return_address, sp + orgArgSize);
 #endif
         co->setReg(UNW_REG_IP, value);
       } else {
-#if __has_feature(ptrauth_calls)
+#if defined(__APPLE__) && __has_feature(ptrauth_calls)
           value = (pint_t)ptrauth_sign_unauthenticated((void*)value, ptrauth_key_return_address, sp);
 #endif
           co->setReg(UNW_REG_IP, value);
