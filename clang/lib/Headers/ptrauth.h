@@ -36,11 +36,21 @@ typedef enum {
      which disable ABI pointer authentication. */
   ptrauth_key_process_dependent_data = ptrauth_key_asdb,
 
+  /* The key used to sign C function pointers.
+     The extra data is always 0. */
+  ptrauth_key_function_pointer = ptrauth_key_process_independent_code,
+
   /* The key used to sign return addresses on the stack.
      The extra data is based on the storage address of the return address.
      On ARM64, that is always the storage address of the return address plus 8
      (or, in other words, the value of the stack pointer on function entry) */
   ptrauth_key_return_address = ptrauth_key_process_dependent_code,
+
+  /* The key used to sign frame pointers on the stack.
+     The extra data is based on the storage address of the frame pointer.
+     On ARM64, that is always the storage address of the frame pointer plus 16
+     (or, in other words, the value of the stack pointer on function entry) */
+  ptrauth_key_frame_pointer = ptrauth_key_process_dependent_data,
 
   /* Other pointers signed under the ABI use private ABI rules. */
 
@@ -63,6 +73,21 @@ typedef __UINTPTR_TYPE__ ptrauth_generic_signature_t;
 
 /* Authenticating a pointer that was not signed with the given key
    and extra-data value will (likely) fail by trapping. */
+
+/* The null function pointer is always the all-zero bit pattern.
+   Signing an all-zero bit pattern will embed a (likely) non-zero
+   signature in the result, and so the result will not seem to be
+   a null function pointer.  Authenticating this value will yield
+   a null function pointer back.  However, authenticating an
+   all-zero bit pattern will probably fail, because the
+   authentication will expect a (likely) non-zero signature to
+   embedded in the value.
+
+   Because of this, if a pointer may validly be null, you should
+   check for null before attempting to authenticate it with one
+   of these intrinsics.  This is not necessary when using the
+   __ptrauth qualifier; the compiler will perform this check
+   automatically. */
 
 #if __has_feature(ptrauth_intrinsics)
 
@@ -144,6 +169,42 @@ typedef __UINTPTR_TYPE__ ptrauth_generic_signature_t;
 #define ptrauth_auth_and_resign(__value, __old_key, __old_data, __new_key, __new_data) \
   __builtin_ptrauth_auth_and_resign(__value, __old_key, __old_data, __new_key, __new_data)
 
+/* Authenticate a pointer using one scheme and resign it as a C
+   function pointer.
+
+   If the result is subsequently authenticated using the new scheme, that
+   authentication is guaranteed to fail if and only if the initial
+   authentication failed.
+
+   The value must be an expression of function pointer type.
+   The key must be a constant expression of type ptrauth_key.
+   The extra data must be an expression of pointer or integer type;
+   if an integer, it will be coerced to ptrauth_extra_data_t.
+   The result will have the same type as the original value.
+
+   This operation is guaranteed to not leave the intermediate value
+   available for attack before it is re-signed. Additionally, if this
+   expression is used syntactically as the function expression in a
+   call, only a single authentication will be performed. */
+#define ptrauth_auth_function(__value, __old_key, __old_data) \
+  ptrauth_auth_and_resign(__value, __old_key, __old_data, ptrauth_key_function_pointer, 0)
+
+/* Cast a pointer to the given type without changing any signature.
+
+   The type must be a pointer type.
+   The value must be an expression of function pointer type, and will be
+   converted to an rvalue prior to the cast.
+   The result has type given by the first argument.
+
+   The result has an identical bit-pattern to the input pointer. */
+#define ptrauth_nop_cast(__type, __value)        \
+  ({ union {                                     \
+      typeof(*(__value)) *__fptr;                \
+      typeof(__type) __opaque;                   \
+  } __storage;                                   \
+  __storage.__fptr = (__value);                  \
+  __storage.__opaque; })
+
 /* Authenticate a data pointer.
 
    The value must be an expression of non-function pointer type.
@@ -185,6 +246,18 @@ typedef __UINTPTR_TYPE__ ptrauth_generic_signature_t;
 #define ptrauth_type_discriminator(__type) \
   __builtin_ptrauth_type_discriminator(__type)
 
+/* Compute the constant discriminator used by Clang to sign pointers with the
+   given C function pointer type.
+
+   A call to this function is an integer constant expression*/
+#if __has_feature(ptrauth_function_pointer_type_discrimination)
+#define ptrauth_function_pointer_type_discriminator(__type) \
+  __builtin_ptrauth_type_discriminator(__type)
+#else
+#define ptrauth_function_pointer_type_discriminator(__type) ((ptrauth_extra_data_t)0)
+#endif
+
+
 
 /* Compute a signature for the given pair of pointer-sized values.
    The order of the arguments is significant.
@@ -215,9 +288,12 @@ typedef __UINTPTR_TYPE__ ptrauth_generic_signature_t;
 #define ptrauth_sign_constant(__value, __key, __data) ({(void)__key; (void)__data; __value;})
 #define ptrauth_sign_unauthenticated(__value, __key, __data) ({(void)__key; (void)__data; __value;})
 #define ptrauth_auth_and_resign(__value, __old_key, __old_data, __new_key, __new_data) ({(void)__old_key; (void)__old_data; (void)__new_key; (void)__new_data; __value;})
+#define ptrauth_auth_function(__value, __old_key, __old_data) ({(void)__old_key;(void)__old_data;__value;})
+#define ptrauth_nop_cast(__type, __value) (__type)(__value)
 #define ptrauth_auth_data(__value, __old_key, __old_data) ({(void)__old_key;(void)__old_data;__value;})
 #define ptrauth_string_discriminator(__string) ({(void)__string; ((ptrauth_extra_data_t)0);})
 #define ptrauth_type_discriminator(__type) ((ptrauth_extra_data_t)0)
+#define ptrauth_function_pointer_type_discriminator(__type) ((ptrauth_extra_data_t)0)
 #define ptrauth_sign_generic_data(__value, __data) ({(void)__value;(void)__data;((ptrauth_generic_signature_t)0);})
 
 #endif /* __has_feature(ptrauth_intrinsics) */

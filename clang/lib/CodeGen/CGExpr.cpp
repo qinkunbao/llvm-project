@@ -1140,7 +1140,8 @@ Address CodeGenFunction::EmitPointerWithAlignment(const Expr *E,
         if (CE->getCastKind() == CK_AddressSpaceConversion)
           Addr = Builder.CreateAddrSpaceCast(Addr, ConvertType(E->getType()),
                                              ElemTy);
-        return Addr;
+        return AuthPointerToPointerCast(Addr, CE->getSubExpr()->getType(),
+                                        CE->getType());
       }
       break;
 
@@ -1578,8 +1579,11 @@ CodeGenFunction::tryEmitAsConstant(DeclRefExpr *refExpr) {
   }
 
   // Emit as a constant.
-  auto C = ConstantEmitter(*this).emitAbstract(refExpr->getLocation(),
-                                               result.Val, resultType);
+  // Try to emit as a constant.
+  llvm::Constant *C =
+      ConstantEmitter(*this).tryEmitAbstract(result.Val, resultType);
+  if (!C)
+    return ConstantEmission();
 
   // Make sure we emit a debug reference to the global variable.
   // This should probably fire even for
@@ -2626,15 +2630,15 @@ static LValue EmitGlobalVarDeclLValue(CodeGenFunction &CGF,
   return LV;
 }
 
-static llvm::Constant *EmitFunctionDeclPointer(CodeGenModule &CGM,
-                                               GlobalDecl GD) {
+llvm::Constant *CodeGenModule::getRawFunctionPointer(GlobalDecl GD,
+                                                     llvm::Type *Ty) {
   const FunctionDecl *FD = cast<FunctionDecl>(GD.getDecl());
   if (FD->hasAttr<WeakRefAttr>()) {
-    ConstantAddress aliasee = CGM.GetWeakRefReference(FD);
+    ConstantAddress aliasee = GetWeakRefReference(FD);
     return aliasee.getPointer();
   }
 
-  llvm::Constant *V = CGM.GetAddrOfFunction(GD);
+  llvm::Constant *V = GetAddrOfFunction(GD, Ty);
   if (!FD->hasPrototype()) {
     if (const FunctionProtoType *Proto =
             FD->getType()->getAs<FunctionProtoType>()) {
@@ -2642,10 +2646,9 @@ static llvm::Constant *EmitFunctionDeclPointer(CodeGenModule &CGM,
       // isn't the same as the type of a use.  Correct for this with a
       // bitcast.
       QualType NoProtoType =
-          CGM.getContext().getFunctionNoProtoType(Proto->getReturnType());
-      NoProtoType = CGM.getContext().getPointerType(NoProtoType);
-      V = llvm::ConstantExpr::getBitCast(V,
-                                      CGM.getTypes().ConvertType(NoProtoType));
+          getContext().getFunctionNoProtoType(Proto->getReturnType());
+      NoProtoType = getContext().getPointerType(NoProtoType);
+      V = llvm::ConstantExpr::getBitCast(V,getTypes().ConvertType(NoProtoType));
     }
   }
   return V;
@@ -2654,7 +2657,7 @@ static llvm::Constant *EmitFunctionDeclPointer(CodeGenModule &CGM,
 static LValue EmitFunctionDeclLValue(CodeGenFunction &CGF, const Expr *E,
                                      GlobalDecl GD) {
   const FunctionDecl *FD = cast<FunctionDecl>(GD.getDecl());
-  llvm::Value *V = EmitFunctionDeclPointer(CGF.CGM, GD);
+  llvm::Constant *V = CGF.CGM.getFunctionPointer(GD);
   CharUnits Alignment = CGF.getContext().getDeclAlign(FD);
   return CGF.MakeAddrLValue(V, E->getType(), Alignment,
                             AlignmentSource::Decl);
@@ -5059,7 +5062,7 @@ static CGCallee EmitDirectCallee(CodeGenFunction &CGF, GlobalDecl GD) {
     // name to make it clear it's not the actual builtin.
     if (CGF.CurFn->getName() != FDInlineName &&
         OnlyHasInlineBuiltinDeclaration(FD)) {
-      llvm::Constant *CalleePtr = EmitFunctionDeclPointer(CGF.CGM, GD);
+      llvm::Constant *CalleePtr = CGF.CGM.getRawFunctionPointer(GD);
       llvm::Function *Fn = llvm::cast<llvm::Function>(CalleePtr);
       llvm::Module *M = Fn->getParent();
       llvm::Function *Clone = M->getFunction(FDInlineName);
@@ -5082,13 +5085,84 @@ static CGCallee EmitDirectCallee(CodeGenFunction &CGF, GlobalDecl GD) {
       return CGCallee::forBuiltin(builtinID, FD);
   }
 
-  llvm::Constant *CalleePtr = EmitFunctionDeclPointer(CGF.CGM, GD);
+  llvm::Constant *CalleePtr = CGF.CGM.getRawFunctionPointer(GD);
   if (CGF.CGM.getLangOpts().CUDA && !CGF.CGM.getLangOpts().CUDAIsDevice &&
       FD->hasAttr<CUDAGlobalAttr>())
     CalleePtr = CGF.CGM.getCUDARuntime().getKernelStub(
         cast<llvm::GlobalValue>(CalleePtr->stripPointerCasts()));
 
   return CGCallee::forDirect(CalleePtr, GD);
+}
+
+static unsigned getPointerAuthKeyValue(const ASTContext &Context,
+                                       const Expr *key) {
+  Expr::EvalResult result;
+  bool success = key->EvaluateAsInt(result, Context);
+  assert(success && "pointer auth key wasn't a constant?"); (void) success;
+  return result.Val.getInt().getZExtValue();
+}
+
+/// Whether a function pointer of type FPT is authenticated using key and
+/// discriminator in the normal ABI rules.
+bool CodeGenModule::isFunctionPointerAuthenticated(QualType FPT,
+                                                   const Expr *key,
+                                                   const Expr *discriminator) {
+  // Verify that the ABI uses function-pointer signing at all.
+  auto &authSchema = getCodeGenOpts().PointerAuth.FunctionPointers;
+  if (!authSchema.isEnabled())
+    return false;
+
+  // Verify that the key matches the ABI's key.
+  if (authSchema.getKey() != getPointerAuthKeyValue(getContext(), key))
+    return false;
+
+  assert(!authSchema.isAddressDiscriminated());
+
+  uint16_t DiscVal = 0;
+  if (FPT->isFunctionPointerType() || FPT->isFunctionReferenceType())
+    FPT = FPT->getPointeeType();
+  if (FPT->isFunctionType())
+    DiscVal = getContext().getPointerAuthTypeDiscriminator(FPT);
+
+  // FIXME: We can delete this when we only support type discriminated function
+  // pointers.
+  if (discriminator->getType()->isPointerType()) {
+    return DiscVal == 0 &&
+           discriminator->isNullPointerConstant(getContext(),
+                                                Expr::NPC_NeverValueDependent);
+  }
+
+  if (discriminator->getType()->isIntegerType()) {
+    Expr::EvalResult result;
+    return discriminator->EvaluateAsInt(result, getContext()) &&
+           result.Val.getInt() == DiscVal;
+  }
+
+  return false;
+}
+
+/// Given an expression for a function pointer that's been signed with
+/// a variant scheme, and given a constant expression for the key value
+/// and an expression for the discriminator, produce a callee for the
+/// function pointer using that scheme.
+static CGCallee EmitSignedFunctionPointerCallee(CodeGenFunction &CGF,
+                                          const Expr *functionPointerExpr,
+                                          const Expr *keyExpr,
+                                          const Expr *discriminatorExpr) {
+  llvm::Value *calleePtr = CGF.EmitScalarExpr(functionPointerExpr);
+  auto key = getPointerAuthKeyValue(CGF.getContext(), keyExpr);
+  auto discriminator = CGF.EmitScalarExpr(discriminatorExpr);
+
+  if (discriminator->getType()->isPointerTy())
+    discriminator = CGF.Builder.CreatePtrToInt(discriminator, CGF.IntPtrTy);
+
+  auto functionType =
+    functionPointerExpr->getType()->castAs<PointerType>()->getPointeeType();
+  CGCalleeInfo calleeInfo(functionType->getAs<FunctionProtoType>());
+  CGPointerAuthInfo pointerAuth(key, PointerAuthenticationMode::SignAndAuth,
+                                discriminator);
+  CGCallee callee(calleeInfo, calleePtr, pointerAuth);
+  return callee;
 }
 
 CGCallee CodeGenFunction::EmitCallee(const Expr *E) {
@@ -5119,6 +5193,39 @@ CGCallee CodeGenFunction::EmitCallee(const Expr *E) {
   // Treat pseudo-destructor calls differently.
   } else if (auto PDE = dyn_cast<CXXPseudoDestructorExpr>(E)) {
     return CGCallee::forPseudoDestructor(PDE);
+
+  // Peephole specific builtin calls.
+  } else if (auto CE = dyn_cast<CallExpr>(E)) {
+    if (unsigned builtin = CE->getBuiltinCallee()) {
+      // If the callee is a __builtin_ptrauth_sign_unauthenticated to the
+      // ABI function-pointer signing schema, perform an unauthenticated call.
+      if (builtin == Builtin::BI__builtin_ptrauth_sign_unauthenticated &&
+          CGM.isFunctionPointerAuthenticated(CE->getArg(0)->getType(),
+                                             CE->getArg(1), CE->getArg(2))) {
+        CGCallee callee = EmitCallee(CE->getArg(0));
+        if (callee.isOrdinary())
+          callee.setPointerAuthInfo(CGPointerAuthInfo());
+        return callee;
+      }
+
+      // If the callee is a __builtin_ptrauth_auth_and_resign to the
+      // ABI function-pointer signing schema, avoid the intermediate resign.
+      if (builtin == Builtin::BI__builtin_ptrauth_auth_and_resign &&
+          CGM.isFunctionPointerAuthenticated(CE->getArg(0)->getType(),
+                                             CE->getArg(3), CE->getArg(4))) {
+        return EmitSignedFunctionPointerCallee(*this, CE->getArg(0),
+                                               CE->getArg(1), CE->getArg(2));
+
+      // If the callee is a __builtin_ptrauth_auth when ABI function pointer
+      // signing is disabled, we need to promise to use the unattackable
+      // OperandBundle code pattern.
+      } else if (builtin == Builtin::BI__builtin_ptrauth_auth &&
+                 !CGM.getCodeGenOpts()
+                      .PointerAuth.FunctionPointers.isEnabled()) {
+        return EmitSignedFunctionPointerCallee(*this, CE->getArg(0),
+                                               CE->getArg(1), CE->getArg(2));
+      }
+    }
   }
 
   // Otherwise, we have an indirect reference.
@@ -5139,7 +5246,8 @@ CGCallee CodeGenFunction::EmitCallee(const Expr *E) {
     GD = GlobalDecl(VD);
 
   CGCalleeInfo calleeInfo(functionType->getAs<FunctionProtoType>(), GD);
-  CGCallee callee(calleeInfo, calleePtr);
+  CGPointerAuthInfo pointerAuth = CGM.getFunctionPointerAuthInfo(functionType);
+  CGCallee callee(calleeInfo, calleePtr, pointerAuth);
   return callee;
 }
 

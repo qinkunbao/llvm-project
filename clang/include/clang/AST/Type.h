@@ -25,6 +25,7 @@
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/ExceptionSpecificationType.h"
 #include "clang/Basic/LLVM.h"
+#include "clang/Basic/LangOptions.h"
 #include "clang/Basic/Linkage.h"
 #include "clang/Basic/PartialDiagnostic.h"
 #include "clang/Basic/SourceLocation.h"
@@ -2141,6 +2142,8 @@ public:
   bool isFunctionNoProtoType() const { return getAs<FunctionNoProtoType>(); }
   bool isFunctionProtoType() const { return getAs<FunctionProtoType>(); }
   bool isPointerType() const;
+  bool isSignablePointerType() const;
+  bool isSignableValue(ASTContext &) const;
   bool isAnyPointerType() const;   // Any C pointer or ObjC object pointer
   bool isBlockPointerType() const;
   bool isVoidPointerType() const;
@@ -6932,6 +6935,14 @@ inline bool Type::isPointerType() const {
 
 inline bool Type::isAnyPointerType() const {
   return isPointerType() || isObjCObjectPointerType();
+}
+
+inline bool Type::isSignablePointerType() const {
+  return isPointerType();
+}
+
+inline bool Type::isSignableValue(ASTContext &ctx) const {
+  return isSignablePointerType();
 }
 
 inline bool Type::isBlockPointerType() const {

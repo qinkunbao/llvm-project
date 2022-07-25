@@ -1121,7 +1121,8 @@ void DarwinClang::addClangTargetOptions(
 
   Darwin::addClangTargetOptions(DriverArgs, CC1Args, DeviceOffloadKind);
 
-  // On arm64e, enable pointer authentication intrinsics.
+  // On arm64e, enable pointer authentication (for the return address and
+  // indirect calls), as well as usage of the intrinsics.
   if (getTriple().isArm64e()) {
     // The ptrauth ABI version is 0 by default, but can be overridden.
     static const constexpr unsigned DefaultPtrauthABIVersion = 0;
@@ -1163,9 +1164,21 @@ void DarwinClang::addClangTargetOptions(
                            options::OPT_fno_ptrauth_intrinsics))
       CC1Args.push_back("-fptrauth-intrinsics");
 
+    if (!DriverArgs.hasArg(options::OPT_fptrauth_calls,
+                           options::OPT_fno_ptrauth_calls))
+      CC1Args.push_back("-fptrauth-calls");
+
     if (!DriverArgs.hasArg(options::OPT_fptrauth_auth_traps,
                            options::OPT_fno_ptrauth_auth_traps))
       CC1Args.push_back("-fptrauth-auth-traps");
+
+    if (DriverArgs.hasArg(options::OPT_fapple_kext) ||
+        DriverArgs.hasArg(options::OPT_mkernel)) {
+      if (!DriverArgs.hasArg(
+          options::OPT_fptrauth_function_pointer_type_discrimination,
+          options::OPT_fno_ptrauth_function_pointer_type_discrimination))
+        CC1Args.push_back("-fptrauth-function-pointer-type-discrimination");
+    }
   }
 }
 

@@ -57,7 +57,10 @@ class CGBuilderTy : public CGBuilderBaseTy {
   CodeGenFunction *getCGF() const { return getInserter().CGF; }
 
   llvm::Value *getRawPointerFromAddress(Address Addr) const {
-    return Addr.getUnsignedPointer();
+    if (!Addr.isSigned())
+      return Addr.getUnsignedPointer();
+    assert(getCGF() && "CGF not set");
+    return Addr.getRawPointerSlow(*getCGF());
   }
 
   /// Helper function to compute a GEP's offset and add it to Addr.
@@ -216,7 +219,8 @@ public:
                               const llvm::Twine &Name = "") {
     if (!Addr.hasOffset())
       return Address(CreateAddrSpaceCast(Addr.getBasePointer(), Ty, Name),
-                     ElementTy, Addr.getAlignment());
+                     ElementTy, Addr.getAlignment(), Addr.getPointerAuthInfo(),
+                     nullptr);
     // Eagerly force a raw address if these is an offset.
     return RawAddress(
       CreateAddrSpaceCast(Addr.getRawPointer(*getCGF()), Ty, Name), ElementTy,
@@ -227,9 +231,14 @@ public:
   /// preserving information like the alignment and address space.
   Address CreateElementBitCast(Address Addr, llvm::Type *Ty,
                                const llvm::Twine &Name = "") {
-    auto *PtrTy = Ty->getPointerTo(Addr.getAddressSpace());
-    return Address(CreateBitCast(Addr.getBasePointer(), PtrTy, Name), Ty,
-                   Addr.getAlignment());
+    if (!Addr.hasOffset()) {
+      auto *PtrTy = Ty->getPointerTo(Addr.getAddressSpace());
+      return Address(CreateBitCast(Addr.getBasePointer(), PtrTy, Name), Ty,
+                     Addr.getAlignment(), Addr.getPointerAuthInfo(), nullptr);
+    }
+
+    Addr.setElementType(Ty);
+    return Addr;
   }
 
   using CGBuilderBaseTy::CreatePointerBitCastOrAddrSpaceCast;
@@ -256,10 +265,13 @@ public:
     const llvm::StructLayout *Layout = DL.getStructLayout(ElTy);
     auto Offset = CharUnits::fromQuantity(Layout->getElementOffset(Index));
 
-    return Address(
-        CreateStructGEP(Addr.getElementType(), Addr.getUnsignedPointer(), Index, Name),
-        ElTy->getElementType(Index),
-        Addr.getAlignment().alignmentAtOffset(Offset));
+    if (!Addr.isSigned())
+      return Address(
+          CreateStructGEP(Addr.getElementType(), Addr.getUnsignedPointer(), Index, Name),
+          ElTy->getElementType(Index),
+          Addr.getAlignment().alignmentAtOffset(Offset));
+    Addr.addOffset(Offset, ElTy->getTypeAtIndex(Index), *this);
+    return Addr;
   }
 
   /// Given
@@ -277,11 +289,14 @@ public:
     CharUnits EltSize =
         CharUnits::fromQuantity(DL.getTypeAllocSize(ElTy->getElementType()));
 
-    return Address(
-        CreateInBoundsGEP(Addr.getElementType(), Addr.getUnsignedPointer(),
-                          {getSize(CharUnits::Zero()), getSize(Index)}, Name),
-        ElTy->getElementType(),
-        Addr.getAlignment().alignmentAtOffset(Index * EltSize));
+    if (!Addr.isSigned())
+      return Address(
+          CreateInBoundsGEP(Addr.getElementType(), Addr.getUnsignedPointer(),
+                            {getSize(CharUnits::Zero()), getSize(Index)}, Name),
+          ElTy->getElementType(),
+          Addr.getAlignment().alignmentAtOffset(Index * EltSize));
+    Addr.addOffset(Index * EltSize, ElTy, *this);
+    return Addr;
   }
 
   /// Given
@@ -295,10 +310,13 @@ public:
     const llvm::DataLayout &DL = BB->getParent()->getParent()->getDataLayout();
     CharUnits EltSize = CharUnits::fromQuantity(DL.getTypeAllocSize(ElTy));
 
-    return Address(CreateInBoundsGEP(ElTy, Addr.getUnsignedPointer(),
-                                     getSize(Index), Name),
-                   ElTy,
-                   Addr.getAlignment().alignmentAtOffset(Index * EltSize));
+    if (!Addr.isSigned())
+      return Address(CreateInBoundsGEP(ElTy, Addr.getUnsignedPointer(),
+                                       getSize(Index), Name),
+                     ElTy,
+                     Addr.getAlignment().alignmentAtOffset(Index * EltSize));
+    Addr.addOffset(Index * EltSize, ElTy, *this);
+    return Addr;
   }
 
   /// Given
@@ -312,10 +330,13 @@ public:
     const llvm::DataLayout &DL = BB->getParent()->getParent()->getDataLayout();
     CharUnits EltSize = CharUnits::fromQuantity(DL.getTypeAllocSize(ElTy));
 
-    return Address(
-        CreateGEP(ElTy, Addr.getUnsignedPointer(), getSize(Index), Name),
-        ElTy,
-        Addr.getAlignment().alignmentAtOffset(Index * EltSize));
+    if (!Addr.isSigned())
+      return Address(
+          CreateGEP(ElTy, Addr.getUnsignedPointer(), getSize(Index), Name),
+          ElTy,
+          Addr.getAlignment().alignmentAtOffset(Index * EltSize));
+    Addr.addOffset(Index * EltSize, ElTy, *this);
+    return Addr;
   }
 
   /// Create GEP with single dynamic index. The address alignment is reduced
@@ -337,22 +358,28 @@ public:
   Address CreateConstInBoundsByteGEP(Address Addr, CharUnits Offset,
                                      const llvm::Twine &Name = "") {
     assert(Addr.getElementType() == TypeCache.Int8Ty);
-    return Address(CreateInBoundsGEP(Addr.getElementType(),
-                                     Addr.getUnsignedPointer(),
-                                     getSize(Offset), Name),
-                   Addr.getElementType(),
-                   Addr.getAlignment().alignmentAtOffset(Offset));
+    if (!Addr.isSigned())
+      return Address(CreateInBoundsGEP(Addr.getElementType(),
+                                       Addr.getUnsignedPointer(),
+                                       getSize(Offset), Name),
+                     Addr.getElementType(),
+                     Addr.getAlignment().alignmentAtOffset(Offset));
+    Addr.addOffset(Offset, TypeCache.Int8Ty, *this);
+    return Addr;
   }
 
   Address CreateConstByteGEP(Address Addr, CharUnits Offset,
                              const llvm::Twine &Name = "") {
     assert(Addr.getElementType() == TypeCache.Int8Ty);
 
-    return Address(
-        CreateGEP(Addr.getElementType(), Addr.getUnsignedPointer(),
-                  getSize(Offset), Name),
-        Addr.getElementType(),
-        Addr.getAlignment().alignmentAtOffset(Offset));
+    if (!Addr.isSigned())
+      return Address(
+          CreateGEP(Addr.getElementType(), Addr.getUnsignedPointer(),
+                    getSize(Offset), Name),
+          Addr.getElementType(),
+          Addr.getAlignment().alignmentAtOffset(Offset));
+    Addr.addOffset(Offset, TypeCache.Int8Ty, *this);
+    return Addr;
   }
 
   using CGBuilderBaseTy::CreateConstInBoundsGEP2_32;
@@ -379,9 +406,11 @@ public:
   Address CreateInBoundsGEP(Address Addr, ArrayRef<llvm::Value *> IdxList,
                             llvm::Type *ElementType, CharUnits Align,
                             const Twine &Name = "") {
-    return {CreateInBoundsGEP(Addr.getElementType(),
-                              getRawPointerFromAddress(Addr), IdxList, Name),
-            ElementType, Align};
+    if (!Addr.isSigned())
+      return {CreateInBoundsGEP(Addr.getElementType(),
+                                getRawPointerFromAddress(Addr), IdxList, Name),
+              ElementType, Align};
+    return addGEPOffset(Addr, IdxList, Align, true, Name);
   }
 
   using CGBuilderBaseTy::CreateIsNull;

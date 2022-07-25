@@ -2683,6 +2683,8 @@ void ItaniumCXXABI::registerGlobalDtor(CodeGenFunction &CGF, const VarDecl &D,
   if (D.isNoDestroy(CGM.getContext()))
     return;
 
+  addr = CGM.getConstantSignedPointer(addr, D.getType());
+
   // emitGlobalDtorWithCXAAtExit will emit a call to either __cxa_thread_atexit
   // or __cxa_atexit depending on whether this VarDecl is a thread-local storage
   // or not. CXAAtExit controls only __cxa_atexit, so use it if it is enabled.
@@ -4467,16 +4469,18 @@ static void InitCatchParam(CodeGenFunction &CGF,
         llvm::Type *PtrTy = CGF.ConvertTypeForMem(CaughtType);
 
         // Create the temporary and write the adjusted pointer into it.
-        Address ExnPtrTmp =
-          CGF.CreateTempAlloca(PtrTy, CGF.getPointerAlign(), "exn.byref.tmp");
+        RawAddress ExnPtrTmp =
+            CGF.CreateTempAlloca(PtrTy, CGF.getPointerAlign(), "exn.byref.tmp");
+        AdjustedExn = CGF.EmitPointerAuthSign(PointeeType, AdjustedExn);
         llvm::Value *Casted = CGF.Builder.CreateBitCast(AdjustedExn, PtrTy);
         CGF.Builder.CreateStore(Casted, ExnPtrTmp);
 
         // Bind the reference to the temporary.
-        AdjustedExn = ExnPtrTmp.getRawPointer(CGF);
+        AdjustedExn = ExnPtrTmp.getPointer();
       }
     }
 
+    AdjustedExn = CGF.EmitPointerAuthSign(CaughtType, AdjustedExn);
     llvm::Value *ExnCast =
       CGF.Builder.CreateBitCast(AdjustedExn, LLVMCatchTy, "exn.byref");
     CGF.Builder.CreateStore(ExnCast, ParamAddr);
@@ -4749,7 +4753,8 @@ void XLCXXABI::registerGlobalDtor(CodeGenFunction &CGF, const VarDecl &D,
   }
 
   // Create __dtor function for the var decl.
-  llvm::Function *DtorStub = CGF.createAtExitStub(D, Dtor, Addr);
+  llvm::Function *DtorStub =
+      cast<llvm::Function>(CGF.createAtExitStub(D, Dtor, Addr));
 
   // Register above __dtor with atexit().
   CGF.registerGlobalDtorWithAtExit(DtorStub);

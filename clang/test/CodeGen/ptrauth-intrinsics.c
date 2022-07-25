@@ -17,6 +17,16 @@ void test_auth() {
   fnptr = __builtin_ptrauth_auth(fnptr, 0, ptr_discriminator);
 }
 
+// CHECK-LABEL: define{{.*}} void @test_auth_peephole()
+void test_auth_peephole() {
+  // CHECK:      [[PTR:%.*]] = load void ()*, void ()** @fnptr,
+  // CHECK-NEXT: [[DISC0:%.*]] = load i8*, i8** @ptr_discriminator,
+  // CHECK-NEXT: [[DISC:%.*]] = ptrtoint i8* [[DISC0]] to i64
+  // CHECK-NEXT: call void [[PTR]]() [ "ptrauth"(i32 0, i64 [[DISC]]) ]
+  // CHECK-NEXT: ret void
+  __builtin_ptrauth_auth(fnptr, 0, ptr_discriminator)();
+}
+
 // CHECK-LABEL: define{{.*}} void @test_strip()
 void test_strip() {
   // CHECK:      [[PTR:%.*]] = load void ()*, void ()** @fnptr,

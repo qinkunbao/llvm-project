@@ -6829,6 +6829,10 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
                    options::OPT_fno_ptrauth_intrinsics, false))
     CmdArgs.push_back("-fptrauth-intrinsics");
 
+  if (Args.hasFlag(options::OPT_fptrauth_calls,
+                   options::OPT_fno_ptrauth_calls, false))
+    CmdArgs.push_back("-fptrauth-calls");
+
   if (Args.hasFlag(options::OPT_fptrauth_returns,
                    options::OPT_fno_ptrauth_returns, false))
     CmdArgs.push_back("-fptrauth-returns");
@@ -6836,6 +6840,12 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   if (Args.hasFlag(options::OPT_fptrauth_auth_traps,
                    options::OPT_fno_ptrauth_auth_traps, false))
     CmdArgs.push_back("-fptrauth-auth-traps");
+
+  if (Args.hasFlag(
+          options::OPT_fptrauth_function_pointer_type_discrimination,
+          options::OPT_fno_ptrauth_function_pointer_type_discrimination, false))
+    CmdArgs.push_back("-fptrauth-function-pointer-type-discrimination");
+
 
   // -fsigned-bitfields is default, and clang doesn't yet support
   // -funsigned-bitfields.

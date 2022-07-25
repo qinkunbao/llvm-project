@@ -3841,8 +3841,8 @@ static bool isProvablyNull(llvm::Value *addr) {
 }
 
 static bool isProvablyNonNull(Address Addr, CodeGenFunction &CGF) {
-  return llvm::isKnownNonZero(Addr.getUnsignedPointer(),
-                              CGF.CGM.getDataLayout());
+  return !Addr.isSigned() && llvm::isKnownNonZero(Addr.getUnsignedPointer(),
+                                                  CGF.CGM.getDataLayout());
 }
 
 /// Emit the actual writing-back of a writeback.
@@ -4820,7 +4820,7 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
   llvm::Value *UnusedReturnSizePtr = nullptr;
   if (RetAI.isIndirect() || RetAI.isInAlloca() || RetAI.isCoerceAndExpand()) {
     if (!ReturnValue.isNull()) {
-      SRetPtr = ReturnValue.getAddress();
+      SRetPtr = ReturnValue.getValue();
     } else {
       SRetPtr = CreateMemTemp(RetTy, "tmp", &SRetAlloca);
       if (HaveInsertPoint() && ReturnValue.isUnused()) {
@@ -5395,6 +5395,9 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
   if (SanOpts.has(SanitizerKind::KCFI) &&
       !isa_and_nonnull<FunctionDecl>(TargetDecl))
     EmitKCFIOperandBundle(ConcreteCallee, BundleList);
+
+  // Add the pointer-authentication bundle.
+  EmitPointerAuthOperandBundle(ConcreteCallee.getPointerAuthInfo(), BundleList);
 
   if (const FunctionDecl *FD = dyn_cast_or_null<FunctionDecl>(CurFuncDecl))
     if (FD->hasAttr<StrictFPAttr>())

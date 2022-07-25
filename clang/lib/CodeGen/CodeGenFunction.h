@@ -181,6 +181,9 @@ template <> struct DominatingValue<Address> {
     DominatingLLVMValue::saved_type BasePtr;
     llvm::Type *ElementType;
     CharUnits Alignment;
+    unsigned PtrAuthKey : 28;
+    PointerAuthenticationMode PtrAuthMode : 2;
+    DominatingLLVMValue::saved_type PtrAuthDiscriminator;
     DominatingLLVMValue::saved_type Offset;
     llvm::PointerType *EffectiveType;
   };
@@ -189,17 +192,32 @@ template <> struct DominatingValue<Address> {
     if (DominatingLLVMValue::needsSaving(value.getBasePointer()) ||
         DominatingLLVMValue::needsSaving(value.getOffset()))
       return true;
+    CGPointerAuthInfo info = value.getPointerAuthInfo();
+    if (info.isSigned() &&
+        DominatingLLVMValue::needsSaving(info.getDiscriminator()))
+      return true;
     return false;
   }
   static saved_type save(CodeGenFunction &CGF, type value) {
-    return { DominatingLLVMValue::save(CGF, value.getBasePointer()),
-             value.getElementType(), value.getAlignment(),
-             DominatingLLVMValue::saved_type(),
+    bool isSigned = value.getPointerAuthInfo().isSigned();
+    return {DominatingLLVMValue::save(CGF, value.getBasePointer()),
+            value.getElementType(), value.getAlignment(),
+            isSigned ? value.getPointerAuthInfo().getKey() : 0,
+            value.getPointerAuthInfo().getAuthenticationMode(),
+            isSigned ? DominatingLLVMValue::save(
+                           CGF, value.getPointerAuthInfo().getDiscriminator())
+                     : DominatingLLVMValue::saved_type(),
+            DominatingLLVMValue::save(CGF, value.getOffset()),
             value.getType()};
   }
   static type restore(CodeGenFunction &CGF, saved_type value) {
+    CGPointerAuthInfo info;
+    if (value.PtrAuthMode != PointerAuthenticationMode::None)
+      info = CGPointerAuthInfo{
+          value.PtrAuthKey, value.PtrAuthMode,
+          DominatingLLVMValue::restore(CGF, value.PtrAuthDiscriminator)};
     return Address(DominatingLLVMValue::restore(CGF, value.BasePtr),
-        value.ElementType, value.Alignment,
+        value.ElementType, value.Alignment, info,
         DominatingLLVMValue::restore(CGF, value.Offset));
   }
 };
@@ -2522,15 +2540,7 @@ public:
                                           llvm::BasicBlock *LHSBlock,
                                           llvm::BasicBlock *RHSBlock,
                                           llvm::BasicBlock *MergeBlock,
-                                          QualType MergedType) {
-    Builder.SetInsertPoint(MergeBlock);
-    llvm::PHINode *PtrPhi = Builder.CreatePHI(LHS.getType(), 2);
-    PtrPhi->addIncoming(LHS.getBasePointer(), LHSBlock);
-    PtrPhi->addIncoming(RHS.getBasePointer(), RHSBlock);
-    LHS.replaceBasePointer(PtrPhi);
-    LHS.setAlignment(std::min(LHS.getAlignment(), RHS.getAlignment()));
-    return LHS;
-  }
+                                          QualType MergedType);
 
   Address makeNaturalAddressForPointer(llvm::Value *Ptr, QualType T,
                                        CharUnits Alignment = CharUnits::Zero(),
@@ -2540,7 +2550,8 @@ public:
     if (Alignment.isZero())
       Alignment =
           CGM.getNaturalTypeAlignment(T, BaseInfo, TBAAInfo, ForPointeeType);
-    return Address(Ptr, ConvertTypeForMem(T), Alignment);
+    return Address(Ptr, ConvertTypeForMem(T), Alignment,
+                   CGM.getPointerAuthInfoForPointeeType(T), nullptr);
   }
 
   LValue MakeAddrLValue(Address Addr, QualType T,
@@ -3059,9 +3070,19 @@ public:
   /// calls to EmitTypeCheck can be skipped.
   bool sanitizePerformTypeCheck() const;
 
+  /// Emit a check that \p V is the address of storage of the
+  /// appropriate size and alignment for an object of type \p Type
+  /// (or if ArraySize is provided, for an array of that bound).
+  void EmitTypeCheck(TypeCheckKind TCK, SourceLocation Loc, llvm::Value *V,
+                     QualType Type, CharUnits Alignment = CharUnits::Zero(),
+                     SanitizerSet SkippedChecks = SanitizerSet(),
+                     llvm::Value *ArraySize = nullptr);
+
   void EmitTypeCheck(TypeCheckKind TCK, SourceLocation Loc, LValue LV,
                      QualType Type, SanitizerSet SkippedChecks = SanitizerSet(),
                      llvm::Value *ArraySize = nullptr) {
+    // If type-checking sanitizers are disabled, return without authenticating
+    // the passed lvalue.
     if (!sanitizePerformTypeCheck())
       return;
     EmitTypeCheck(TCK, Loc, LV.getRawPointer(*this), Type, LV.getAlignment(),
@@ -3072,19 +3093,13 @@ public:
                      QualType Type, CharUnits Alignment = CharUnits::Zero(),
                      SanitizerSet SkippedChecks = SanitizerSet(),
                      llvm::Value *ArraySize = nullptr) {
+    // If type-checking sanitizers are disabled, return without authenticating
+    // the passed lvalue.
     if (!sanitizePerformTypeCheck())
       return;
     EmitTypeCheck(TCK, Loc, Addr.getRawPointer(*this), Type, Alignment,
                   SkippedChecks, ArraySize);
   }
-
-  /// Emit a check that \p V is the address of storage of the
-  /// appropriate size and alignment for an object of type \p Type
-  /// (or if ArraySize is provided, for an array of that bound).
-  void EmitTypeCheck(TypeCheckKind TCK, SourceLocation Loc, llvm::Value *V,
-                     QualType Type, CharUnits Alignment = CharUnits::Zero(),
-                     SanitizerSet SkippedChecks = SanitizerSet(),
-                     llvm::Value *ArraySize = nullptr);
 
   /// Emit a check that \p Base points into an array object, which
   /// we can access at index \p Index. \p Accessed should be \c false if we
@@ -4155,11 +4170,44 @@ public:
                                                CXXDtorType Type,
                                                const CXXRecordDecl *RD);
 
-  llvm::Value *getAsNaturalPointerTo(Address Addr, QualType PointeeType) {
-    return Addr.getBasePointer();
-  }
+  /// Create the discriminator from the storage address and the entity hash.
+  llvm::Value *EmitPointerAuthBlendDiscriminator(llvm::Value *storageAddress,
+                                                 llvm::Value *discriminator);
 
-  bool isPointerKnownNonNull(const Expr *E);
+  CGPointerAuthInfo EmitPointerAuthInfo(const PointerAuthSchema &schema,
+                                        llvm::Value *storageAddress,
+                                        GlobalDecl calleeDecl,
+                                        QualType calleeType);
+  llvm::Value *EmitPointerAuthSign(QualType pointeeType, llvm::Value *pointer);
+  llvm::Value *EmitPointerAuthSign(const CGPointerAuthInfo &info,
+                                   llvm::Value *pointer);
+  llvm::Value *EmitPointerAuthAuth(QualType pointeeType, llvm::Value *pointer);
+  llvm::Value *EmitPointerAuthAuth(const CGPointerAuthInfo &info,
+                                   llvm::Value *pointer);
+  llvm::Value *EmitPointerAuthResign(llvm::Value *pointer,
+                                     QualType pointerType,
+                                     const CGPointerAuthInfo &curAuthInfo,
+                                     const CGPointerAuthInfo &newAuthInfo,
+                                     bool isKnownNonNull);
+  llvm::Value *EmitPointerAuthResignCall(llvm::Value *pointer,
+                                         const CGPointerAuthInfo &curInfo,
+                                         const CGPointerAuthInfo &newInfo);
+  void EmitPointerAuthOperandBundle(const CGPointerAuthInfo &info,
+                          SmallVectorImpl<llvm::OperandBundleDef> &bundles);
+
+  llvm::Value *AuthPointerToPointerCast(llvm::Value *ResultPtr,
+                                        QualType SourceType, QualType DestType);
+  Address AuthPointerToPointerCast(Address Ptr,
+                                   QualType SourceType, QualType DestType);
+
+  Address EmitPointerAuthSign(Address Addr, QualType PointeeType);
+  Address EmitPointerAuthAuth(Address Addr, QualType PointeeType);
+
+  Address getAsNaturalAddressOf(Address Addr, QualType PointeeTy);
+
+  llvm::Value *getAsNaturalPointerTo(Address Addr, QualType PointeeType) {
+    return getAsNaturalAddressOf(Addr, PointeeType).getBasePointer();
+  }
 
   // Return the copy constructor name with the prefix "__copy_constructor_"
   // removed.

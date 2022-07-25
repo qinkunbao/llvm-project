@@ -775,7 +775,7 @@ void CXXNameMangler::mangle(GlobalDecl GD) {
   //            ::= <data name>
   //            ::= <special-name>
   Out << "_Z";
-  if (isa<FunctionDecl>(GD.getDecl()))
+  if (const FunctionDecl *FD = dyn_cast<FunctionDecl>(GD.getDecl()))
     mangleFunctionEncoding(GD);
   else if (isa<VarDecl, FieldDecl, MSGuidDecl, TemplateParamObjectDecl,
                BindingDecl>(GD.getDecl()))

@@ -14,6 +14,7 @@
 #ifndef LLVM_CLANG_LIB_CODEGEN_ADDRESS_H
 #define LLVM_CLANG_LIB_CODEGEN_ADDRESS_H
 
+#include "CGPointerAuthInfo.h"
 #include "clang/AST/CharUnits.h"
 #include "clang/AST/Type.h"
 #include "llvm/ADT/PointerIntPair.h"
@@ -164,7 +165,11 @@ class Address {
 
   CharUnits Alignment;
 
-  /// Offset from the base pointer.
+  /// The ptrauth information needed to authenticate the base pointer.
+  CGPointerAuthInfo PtrAuthInfo;
+
+  /// Offset from the base pointer. This is non-null only when the base
+  /// pointer is signed.
   llvm::Value *Offset = nullptr;
 
   llvm::Value *getRawPointerSlow(CodeGenFunction &CGF) const;
@@ -184,9 +189,9 @@ public:
   }
 
   Address(llvm::Value *BasePtr, llvm::Type *ElementType, CharUnits Alignment,
-          llvm::Value *Offset)
+          CGPointerAuthInfo PtrAuthInfo, llvm::Value *Offset)
       : Pointer(BasePtr), ElementType(ElementType), Alignment(Alignment),
-        Offset(Offset) {
+        PtrAuthInfo(PtrAuthInfo),  Offset(Offset) {
     assert(llvm::cast<llvm::PointerType>(Pointer->getType())
                ->isOpaqueOrPointeeTypeMatches(ElementType) &&
            "Incorrect pointer element type");
@@ -205,7 +210,7 @@ public:
 
   llvm::Value *getPointerIfNotSigned() const {
     assert(isValid() && "pointer isn't valid");
-    return Pointer;
+    return !isSigned() ? Pointer : nullptr;
   }
 
   /// This function is used in situations where the caller is doing some sort of
@@ -227,6 +232,7 @@ public:
   }
 
   llvm::Value *getUnsignedPointer() const {
+    assert(!isSigned() && "cannot call this function if pointer is signed");
     return getBasePointer();
   }
 
@@ -250,12 +256,17 @@ public:
   /// Return the IR name of the pointer value.
   llvm::StringRef getName() const { return Pointer->getName(); }
 
+  const CGPointerAuthInfo &getPointerAuthInfo() const { return PtrAuthInfo; }
+  void setPointerAuthInfo(const CGPointerAuthInfo &Info) { PtrAuthInfo = Info; }
+
   // This function is called only in CGBuilderBaseTy::CreateElementBitCast.
   void setElementType(llvm::Type *Ty) {
     assert(hasOffset() &&
            "this funcion shouldn't be called when there is no offset");
     ElementType = Ty;
   }
+
+  bool isSigned() const { return PtrAuthInfo.isSigned(); }
 
   /// Add a constant offset.
   void addOffset(CharUnits V, llvm::Type *Ty, CGBuilderTy &Builder);
@@ -269,8 +280,14 @@ public:
 
   llvm::Value *getOffset() const { return Offset; }
 
+  Address getResignedAddress(const CGPointerAuthInfo &NewInfo,
+                             CodeGenFunction &CGF,
+                             bool IsKnownNonNull) const;
+
   llvm::Value *getRawPointer(CodeGenFunction &CGF) const {
-    return getUnsignedPointer();
+    if (!isSigned())
+      return getUnsignedPointer();
+    return getRawPointerSlow(CGF);
   }
 
   /// Return address with different pointer, but same element type and

@@ -1322,6 +1322,16 @@ bool CompilerInvocation::setDefaultPointerAuthOptions(
     PointerAuthOptions &Opts, const LangOptions &LangOpts,
     const llvm::Triple &Triple) {
   if (Triple.getArch() == llvm::Triple::aarch64) {
+    if (LangOpts.PointerAuthCalls) {
+      using Key = PointerAuthSchema::ARM8_3Key;
+      using Discrimination = PointerAuthSchema::Discrimination;
+      // If you change anything here, be sure to update <ptrauth.h>.
+      Opts.FunctionPointers =
+          PointerAuthSchema(Key::ASIA, false,
+                            LangOpts.FunctionPointerTypeDiscrimination
+                                ? Discrimination::Type
+                                : Discrimination::None);
+    }
     Opts.ReturnAddresses = LangOpts.PointerAuthReturns;
     Opts.AuthTraps = LangOpts.PointerAuthAuthTraps;
     return true;
@@ -1335,7 +1345,8 @@ static bool parsePointerAuthOptions(PointerAuthOptions &Opts,
                                     const LangOptions &LangOpts,
                                     const llvm::Triple &Triple,
                                     DiagnosticsEngine &Diags) {
-  if (!LangOpts.PointerAuthReturns && !LangOpts.PointerAuthAuthTraps)
+  if (!LangOpts.PointerAuthCalls && !LangOpts.PointerAuthReturns &&
+      !LangOpts.PointerAuthAuthTraps)
     return true;
 
   if (CompilerInvocation::setDefaultPointerAuthOptions(Opts, LangOpts, Triple))
@@ -3244,10 +3255,14 @@ static void GeneratePointerAuthArgs(LangOptions &Opts,
                                     CompilerInvocation::StringAllocator SA) {
   if (Opts.PointerAuthIntrinsics)
     GenerateArg(Args, OPT_fptrauth_intrinsics, SA);
+  if (Opts.PointerAuthCalls)
+    GenerateArg(Args, OPT_fptrauth_calls, SA);
   if (Opts.PointerAuthReturns)
     GenerateArg(Args, OPT_fptrauth_returns, SA);
   if (Opts.PointerAuthAuthTraps)
     GenerateArg(Args, OPT_fptrauth_auth_traps, SA);
+  if (Opts.FunctionPointerTypeDiscrimination)
+    GenerateArg(Args, OPT_fptrauth_function_pointer_type_discrimination, SA);
 
   if (Opts.PointerAuthABIVersionEncoded) {
     GenerateArg(Args, OPT_fptrauth_abi_version_EQ,
@@ -3260,6 +3275,7 @@ static void GeneratePointerAuthArgs(LangOptions &Opts,
 static void ParsePointerAuthArgs(LangOptions &Opts, ArgList &Args,
                                  DiagnosticsEngine &Diags) {
   Opts.PointerAuthIntrinsics = Args.hasArg(OPT_fptrauth_intrinsics);
+  Opts.PointerAuthCalls = Args.hasArg(OPT_fptrauth_calls);
   Opts.PointerAuthReturns = Args.hasArg(OPT_fptrauth_returns);
   Opts.PointerAuthAuthTraps = Args.hasArg(OPT_fptrauth_auth_traps);
 
@@ -4537,6 +4553,9 @@ bool CompilerInvocation::CreateFromArgsImpl(
                 Diags);
   if (Res.getFrontendOpts().ProgramAction == frontend::RewriteObjC)
     LangOpts.ObjCExceptions = 1;
+
+  LangOpts.FunctionPointerTypeDiscrimination = Args.hasArg(
+      OPT_fptrauth_function_pointer_type_discrimination);
 
   for (auto Warning : Res.getDiagnosticOpts().Warnings) {
     if (Warning == "misexpect" &&

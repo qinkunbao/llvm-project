@@ -1,5 +1,16 @@
-// RUN: %clang_cc1 %s -E -triple=arm64-- | FileCheck %s --check-prefixes=NOINTRIN,NORETS
-// RUN: %clang_cc1 %s -E -triple=arm64-- -fptrauth-returns | FileCheck %s --check-prefixes=NOINTRIN,RETS
+// RUN: %clang_cc1 %s -E -triple=arm64-- | FileCheck %s --check-prefixes=NOCALLS,NOINTRIN,NORETS
+// RUN: %clang_cc1 %s -E -triple=arm64-- -fptrauth-calls | FileCheck %s --check-prefixes=CALLS,NOINTRIN,NORETS,NOFUNC
+// RUN: %clang_cc1 %s -E -triple=arm64-- -fptrauth-returns | FileCheck %s --check-prefixes=NOCALLS,NOINTRIN,RETS,NOFUNC
+// RUN: %clang_cc1 %s -E -triple=arm64-- -fptrauth-intrinsics | FileCheck %s --check-prefixes=NOCALLS,INTRIN,NORETS,NOFUNC
+// RUN: %clang_cc1 %s -E -triple=arm64e-apple-ios6.0 -fptrauth-intrinsics -fptrauth-function-pointer-type-discrimination | FileCheck %s --check-prefixes=NOCALLS,INTRIN,NORETS,FUNC
+
+#if __has_feature(ptrauth_calls)
+// CALLS: has_ptrauth_calls
+void has_ptrauth_calls() {}
+#else
+// NOCALLS: no_ptrauth_calls
+void no_ptrauth_calls() {}
+#endif
 
 #if __has_feature(ptrauth_intrinsics)
 // INTRIN: has_ptrauth_intrinsics
@@ -15,4 +26,20 @@ void has_ptrauth_returns() {}
 #else
 // NORETS: no_ptrauth_returns
 void no_ptrauth_returns() {}
+#endif
+
+#include <ptrauth.h>
+
+#if __has_feature(ptrauth_function_pointer_type_discrimination)
+// FUNC: has_ptrauth_function_pointer_type_discrimination
+int has_ptrauth_function_pointer_type_discrimination() {
+// FUNC: return __builtin_ptrauth_type_discriminator(void (*)(void))
+  return ptrauth_function_pointer_type_discriminator(void (*)(void));
+}
+#else
+// NOFUNC: no_ptrauth_function_pointer_type_discrimination
+int no_ptrauth_function_pointer_type_discrimination() {
+// NOFUNC: return ((ptrauth_extra_data_t)0)
+  return ptrauth_function_pointer_type_discriminator(void(*)(void));
+}
 #endif

@@ -160,6 +160,7 @@ LANGOPT(RelaxedTemplateTemplateArgs, 1, 0, "C++17 relaxed matching of template t
 LANGOPT(ExperimentalLibrary, 1, 0, "enable unstable and experimental library features")
 
 LANGOPT(PointerAuthIntrinsics, 1, 0, "pointer authentication intrinsics")
+LANGOPT(PointerAuthCalls  , 1, 0, "function pointer authentication")
 LANGOPT(PointerAuthReturns, 1, 0, "return pointer authentication")
 LANGOPT(PointerAuthAuthTraps, 1, 0, "pointer authentication failure traps")
 VALUE_LANGOPT(PointerAuthABIVersion, 32, 0, "pointer authentication ABI version")
@@ -437,6 +438,9 @@ LANGOPT(MatrixTypes, 1, 0, "Enable or disable the builtin matrix type")
 LANGOPT(StrictFlexArrays, 2, 0, "Rely on strict definition of flexible arrays")
 
 COMPATIBLE_VALUE_LANGOPT(MaxTokens, 32, 0, "Max number of tokens per TU or 0")
+
+BENIGN_LANGOPT(FunctionPointerTypeDiscrimination, 1, 0,
+               "Use type discrimination for function pointers in arm64e")
 
 ENUM_LANGOPT(SignReturnAddressScope, SignReturnAddressScopeKind, 2, SignReturnAddressScopeKind::None,
              "Scope of return address signing")
