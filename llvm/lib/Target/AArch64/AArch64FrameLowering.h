@@ -152,6 +152,8 @@ private:
   void emitCalleeSavedSVERestores(MachineBasicBlock &MBB,
                                   MachineBasicBlock::iterator MBBI) const;
 
+  bool shouldAuthenticateLR(const MachineFunction &MF) const;
+
   /// Emit target zero call-used regs.
   void emitZeroCallUsedRegs(BitVector RegsToZero,
                             MachineBasicBlock &MBB) const override;

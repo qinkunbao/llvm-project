@@ -1358,6 +1358,11 @@ let Predicates = [HasPAuth] in {
   def : Pat<(int_ptrauth_strip GPR64:$Rd, 2), (XPACD GPR64:$Rd)>;
   def : Pat<(int_ptrauth_strip GPR64:$Rd, 3), (XPACD GPR64:$Rd)>;
 
+  // Variant of XPACI with untied operands. Lowers to:
+  // mov $dst, $src
+  // xpaci $dst
+  def XPACIuntied : Pseudo<(outs GPR64:$dst), (ins GPR64:$src), []>, Sched<[]>;
+
   def PACGA : SignAuthTwoOperand<0b1100, "pacga", int_ptrauth_sign_generic>;
 
   // Combined Instructions
