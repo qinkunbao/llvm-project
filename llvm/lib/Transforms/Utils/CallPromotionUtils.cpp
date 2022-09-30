@@ -385,6 +385,12 @@ bool llvm::isLegalToPromote(const CallBase &CB, Function *Callee,
 
   auto &DL = Callee->getParent()->getDataLayout();
 
+  if (CB.countOperandBundlesOfType(LLVMContext::OB_ptrauth)) {
+    if (*FailureReason)
+      *FailureReason = "Authenticating calls are unsupported";
+    return false;
+  }
+
   // Check the return type. The callee's return value type must be bitcast
   // compatible with the call site's type.
   Type *CallRetTy = CB.getType();
