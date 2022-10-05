@@ -15,7 +15,7 @@ On the M1, run:
 
 sudo pacman -S docker
 git clone https://github.com/google/android-cuttlefish
-cd android-cuttlefish
+cd android-cuttlefish/docker
 ./build.sh
 ln -s $PWD/cf ~/bin # or another directory on $PATH
 cf docker_create
