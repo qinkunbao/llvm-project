@@ -1,0 +1,29 @@
+#!/bin/sh -xeu
+
+shopt -s globstar
+
+# There should be a file frankendroid.rc in the monorepo root with contents:
+# androiddir=<Path to your android root directory>
+# builddir=<Name of build directory in monorepo root>
+# llvm_androiddir=<Path to result of "git clone https://android.googlesource.com/toolchain/llvm_android">
+# ndkdir=<Path to toolchains/llvm/prebuilt/linux-x86_64 directory in an NDK distribution>
+# ndkoutdir=<Path to the out directory of an NDK built according to ndk.notes>
+cd $(dirname $0)/../..
+. ./frankendroid.rc
+
+treename=$(basename $(pwd))
+treepath=ndk.new
+treepath_dest=ndk
+builddirver=$(grep CLANG_VERSION_STRING $builddir/gen/clang/include/clang/Basic/Version.inc | cut -d\" -f2)
+
+rm -rf $treepath
+mkdir -p $treepath/bin
+cp $ndkdir/bin/*-clang{,++} $treepath/bin/
+ln -rs $builddir/bin/{clang,clang++,ld.lld,llvm-ar} $treepath/bin/
+cp -r $ndkdir/sysroot $treepath/
+
+find $ndkoutdir/platforms/**/arch-arm64 -name '*.o' | sed -e 's,'$ndkoutdir'/platforms/android-\(.*\)/arch-arm64/\(.*\),cp \0 '$treepath'/sysroot/usr/lib/aarch64-linux-android/\1/\2,g' | sh
+cp $androiddir/prebuilts/ndk/current/sources/cxx-stl/llvm-libc++/libs/arm64-v9a/libc++* $treepath/sysroot/usr/lib/aarch64-linux-android/
+
+rsync -vcrl --delete $treepath/ $treepath_dest
+rm -rf $treepath

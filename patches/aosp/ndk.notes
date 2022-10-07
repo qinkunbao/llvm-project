@@ -1,6 +1,9 @@
 (check Pkg.Revision in aosp/prebuilts/ndk/current/source.properties for the NDK branch to check out here, looks like r24+ has changed to ndk-rXX-release) 
 repo init -u https://android.googlesource.com/platform/manifest -b ndk-release-r23
 
+rm -rf bionic
+ln -s ~/2/aosp/bionic bionic
+
 in prebuilts/clang/host/linux-x86:
 (check CLANG_VERSION in ndk/toolchains.py, the version number may have changed)
 rm -rf clang-r416183c1
@@ -11,6 +14,6 @@ apply:
 - ndk.llvm-project.diff in ndk/toolchain/llvm-project/
 
 in ndk:
-python3 do_checkbuild.py --no-build-tests --module libc++ --module libc++abi
+python3 do_checkbuild.py --no-build-tests --module libc++ --module libc++abi --module platforms
 cp -r ../out/android-ndk-r23-canary/sources/cxx-stl/llvm-libc++/libs/arm64-v8a ~/2/aosp/prebuilts/ndk/current/sources/cxx-stl/llvm-libc++/libs/arm64-v9a
 cp ~/l4/ra/lib/clang/14.0.0/lib/linux/aarch64/libunwind.a ~/2/aosp/prebuilts/ndk/current/sources/cxx-stl/llvm-libc++/libs/arm64-v9a/

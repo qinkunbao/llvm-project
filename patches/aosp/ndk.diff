@@ -29,10 +29,10 @@ index b3ce42c4..535a323c 100644
  TARGET_arm64_debug_CFLAGS := \
      -O0 \
 diff --git a/ndk/checkbuild.py b/ndk/checkbuild.py
-index 9cd6bef9..43a22752 100755
+index 0548f07a..6ee65168 100755
 --- a/ndk/checkbuild.py
 +++ b/ndk/checkbuild.py
-@@ -438,11 +438,6 @@ class Clang(ndk.builds.Module):
+@@ -437,11 +437,6 @@ class Clang(ndk.builds.Module):
                  for pyfile in python_bin_dir.glob(file_pattern):
                      pyfile.unlink()
  
@@ -44,16 +44,22 @@ index 9cd6bef9..43a22752 100755
          if self.host != Host.Linux:
              # We don't build target binaries as part of the Darwin or Windows
              # build. These toolchains need to get these from the Linux
-@@ -947,8 +942,6 @@ class Platforms(ndk.builds.Module):
- 
+@@ -947,7 +942,13 @@ class Platforms(ndk.builds.Module):
          if arch == ndk.abis.Arch('arm'):
              args.append('-mfpu=vfpv3-d16')
--        elif arch == ndk.abis.Arch('arm64'):
+         elif arch == ndk.abis.Arch('arm64'):
 -            args.append('-mbranch-protection=standard')
++            args += ['-march=armv8.3a',
++                     '-mbranch-protection=pac-ret+b-key',
++                     '-fptrauth-intrinsics',
++                     '-fptrauth-calls',
++                     '-fptrauth-auth-traps',
++                     '-fptrauth-function-pointer-type-discrimination',
++                     '-DANDROID_EXPERIMENTAL_PAC']
  
          return args
  
-@@ -1831,7 +1824,7 @@ class NdkBuild(ndk.builds.PackageModule):
+@@ -1830,7 +1831,7 @@ class NdkBuild(ndk.builds.PackageModule):
                              'cmake/compiler_id.cmake')
          clang_prebuilts = Path(self.get_dep('clang').get_build_host_install())
          clang = clang_prebuilts / 'bin/clang'
@@ -62,3 +68,16 @@ index 9cd6bef9..43a22752 100755
  
          compiler_id_file.write_text(textwrap.dedent(f"""\
              # The file is automatically generated when the NDK is built.
+diff --git a/sources/crt/crtbrand.S b/sources/crt/crtbrand.S
+index add501df..129d690e 100644
+--- a/sources/crt/crtbrand.S
++++ b/sources/crt/crtbrand.S
+@@ -62,7 +62,7 @@ note_end:
+     .asciz "GNU"
+     .long 0xc0000000 // GNU_PROPERTY_AARCH64_FEATURE_1_AND
+     .long 4
+-    .long 0x3        // PAuth and BTI compatible
++    .long 0x80000003        // PAuth and PAuth ABI and BTI compatible
+     .long 0
+   .popsection
+ #endif
