@@ -112,8 +112,9 @@ if (libunwind_enable_static) {
       configs -= [ "//llvm/utils/gn/build:thin_archive" ]
       sources = unwind_sources
       public = unwind_headers
+      cflags = [ "-g" ]
       if (!invoker.export) {
-        cflags = [ "-fvisibility=hidden" ]
+        cflags += [ "-fvisibility=hidden" ]
         cflags_cc = [ "-fvisibility-global-new-delete-hidden" ]
         defines = [ "_LIBUNWIND_HIDE_SYMBOLS" ]
       }
