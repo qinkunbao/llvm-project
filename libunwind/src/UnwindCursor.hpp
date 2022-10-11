@@ -1929,7 +1929,7 @@ bool UnwindCursor<A, R>::getInfoFromCompactEncodingSection(pint_t pc,
         personalityIndex * sizeof(uint32_t));
     pint_t personalityPointer = sects.dso_base + (pint_t)personalityDelta;
     personality = _addressSpace.getP(personalityPointer);
-#if __has_feature(ptrauth_calls)
+#if defined(__APPLE__) && __has_feature(ptrauth_calls)
     // The GOT for the personality function was signed address authenticated.
     // Resign is as a regular function pointer.
     // TODO: Consider signing as address auth in the info.handler field.

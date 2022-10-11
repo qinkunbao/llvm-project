@@ -71,7 +71,7 @@ extern _Unwind_Reason_Code _Unwind_VRS_Interpret(_Unwind_Context *context,
 
 enum ProcInfoFlags {
   ProcInfoFlags_NoFlags = 0,
-#if __has_feature(ptrauth_calls)
+#if defined(__APPLE__) && __has_feature(ptrauth_calls)
   ProcInfoFlags_IsARM64Image = 1
 #endif
 };

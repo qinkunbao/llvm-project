@@ -386,7 +386,7 @@ const char *CFI_Parser<A>::parseCIE(A &addressSpace, pint_t cie,
         cieInfo->personality = addressSpace
             .getEncodedP(p, cieContentEnd, cieInfo->personalityEncoding,
                          /*datarelBase=*/0, &resultAddr);
-#if __has_feature(ptrauth_calls)
+#if defined(__APPLE__) && __has_feature(ptrauth_calls)
               // The GOT for the personality function was signed address authenticated.
               // Resign is as a regular function pointer.
               if (cieInfo->personality) {

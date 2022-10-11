@@ -554,7 +554,7 @@ _LIBUNWIND_EXPORT uintptr_t _Unwind_GetIP(struct _Unwind_Context *context) {
   unw_word_t result;
   __unw_get_reg(cursor, UNW_REG_IP, &result);
 
-#if __has_feature(ptrauth_calls)
+#if defined(__APPLE__) && __has_feature(ptrauth_calls)
     // If we are in an arm64e frame, then the PC should have been signed with the sp
     {
         unw_word_t sp;

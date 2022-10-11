@@ -728,7 +728,7 @@ DEFINE_LIBUNWIND_FUNCTION(__unw_getcontext)
 //
   .p2align 2
 DEFINE_LIBUNWIND_FUNCTION(__unw_getcontext)
-#if __has_feature(ptrauth_calls)
+#if defined(__APPLE__) && __has_feature(ptrauth_calls)
   pacibsp
 #endif
   stp    x0, x1,  [x0, #0x000]
@@ -769,7 +769,7 @@ DEFINE_LIBUNWIND_FUNCTION(__unw_getcontext)
   str    d30,     [x0, #0x200]
   str    d31,     [x0, #0x208]
   mov    x0, #0                   // return UNW_ESUCCESS
-#if __has_feature(ptrauth_calls)
+#if defined(__APPLE__) && __has_feature(ptrauth_calls)
   retab
 #else
   ret

@@ -655,7 +655,7 @@ DEFINE_LIBUNWIND_FUNCTION(__libunwind_Registers_arm64_jumpto)
 
   ldr    x16,     [x0, #0x0F8]  // load sp into scratch
   ldr    lr,      [x0, #0x100]  // restore pc into lr
-#if __has_feature(ptrauth_calls)
+#if defined(__APPLE__) && __has_feature(ptrauth_calls)
   // The LR is signed with its address inside the register state.  Time
   // to resign to be a regular ROP signed pointer
   add    x1, x0, #0x100
@@ -665,7 +665,7 @@ DEFINE_LIBUNWIND_FUNCTION(__libunwind_Registers_arm64_jumpto)
 
   ldp    x0, x1,  [x0, #0x000]  // restore x0,x1
   mov    sp,x16                 // restore sp
-#if __has_feature(ptrauth_calls)
+#if defined(__APPLE__) && __has_feature(ptrauth_calls)
   retab
 #else
   ret

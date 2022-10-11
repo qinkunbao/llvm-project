@@ -1854,7 +1854,7 @@ public:
   void      setSP(uint64_t value) { _registers.__sp = value; }
   uint64_t  getIP() const         {
       uint64_t value = _registers.__pc;
-#if __has_feature(ptrauth_calls)
+#if defined(__APPLE__) && __has_feature(ptrauth_calls)
     // Note the value of the PC was signed to its address in the register state
     // but everyone else expects it to be sign by the SP, so convert on return.
     value = (uint64_t)ptrauth_auth_and_resign((void*)_registers.__pc,
@@ -1866,7 +1866,7 @@ public:
     return value;
   }
   void      setIP(uint64_t value) {
-#if __has_feature(ptrauth_calls)
+#if defined(__APPLE__) && __has_feature(ptrauth_calls)
     // Note the value which was set should have been signed with the SP.
     // We then resign with the slot we are being stored in to so that both SP and LR
     // can't be spoofed at the same time.
@@ -1885,7 +1885,7 @@ public:
   void      normalizeNewLinkRegister(reg_t& linkRegister, unw_word_t procInfoFlags) {
     (void)linkRegister;
     (void)procInfoFlags;
-#if __has_feature(ptrauth_calls)
+#if defined(__APPLE__) && __has_feature(ptrauth_calls)
     if (procInfoFlags == ProcInfoFlags_IsARM64Image) {
       // If the current frame is arm64e then the LR should have been signed by
       // the SP.  In this case, we'll just leave it as is.  For other frames,
@@ -1899,7 +1899,7 @@ public:
 
   void      normalizeExistingLinkRegister(reg_t& linkRegister) {
     (void)linkRegister;
-#if __has_feature(ptrauth_calls)
+#if defined(__APPLE__) && __has_feature(ptrauth_calls)
     // If we are in an arm64/arm64e frame, then the PC should have been signed with the SP
     linkRegister = (uint64_t)ptrauth_auth_data((void*)linkRegister, ptrauth_key_return_address, _registers.__sp);
 #endif
@@ -1936,7 +1936,7 @@ inline Registers_arm64::Registers_arm64(const void *registers) {
   memcpy(_vectorHalfRegisters,
          static_cast<const uint8_t *>(registers) + sizeof(GPRs),
          sizeof(_vectorHalfRegisters));
-#if __has_feature(ptrauth_calls)
+#if defined(__APPLE__) && __has_feature(ptrauth_calls)
   uint64_t pcRegister = 0;
   memcpy(&pcRegister, ((uint8_t*)&_registers) + offsetof(GPRs, __pc), sizeof(pcRegister));
   setIP(pcRegister);
@@ -1951,7 +1951,7 @@ inline Registers_arm64& Registers_arm64::operator=(const Registers_arm64& other)
   memcpy(&_registers, &other._registers, sizeof(_registers));
   memcpy(_vectorHalfRegisters, &other._vectorHalfRegisters,
          sizeof(_vectorHalfRegisters));
-#if __has_feature(ptrauth_calls)
+#if defined(__APPLE__) && __has_feature(ptrauth_calls)
   setIP(other.getIP());
 #endif
   return *this;
