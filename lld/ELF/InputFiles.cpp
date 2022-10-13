@@ -519,6 +519,8 @@ uint32_t ObjFile<ELFT>::getSectionIndex(const Elf_Sym &sym) const {
 }
 
 template <class ELFT> void ObjFile<ELFT>::parse(bool ignoreComdats) {
+  bool hasAlloc = false;
+
   object::ELFFile<ELFT> obj = this->getObj();
   // Read a section table. justSymbols is usually false.
   if (this->justSymbols) {
@@ -535,6 +537,7 @@ template <class ELFT> void ObjFile<ELFT>::parse(bool ignoreComdats) {
   sections.resize(size);
   for (size_t i = 0; i != size; ++i) {
     const Elf_Shdr &sec = objSections[i];
+    hasAlloc |= sec.sh_flags & SHF_ALLOC;
     if (sec.sh_type == SHT_LLVM_DEPENDENT_LIBRARIES && !config->relocatable) {
       StringRef name = check(obj.getSectionName(sec, shstrtab));
       ArrayRef<char> data = CHECK(
@@ -636,6 +639,9 @@ template <class ELFT> void ObjFile<ELFT>::parse(bool ignoreComdats) {
       this->sections[secIndex] = &InputSection::discarded;
     }
   }
+
+  if (!hasAlloc)
+    this->andFeatures = ~0ULL;
 
   // Read a symbol table.
   initializeSymbols(obj);
