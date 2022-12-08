@@ -1622,6 +1622,10 @@ bool UnwindCursor<A, R>::getInfoFromFdeCie(
     _info.end_ip            = fdeInfo.pcEnd;
     _info.lsda              = fdeInfo.lsda;
     _info.handler           = cieInfo.personality;
+#if __has_feature(ptrauth_calls)
+    if (_info.handler)
+      _info.handler = (uintptr_t)__builtin_ptrauth_sign_unauthenticated((void*)_info.handler, 0, 0);
+#endif
     // Some frameless functions need SP altered when resuming in function, so
     // propagate spExtraArgSize.
     _info.gp                = prolog.spExtraArgSize;
