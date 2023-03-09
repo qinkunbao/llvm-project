@@ -44,21 +44,21 @@ cp $builddir/bin/lld $treepath/bin/ld.lld
 cp $builddir/bin/llvm-ar $treepath/bin/llvm-ar
 cp $builddir/bin/llvm-objcopy $treepath/bin/llvm-objcopy
 
-for i in $treepath/lib64/libclang.so*; do
+for i in $treepath/lib/libclang.so*; do
   cp $builddir/lib/libclang.so $i
 done
 
-rm -rf $treepath/lib64/clang/$shortver/include
-cp -r $builddir/lib/clang/$builddirver/include $treepath/lib64/clang/$shortver/
+rm -rf $treepath/lib/clang/$shortver/include
+cp -r $builddir/lib/clang/$builddirver/include $treepath/lib/clang/$shortver/
 
-mkdir $treepath/lib64/clang/$shortver/include/bits
-cp $androiddir/bionic/libc/include/stdatomic.h $treepath/lib64/clang/$shortver/include/
-cp $androiddir/bionic/libc/include/bits/stdatomic.h $treepath/lib64/clang/$shortver/include/bits/
+mkdir $treepath/lib/clang/$shortver/include/bits
+cp $androiddir/bionic/libc/include/stdatomic.h $treepath/lib/clang/$shortver/include/
+cp $androiddir/bionic/libc/include/bits/stdatomic.h $treepath/lib/clang/$shortver/include/bits/
 
-cp -r $builddir/lib/clang/$builddirver/lib/linux/* $treepath/lib64/clang/$shortver/lib/linux/
-python3 $llvm_androiddir/mapfile.py $treepath/lib64/clang/$shortver/lib/linux/libclang_rt.hwasan-aarch64-android.so $treepath/lib64/clang/$shortver/lib/linux/libclang_rt.hwasan-aarch64-android.map.txt ASAN
+cp -r $builddir/lib/clang/$builddirver/lib/linux/* $treepath/lib/clang/$shortver/lib/linux/
+python3 $llvm_androiddir/mapfile.py $treepath/lib/clang/$shortver/lib/linux/libclang_rt.hwasan-aarch64-android.so $treepath/lib/clang/$shortver/lib/linux/libclang_rt.hwasan-aarch64-android.map.txt ASAN
 
-ln -s $shortver $treepath/lib64/clang/$builddirver
+ln -s $shortver $treepath/lib/clang/$builddirver
 
 rsync -vcrl --delete $treepath/ $treepath_dest
 rm -rf $treepath
