@@ -1,4 +1,4 @@
-From aaa68caf8464b389e32266e997fbed2f2085d6f0 Mon Sep 17 00:00:00 2001
+From 543c7cc9bb9e12eccda1dee60ceecc1addaf1c34 Mon Sep 17 00:00:00 2001
 From: Peter Collingbourne <pcc@google.com>
 Date: Mon, 8 Nov 2021 12:37:17 -0800
 Subject: [PATCH] PAC
@@ -16,10 +16,9 @@ Subject: [PATCH] PAC
  .../arch/arm64/entrypoints_init_arm64.cc      |  19 +-
  art/runtime/arch/arm64/fault_handler_arm64.cc |  14 +-
  .../arch/arm64/jni_entrypoints_arm64.S        |   6 +-
- .../arch/arm64/quick_entrypoints_arm64.S      |  18 +-
+ .../arch/arm64/quick_entrypoints_arm64.S      |  16 +-
  art/runtime/arch/stub_test.cc                 |   9 +-
- art/runtime/entrypoints/entrypoint_utils.cc   |  11 +-
- .../entrypoints/runtime_asm_entrypoints.h     |   8 +-
+ .../entrypoints/runtime_asm_entrypoints.h     |   6 +
  art/runtime/gc/space/image_space.cc           |  42 ++++-
  art/runtime/interpreter/mterp/arm64ng/array.S |   2 +-
  art/runtime/interpreter/mterp/arm64ng/main.S  |  14 +-
@@ -35,7 +34,6 @@ Subject: [PATCH] PAC
  art/runtime/quick_exception_handler.h         |   3 +
  .../oat_writer_layout.cc                      |   3 +
  art/test/common/runtime_state.cc              |   7 +-
- art/tools/buildbot-build.sh                   |   2 +-
  bionic/libc/arch-common/bionic/crtbegin.c     |   8 +-
  .../bionic/bionic_call_ifunc_resolver.cpp     |  35 +++-
  bionic/libc/bionic/fork.cpp                   |   2 +-
@@ -43,10 +41,10 @@ Subject: [PATCH] PAC
  bionic/libc/bionic/libc_init_common.h         |   6 +-
  bionic/libc/bionic/libc_init_static.cpp       |  20 ++-
  bionic/libc/bionic/pthread_create.cpp         |   4 +
- bionic/libc/bionic/sigaction.cpp              |  34 ++++
+ bionic/libc/bionic/sigaction.cpp              |  32 ++++
  bionic/libc/bionic/system_property_api.cpp    |   6 +
  bionic/libc/bionic/vdso.cpp                   |   4 +-
- bionic/libc/platform/bionic/pac.h             |  22 +++
+ bionic/libc/platform/bionic/pac.h             |  23 +++
  bionic/libc/private/NetdClientDispatch.h      |   2 +-
  bionic/libc/private/WriteProtected.h          |   4 +
  bionic/libc/private/bionic_asm_arm64.h        |   9 +-
@@ -64,36 +62,43 @@ Subject: [PATCH] PAC
  bionic/linker/linker_soinfo.h                 |   8 +-
  bionic/linker/linker_wrapper.cpp              |   2 +-
  bionic/tests/signal_test.cpp                  |   4 +-
+ build/bazel/rules/abi/abi_dump.bzl            |   1 +
  build/make/core/binary.mk                     |   5 +
  build/make/core/board_config.mk               |   4 +
+ build/make/core/config_sanitizers.mk          |  12 +-
  build/make/core/dex_preopt_odex_install.mk    |   1 +
  build/soong/android/Android.bp                |   1 +
+ build/soong/android/config_bp2build.go        |  14 +-
  build/soong/android/env.go                    |  25 +++
  build/soong/cc/builder.go                     |   2 +-
- build/soong/cc/compiler.go                    |  26 +++
- build/soong/cc/config/arm64_device.go         |   4 +
+ build/soong/cc/compiler.go                    |  30 ++++
+ build/soong/cc/config/arm64_device.go         |  16 ++
  build/soong/cc/config/arm64_linux_host.go     |   4 +
  build/soong/cc/config/global.go               |   1 -
  build/soong/cc/linker.go                      |   2 +-
  build/soong/cc/lto.go                         |  34 ++--
  build/soong/cc/ndk_prebuilt.go                |   6 +-
- build/soong/cc/sanitize.go                    |  16 +-
+ build/soong/cc/sanitize.go                    |  30 +++-
  build/soong/cmd/soong_build/main.go           |   2 +
  build/soong/dexpreopt/dexpreopt.go            |  10 +-
  build/soong/java/dexpreopt_bootjars.go        |   4 +
+ build/soong/rust/config/arm64_device.go       |   4 +
  build/soong/ui/build/config.go                |   1 +
  .../goldfish-opengl/system/egl/egl.cpp        |   5 +-
  .../hals/ril/reference-ril/reference-ril.c    |  12 +-
- .../arm-optimized-routines/string/asmdefs.h   |   3 +-
+ .../string/aarch64/asmdefs.h                  |   3 +-
  .../boringssl/src/crypto/fipsmodule/bcm.c     |   4 +
  external/libcxxabi/src/private_typeinfo.cpp   |  12 ++
  .../drivers/freedreno/freedreno_screen.c      |   2 +-
+ external/rust/crates/libc/src/lib.rs          |   1 +
+ external/rust/crates/libc/src/unix/mod.rs     |  26 ++-
+ .../rust/crates/libsqlite3-sys/src/lib.rs     |  12 +-
  external/strace/sysent.h                      |   4 +-
  external/swiftshader/src/Reactor/LLVMJIT.cpp  |   3 +
  .../swiftshader/src/Reactor/LLVMReactor.cpp   |   6 +
  .../vixl/src/aarch64/assembler-aarch64.cc     |  12 +-
  external/vixl/src/aarch64/constants-aarch64.h |  20 +--
- .../av/media/libaudiohal/FactoryHalHidl.cpp   |   4 +-
+ .../av/media/libaudiohal/FactoryHal.cpp       |   4 +-
  frameworks/base/cmds/app_process/app_main.cpp |   9 +
  .../core/java/android/os/ZygoteProcess.java   | 107 ++++++++---
  .../com/android/internal/os/ZygoteInit.java   |  13 +-
@@ -134,14 +139,14 @@ Subject: [PATCH] PAC
  .../libhidl/transport/ServiceManagement.cpp   |   5 +-
  system/netd/server/Android.bp                 |   1 +
  system/sepolicy/private/file_contexts         |   2 +
- 130 files changed, 1138 insertions(+), 368 deletions(-)
+ 135 files changed, 1215 insertions(+), 373 deletions(-)
  create mode 100644 build/soong/android/env.go
 
 diff --git a/art/compiler/common_compiler_test.cc b/art/compiler/common_compiler_test.cc
-index a63d21d4ca..f4ac0140db 100644
+index 442b96e5fa..5a7c2148d5 100644
 --- a/art/compiler/common_compiler_test.cc
 +++ b/art/compiler/common_compiler_test.cc
-@@ -44,6 +44,12 @@
+@@ -42,6 +42,12 @@
  #include "thread-current-inl.h"
  #include "utils/atomic_dex_ref_map-inl.h"
  
@@ -151,23 +156,23 @@ index a63d21d4ca..f4ac0140db 100644
 +#define __bionic_sign_voidp(x) x
 +#endif
 +
- namespace art {
+ namespace art HIDDEN {
  
  class CommonCompilerTestImpl::CodeAndMetadata {
-@@ -113,7 +119,7 @@ class CommonCompilerTestImpl::CodeAndMetadata {
-   const void* GetCodePointer() const {
+@@ -114,7 +120,7 @@ class CommonCompilerTestImpl::CodeAndMetadata {
+ 
+   const void* GetEntryPoint() const {
      DCHECK(rx_map_.IsValid());
-     DCHECK_LE(code_offset_, rx_map_.Size());
--    return rx_map_.Begin() + code_offset_;
-+    return __bionic_sign_voidp(rx_map_.Begin() + code_offset_);
+-    return entry_point_;
++    return __bionic_sign_voidp(entry_point_);
    }
  
   private:
 diff --git a/art/compiler/exception_test.cc b/art/compiler/exception_test.cc
-index f86e0b9b01..879c4aed71 100644
+index 82c4998217..3c77cf5d20 100644
 --- a/art/compiler/exception_test.cc
 +++ b/art/compiler/exception_test.cc
-@@ -42,6 +42,12 @@
+@@ -45,6 +45,12 @@
  #include "scoped_thread_state_change-inl.h"
  #include "thread.h"
  
@@ -177,10 +182,10 @@ index f86e0b9b01..879c4aed71 100644
 +#define __bionic_sign_voidp(x) x
 +#endif
 +
- namespace art {
+ namespace art HIDDEN {
  
  class ExceptionTest : public CommonRuntimeTest {
-@@ -112,12 +118,12 @@ class ExceptionTest : public CommonRuntimeTest {
+@@ -115,12 +121,12 @@ class ExceptionTest : public CommonRuntimeTest {
      method_f_ = my_klass_->FindClassMethod("f", "()I", kRuntimePointerSize);
      ASSERT_TRUE(method_f_ != nullptr);
      ASSERT_FALSE(method_f_->IsDirect());
@@ -196,7 +201,7 @@ index f86e0b9b01..879c4aed71 100644
  
    const DexFile* dex_;
 diff --git a/art/compiler/jni/quick/jni_compiler.cc b/art/compiler/jni/quick/jni_compiler.cc
-index c8be993f5d..0cacab61c0 100644
+index 58d11aed24..37a42cfe4c 100644
 --- a/art/compiler/jni/quick/jni_compiler.cc
 +++ b/art/compiler/jni/quick/jni_compiler.cc
 @@ -405,6 +405,7 @@ static JniCompiledMethod ArtJniCompileMethodInternal(const CompilerOptions& comp
@@ -208,10 +213,10 @@ index c8be993f5d..0cacab61c0 100644
        ArtMethod::EntryPointFromJniOffset(InstructionSetPointerSize(instruction_set));
    if (UNLIKELY(is_critical_native)) {
 diff --git a/art/compiler/optimizing/code_generator_arm64.cc b/art/compiler/optimizing/code_generator_arm64.cc
-index 7fb6d3c4be..8fc75ca5da 100644
+index 079c440033..d4549921e1 100644
 --- a/art/compiler/optimizing/code_generator_arm64.cc
 +++ b/art/compiler/optimizing/code_generator_arm64.cc
-@@ -849,7 +849,11 @@ class CompileOptimizedSlowPathARM64 : public SlowPathCodeARM64 {
+@@ -852,7 +852,11 @@ class CompileOptimizedSlowPathARM64 : public SlowPathCodeARM64 {
      __ Ldr(lr, MemOperand(tr, entrypoint_offset));
      // Note: we don't record the call here (and therefore don't generate a stack
      // map), as the entrypoint should never be suspended.
@@ -224,7 +229,7 @@ index 7fb6d3c4be..8fc75ca5da 100644
      __ B(GetExitLabel());
    }
  
-@@ -1276,7 +1280,11 @@ void CodeGeneratorARM64::GenerateFrameEntry() {
+@@ -1291,7 +1295,11 @@ void CodeGeneratorARM64::GenerateFrameEntry() {
      ThreadOffset64 entrypoint_offset =
          GetThreadOffset<kArm64PointerSize>(kQuickQuickResolutionTrampoline);
      __ Ldr(temp1.X(), MemOperand(tr, entrypoint_offset.Int32Value()));
@@ -237,7 +242,7 @@ index 7fb6d3c4be..8fc75ca5da 100644
  
      __ Bind(&memory_barrier);
      GenerateMemoryBarrier(MemBarrierKind::kAnyAny);
-@@ -1926,7 +1934,11 @@ void CodeGeneratorARM64::InvokeRuntime(QuickEntrypointEnum entrypoint,
+@@ -1941,7 +1949,11 @@ void CodeGeneratorARM64::InvokeRuntime(QuickEntrypointEnum entrypoint,
      __ Ldr(lr, MemOperand(tr, entrypoint_offset.Int32Value()));
      // Ensure the pc position is recorded immediately after the `blr` instruction.
      ExactAssemblyScope eas(GetVIXLAssembler(), kInstructionSize, CodeBufferCheckScope::kExactSize);
@@ -250,7 +255,7 @@ index 7fb6d3c4be..8fc75ca5da 100644
      if (EntrypointRequiresStackMap(entrypoint)) {
        RecordPcInfo(instruction, dex_pc, slow_path);
      }
-@@ -1945,7 +1957,11 @@ void CodeGeneratorARM64::InvokeRuntimeWithoutRecordingPcInfo(int32_t entry_point
+@@ -1960,7 +1972,11 @@ void CodeGeneratorARM64::InvokeRuntimeWithoutRecordingPcInfo(int32_t entry_point
                                                               SlowPathCode* slow_path) {
    ValidateInvokeRuntimeWithoutRecordingPcInfo(instruction, slow_path);
    __ Ldr(lr, MemOperand(tr, entry_point_offset));
@@ -263,7 +268,7 @@ index 7fb6d3c4be..8fc75ca5da 100644
  }
  
  void InstructionCodeGeneratorARM64::GenerateClassInitializationCheck(SlowPathCodeARM64* slow_path,
-@@ -4605,7 +4621,11 @@ void InstructionCodeGeneratorARM64::VisitInvokeInterface(HInvokeInterface* invok
+@@ -4632,7 +4648,11 @@ void InstructionCodeGeneratorARM64::VisitInvokeInterface(HInvokeInterface* invok
      ExactAssemblyScope eas(GetVIXLAssembler(), kInstructionSize, CodeBufferCheckScope::kExactSize);
  
      // lr();
@@ -276,7 +281,7 @@ index 7fb6d3c4be..8fc75ca5da 100644
      DCHECK(!codegen_->IsLeafMethod());
      codegen_->RecordPcInfo(invoke, invoke->GetDexPc());
    }
-@@ -4752,7 +4772,11 @@ void CodeGeneratorARM64::GenerateStaticOrDirectCall(
+@@ -4779,7 +4799,11 @@ void CodeGeneratorARM64::GenerateStaticOrDirectCall(
                             kInstructionSize,
                             CodeBufferCheckScope::kExactSize);
      // lr()
@@ -289,7 +294,7 @@ index 7fb6d3c4be..8fc75ca5da 100644
      RecordPcInfo(invoke, invoke->GetDexPc(), slow_path);
    };
    switch (invoke->GetCodePtrLocation()) {
-@@ -4865,7 +4889,11 @@ void CodeGeneratorARM64::GenerateVirtualCall(
+@@ -4892,7 +4916,11 @@ void CodeGeneratorARM64::GenerateVirtualCall(
      // Use a scope to help guarantee that `RecordPcInfo()` records the correct pc.
      ExactAssemblyScope eas(GetVIXLAssembler(), kInstructionSize, CodeBufferCheckScope::kExactSize);
      // lr();
@@ -302,7 +307,7 @@ index 7fb6d3c4be..8fc75ca5da 100644
      RecordPcInfo(invoke, invoke->GetDexPc(), slow_path);
    }
  }
-@@ -7087,6 +7115,9 @@ static void LoadReadBarrierMarkIntrospectionEntrypoint(arm64::Arm64Assembler& as
+@@ -7124,6 +7152,9 @@ static void LoadReadBarrierMarkIntrospectionEntrypoint(arm64::Arm64Assembler& as
    const int32_t entry_point_offset =
        Thread::ReadBarrierMarkEntryPointsOffset<kArm64PointerSize>(ip0.GetCode());
    __ Ldr(entrypoint, MemOperand(tr, entry_point_offset));
@@ -312,7 +317,7 @@ index 7fb6d3c4be..8fc75ca5da 100644
  }
  
  void CodeGeneratorARM64::CompileBakerReadBarrierThunk(Arm64Assembler& assembler,
-@@ -7142,7 +7173,7 @@ void CodeGeneratorARM64::CompileBakerReadBarrierThunk(Arm64Assembler& assembler,
+@@ -7179,7 +7210,7 @@ void CodeGeneratorARM64::CompileBakerReadBarrierThunk(Arm64Assembler& assembler,
          __ Ldar(ip0.W(), MemOperand(base_reg));
        }
        // Do not unpoison. With heap poisoning enabled, the entrypoint expects a poisoned reference.
@@ -321,7 +326,7 @@ index 7fb6d3c4be..8fc75ca5da 100644
        break;
      }
      case BakerReadBarrierKind::kArray: {
-@@ -7167,7 +7198,7 @@ void CodeGeneratorARM64::CompileBakerReadBarrierThunk(Arm64Assembler& assembler,
+@@ -7204,7 +7235,7 @@ void CodeGeneratorARM64::CompileBakerReadBarrierThunk(Arm64Assembler& assembler,
        __ Bfi(ip1, ip0, 3, 6);               // Insert ip0 to the entrypoint address to create
                                              // a switch case target based on the index register.
        __ Mov(ip0, base_reg);                // Move the base register to ip0.
@@ -331,7 +336,7 @@ index 7fb6d3c4be..8fc75ca5da 100644
      }
      case BakerReadBarrierKind::kGcRoot: {
 diff --git a/art/compiler/utils/arm64/assembler_arm64.cc b/art/compiler/utils/arm64/assembler_arm64.cc
-index df05838e2c..c680e232d6 100644
+index cc50883350..04853e64b1 100644
 --- a/art/compiler/utils/arm64/assembler_arm64.cc
 +++ b/art/compiler/utils/arm64/assembler_arm64.cc
 @@ -58,6 +58,9 @@ static void SetVIXLCPUFeaturesFromART(vixl::aarch64::MacroAssembler* vixl_masm_,
@@ -358,7 +363,7 @@ index df05838e2c..c680e232d6 100644
  
  void Arm64Assembler::SpillRegisters(CPURegList registers, int offset) {
 diff --git a/art/compiler/utils/arm64/assembler_arm64.h b/art/compiler/utils/arm64/assembler_arm64.h
-index b49a13a067..cc6a0acc66 100644
+index 62f807f998..4dffb9b17d 100644
 --- a/art/compiler/utils/arm64/assembler_arm64.h
 +++ b/art/compiler/utils/arm64/assembler_arm64.h
 @@ -44,6 +44,17 @@ class Arm64InstructionSetFeatures;
@@ -380,10 +385,10 @@ index b49a13a067..cc6a0acc66 100644
    if (reg.IsFPRegister()) {
      return dwarf::Reg::Arm64Fp(reg.GetCode());
 diff --git a/art/compiler/utils/arm64/jni_macro_assembler_arm64.cc b/art/compiler/utils/arm64/jni_macro_assembler_arm64.cc
-index f0ade42a87..f04f7dc0ca 100644
+index 807f493d2c..8fec4088c6 100644
 --- a/art/compiler/utils/arm64/jni_macro_assembler_arm64.cc
 +++ b/art/compiler/utils/arm64/jni_macro_assembler_arm64.cc
-@@ -822,20 +822,32 @@ void Arm64JNIMacroAssembler::Jump(ManagedRegister m_base, Offset offs) {
+@@ -627,20 +627,32 @@ void Arm64JNIMacroAssembler::Jump(ManagedRegister m_base, Offset offs) {
    UseScratchRegisterScope temps(asm_.GetVIXLAssembler());
    Register scratch = temps.AcquireX();
    ___ Ldr(scratch, MEM_OP(reg_x(base.AsXRegister()), offs.Int32Value()));
@@ -419,7 +424,7 @@ index f0ade42a87..f04f7dc0ca 100644
  }
  
  void Arm64JNIMacroAssembler::CreateJObject(ManagedRegister m_out_reg,
-@@ -972,7 +984,11 @@ void Arm64JNIMacroAssembler::DeliverPendingException() {
+@@ -777,7 +789,11 @@ void Arm64JNIMacroAssembler::DeliverPendingException() {
    ___ Ldr(lr,
            MEM_OP(reg_x(TR),
                   QUICK_ENTRYPOINT_OFFSET(kArm64PointerSize, pDeliverException).Int32Value()));
@@ -447,7 +452,7 @@ index f311f09975..a09ed72f48 100644
    // TODO: Make this Thumb2 specific. It is benign on other architectures as code is always at
    //       least 2 byte aligned.
 diff --git a/art/runtime/arch/arm64/asm_support_arm64.S b/art/runtime/arch/arm64/asm_support_arm64.S
-index 7210262809..2b7f5da824 100644
+index aff37f892c..6af0c9a591 100644
 --- a/art/runtime/arch/arm64/asm_support_arm64.S
 +++ b/art/runtime/arch/arm64/asm_support_arm64.S
 @@ -196,6 +196,26 @@
@@ -537,7 +542,7 @@ index 7db2528a05..384ad6b537 100644
    // The register 16, i.e. IP0, is reserved, so there is no art_quick_read_barrier_mark_reg16.
    // We're using the entry to hold a pointer to the introspection entrypoint instead.
 diff --git a/art/runtime/arch/arm64/fault_handler_arm64.cc b/art/runtime/arch/arm64/fault_handler_arm64.cc
-index a5becf6b8e..1f91e54b81 100644
+index 963449268e..a334590ea1 100644
 --- a/art/runtime/arch/arm64/fault_handler_arm64.cc
 +++ b/art/runtime/arch/arm64/fault_handler_arm64.cc
 @@ -28,6 +28,12 @@
@@ -553,17 +558,17 @@ index a5becf6b8e..1f91e54b81 100644
  extern "C" void art_quick_throw_stack_overflow();
  extern "C" void art_quick_throw_null_pointer_exception_from_signal();
  extern "C" void art_quick_implicit_suspend();
-@@ -98,7 +104,8 @@ bool NullPointerHandler::Action(int sig ATTRIBUTE_UNUSED, siginfo_t* info, void*
-   *reinterpret_cast<uintptr_t*>(sc->sp) = sc->pc + 4;
-   sc->regs[30] = reinterpret_cast<uintptr_t>(info->si_addr);
+@@ -88,7 +94,8 @@ bool NullPointerHandler::Action(int sig ATTRIBUTE_UNUSED, siginfo_t* info, void*
+   sc->regs[30] = fault_address;
  
+   // Arrange for the signal handler to return to the NPE entrypoint.
 -  sc->pc = reinterpret_cast<uintptr_t>(art_quick_throw_null_pointer_exception_from_signal);
 +  sc->pc = __bionic_clear_pac_bits(reinterpret_cast<uintptr_t>(
 +      art_quick_throw_null_pointer_exception_from_signal));
    VLOG(signals) << "Generating null pointer exception";
    return true;
  }
-@@ -130,7 +137,7 @@ bool SuspensionHandler::Action(int sig ATTRIBUTE_UNUSED, siginfo_t* info ATTRIBU
+@@ -119,7 +126,7 @@ bool SuspensionHandler::Action(int sig ATTRIBUTE_UNUSED, siginfo_t* info ATTRIBU
    // `ldr x21, [x21,#0]` instruction that triggered the suspend check.
    sc->regs[30] = sc->pc + 4;
    // Arrange for the signal handler to return to `art_quick_implicit_suspend()`.
@@ -572,7 +577,7 @@ index a5becf6b8e..1f91e54b81 100644
  
    // Now remove the suspend trigger that caused this fault.
    Thread::Current()->RemoveSuspendTrigger();
-@@ -168,7 +175,8 @@ bool StackOverflowHandler::Action(int sig ATTRIBUTE_UNUSED, siginfo_t* info ATTR
+@@ -157,7 +164,8 @@ bool StackOverflowHandler::Action(int sig ATTRIBUTE_UNUSED, siginfo_t* info ATTR
    // The value of LR must be the same as it was when we entered the code that
    // caused this fault.  This will be inserted into a callee save frame by
    // the function to which this handler returns (art_quick_throw_stack_overflow).
@@ -607,7 +612,7 @@ index 9612a7b54f..466c0cca02 100644
  
  .Lcritical_deliver_exception:
 diff --git a/art/runtime/arch/arm64/quick_entrypoints_arm64.S b/art/runtime/arch/arm64/quick_entrypoints_arm64.S
-index a35206fef8..45abd19655 100644
+index 6cf42e891e..a7fae12545 100644
 --- a/art/runtime/arch/arm64/quick_entrypoints_arm64.S
 +++ b/art/runtime/arch/arm64/quick_entrypoints_arm64.S
 @@ -372,7 +372,7 @@ NO_ARG_RUNTIME_EXCEPTION art_quick_throw_stack_overflow, artThrowStackOverflowFr
@@ -628,7 +633,7 @@ index a35206fef8..45abd19655 100644
  
      // Pop the ArtMethod* (null), arguments and alignment padding from the stack.
      mov sp, xFP
-@@ -853,7 +853,7 @@ ENTRY art_quick_osr_stub
+@@ -760,7 +760,7 @@ ENTRY art_quick_osr_stub
  
  .Losr_loop_exit:
      // Branch to the OSR entry point.
@@ -637,7 +642,7 @@ index a35206fef8..45abd19655 100644
  
  END art_quick_osr_stub
  
-@@ -912,7 +912,7 @@ ENTRY art_quick_do_long_jump
+@@ -819,7 +819,7 @@ ENTRY art_quick_do_long_jump
      REFRESH_MARKING_REGISTER
      REFRESH_SUSPEND_CHECK_REGISTER
  
@@ -646,7 +651,7 @@ index a35206fef8..45abd19655 100644
  END art_quick_do_long_jump
  
      /*
-@@ -1743,7 +1743,7 @@ ENTRY art_quick_imt_conflict_trampoline
+@@ -1650,7 +1650,7 @@ ENTRY art_quick_imt_conflict_trampoline
      // and jump to it.
      ldr x0, [xIP0, #__SIZEOF_POINTER__]
      ldr xIP0, [x0, #ART_METHOD_QUICK_CODE_OFFSET_64]
@@ -655,7 +660,7 @@ index a35206fef8..45abd19655 100644
  .Lconflict_trampoline:
      // Call the runtime stub to populate the ImtConflictTable and jump to the
      // resolved method.
-@@ -1762,7 +1762,7 @@ ENTRY art_quick_resolution_trampoline
+@@ -1669,7 +1669,7 @@ ENTRY art_quick_resolution_trampoline
      ldr x0, [sp, #0]        // artQuickResolutionTrampoline puts called method in *SP.
      RESTORE_SAVE_REFS_AND_ARGS_FRAME
      REFRESH_MARKING_REGISTER
@@ -664,7 +669,7 @@ index a35206fef8..45abd19655 100644
  1:
      CFI_RESTORE_STATE_AND_DEF_CFA sp, FRAME_SIZE_SAVE_REFS_AND_ARGS
      RESTORE_SAVE_REFS_AND_ARGS_FRAME
-@@ -1879,7 +1879,7 @@ ENTRY art_quick_generic_jni_trampoline
+@@ -1781,7 +1781,7 @@ ENTRY art_quick_generic_jni_trampoline
      // Apply the new SP for out args, releasing unneeded reserved area.
      mov sp, xIP1
  
@@ -673,16 +678,7 @@ index a35206fef8..45abd19655 100644
  
      // result sign extension is handled in C code
      // prepare for artQuickGenericJniEndTrampoline call
-@@ -1983,7 +1983,7 @@ ENTRY art_quick_instrumentation_entry
-     REFRESH_MARKING_REGISTER
-     cbz   xIP0, 1f            // Deliver the pending exception if method is null.
-     adr   xLR, art_quick_instrumentation_exit
--    br    xIP0                // Tail-call method with lr set to art_quick_instrumentation_exit.
-+    BR_MAYBE_AUTH xIP0        // Tail-call method with lr set to art_quick_instrumentation_exit.
- 
- 1:
-     DELIVER_PENDING_EXCEPTION
-@@ -2583,7 +2583,7 @@ ENTRY ExecuteSwitchImplAsm
+@@ -2415,7 +2415,7 @@ ENTRY ExecuteSwitchImplAsm
      SAVE_TWO_REGS_INCREASE_FRAME x19, xLR, 16
      mov x19, x2                                   // x19 = DEX PC
      CFI_DEFINE_DEX_PC_WITH_OFFSET(0 /* x0 */, 19 /* x19 */, 0)
@@ -692,7 +688,7 @@ index a35206fef8..45abd19655 100644
      ret
  END ExecuteSwitchImplAsm
 diff --git a/art/runtime/arch/stub_test.cc b/art/runtime/arch/stub_test.cc
-index 5cefedb39c..9db52c584a 100644
+index 759cd9a574..196d6009ca 100644
 --- a/art/runtime/arch/stub_test.cc
 +++ b/art/runtime/arch/stub_test.cc
 @@ -189,7 +189,7 @@ class StubTest : public CommonRuntimeTest {
@@ -718,32 +714,8 @@ index 5cefedb39c..9db52c584a 100644
          "mov x8, x0\n\t"          // Store result
          "add sp, sp, #16\n\t"     // Drop the quick "frame"
          ".cfi_adjust_cfa_offset -16\n\t"
-diff --git a/art/runtime/entrypoints/entrypoint_utils.cc b/art/runtime/entrypoints/entrypoint_utils.cc
-index 63d2aa4351..6ddb70be22 100644
---- a/art/runtime/entrypoints/entrypoint_utils.cc
-+++ b/art/runtime/entrypoints/entrypoint_utils.cc
-@@ -202,9 +202,18 @@ static inline ArtMethod* DoGetCalleeSaveMethodCaller(ArtMethod* outer_method,
-                                                      bool do_caller_check)
-     REQUIRES_SHARED(Locks::mutator_lock_) {
-   ArtMethod* caller = outer_method;
--  if (LIKELY(caller_pc != reinterpret_cast<uintptr_t>(GetQuickInstrumentationExitPc()))) {
-+  if (LIKELY(caller_pc !=
-+             reinterpret_cast<uintptr_t>(GetQuickInstrumentationExitPc()))) {
-     if (outer_method != nullptr) {
-       const OatQuickMethodHeader* current_code = outer_method->GetOatQuickMethodHeader(caller_pc);
-+#ifdef __aarch64__
-+      if (current_code == nullptr) {
-+        asm volatile(
-+            "mov x0, %0; mov x1, %1" ::"r"(caller_pc),
-+            "r"(reinterpret_cast<uintptr_t>(GetQuickInstrumentationExitPc())));
-+        __builtin_trap();
-+      }
-+#endif
-       DCHECK(current_code != nullptr);
-       if (current_code->IsOptimized() &&
-           CodeInfo::HasInlineInfo(current_code->GetOptimizedCodeInfoPtr())) {
 diff --git a/art/runtime/entrypoints/runtime_asm_entrypoints.h b/art/runtime/entrypoints/runtime_asm_entrypoints.h
-index c4e62e5b87..0483a1e0aa 100644
+index 951398dc04..98f54c73e3 100644
 --- a/art/runtime/entrypoints/runtime_asm_entrypoints.h
 +++ b/art/runtime/entrypoints/runtime_asm_entrypoints.h
 @@ -22,6 +22,12 @@
@@ -759,20 +731,11 @@ index c4e62e5b87..0483a1e0aa 100644
  namespace art HIDDEN {
  
  class ArtMethod;
-@@ -91,7 +97,7 @@ extern "C" void art_quick_deoptimize_from_compiled_code(DeoptimizationKind);
- // The return_pc of instrumentation exit stub.
- extern "C" void art_quick_instrumentation_exit();
- static inline const void* GetQuickInstrumentationExitPc() {
--  return reinterpret_cast<const void*>(art_quick_instrumentation_exit);
-+  return __bionic_clear_pac_bits(reinterpret_cast<const void*>(art_quick_instrumentation_exit));
- }
- 
- extern "C" void* art_quick_string_builder_append(uint32_t format);
 diff --git a/art/runtime/gc/space/image_space.cc b/art/runtime/gc/space/image_space.cc
-index ac0d937663..1d6c2359f0 100644
+index 13966d8d97..b07650089b 100644
 --- a/art/runtime/gc/space/image_space.cc
 +++ b/art/runtime/gc/space/image_space.cc
-@@ -67,6 +67,13 @@
+@@ -68,6 +68,13 @@
  #include "runtime.h"
  #include "space-inl.h"
  
@@ -786,7 +749,7 @@ index ac0d937663..1d6c2359f0 100644
  namespace art {
  namespace gc {
  namespace space {
-@@ -405,6 +412,14 @@ class ImageSpace::PatchObjectVisitor final {
+@@ -470,6 +477,14 @@ class ImageSpace::PatchObjectVisitor final {
      }
    }
  
@@ -801,7 +764,7 @@ index ac0d937663..1d6c2359f0 100644
    template <bool kMayBeNull = true>
    ALWAYS_INLINE void PatchReferenceField(ObjPtr<mirror::Object> object, MemberOffset offset) const
        REQUIRES_SHARED(Locks::mutator_lock_) {
-@@ -1198,8 +1213,11 @@ class ImageSpace::Loader {
+@@ -1264,8 +1279,11 @@ class ImageSpace::Loader {
      VLOG(image) << "App oat " << app_oat;
      VLOG(image) << "Boot image " << boot_image;
      // True if we need to fixup any heap pointers.
@@ -814,7 +777,7 @@ index ac0d937663..1d6c2359f0 100644
      if (!fixup_image) {
        // Nothing to fix up.
        return true;
-@@ -1213,7 +1231,14 @@ class ImageSpace::Loader {
+@@ -1279,7 +1297,14 @@ class ImageSpace::Loader {
      ForwardObject forward_object(boot_image, app_image_objects);
      ForwardObject forward_metadata(boot_image, app_image_metadata);
      using ForwardCode = ForwardAddress<RelocationRange, RelocationRange>;
@@ -830,7 +793,7 @@ index ac0d937663..1d6c2359f0 100644
      PatchObjectVisitor<kPointerSize, ForwardObject, ForwardCode> patch_object_visitor(
          forward_object,
          forward_metadata);
-@@ -2421,9 +2446,11 @@ class ImageSpace::BootImageLoader {
+@@ -2497,9 +2522,11 @@ class ImageSpace::BootImageLoader {
          ? static_cast<int64_t>(reinterpret_cast32<uint32_t>(spaces.front()->Begin())) -
                static_cast<int64_t>(image_begin)
          : base_diff64;
@@ -842,7 +805,7 @@ index ac0d937663..1d6c2359f0 100644
      uint32_t base_diff = static_cast<uint32_t>(base_diff64);
      uint32_t current_diff = static_cast<uint32_t>(current_diff64);
  
-@@ -2494,6 +2521,9 @@ class ImageSpace::BootImageLoader {
+@@ -2571,6 +2598,9 @@ class ImageSpace::BootImageLoader {
        reinterpret_cast<ImageHeader*>(space->Begin())->RelocateImageReferences(current_diff64);
        reinterpret_cast<ImageHeader*>(space->Begin())->RelocateBootImageReferences(base_diff64);
  
@@ -852,7 +815,7 @@ index ac0d937663..1d6c2359f0 100644
        // Patch fields and methods.
        const ImageHeader& image_header = space->GetImageHeader();
        image_header.VisitPackedArtFields([&](ArtField& field) REQUIRES_SHARED(Locks::mutator_lock_) {
-@@ -2506,11 +2536,15 @@ class ImageSpace::BootImageLoader {
+@@ -2583,11 +2613,15 @@ class ImageSpace::BootImageLoader {
          main_patch_object_visitor.PatchGcRoot(&method.DeclaringClassRoot());
          if (!method.HasCodeItem()) {
            void** data_address = PointerAddress(&method, ArtMethod::DataOffset(kPointerSize));
@@ -871,7 +834,7 @@ index ac0d937663..1d6c2359f0 100644
        auto method_table_visitor = [&](ArtMethod* method) {
          DCHECK(method != nullptr);
 diff --git a/art/runtime/interpreter/mterp/arm64ng/array.S b/art/runtime/interpreter/mterp/arm64ng/array.S
-index 68636628cd..940e4fb948 100644
+index 9edbb226a7..ff5e4c5b6c 100644
 --- a/art/runtime/interpreter/mterp/arm64ng/array.S
 +++ b/art/runtime/interpreter/mterp/arm64ng/array.S
 @@ -169,7 +169,7 @@
@@ -884,10 +847,10 @@ index 68636628cd..940e4fb948 100644
     SET_VREG_OBJECT w0, w1
     FETCH_ADVANCE_INST 2
 diff --git a/art/runtime/interpreter/mterp/arm64ng/main.S b/art/runtime/interpreter/mterp/arm64ng/main.S
-index 0ee04354c4..a72d36c9e2 100644
+index 99816c6150..7dfea7f065 100644
 --- a/art/runtime/interpreter/mterp/arm64ng/main.S
 +++ b/art/runtime/interpreter/mterp/arm64ng/main.S
-@@ -922,7 +922,7 @@ END \name
+@@ -924,7 +924,7 @@ END \name
       mov ip2, x26
       .endif
       ldr lr, [x0, #ART_METHOD_QUICK_CODE_OFFSET_64]
@@ -896,7 +859,7 @@ index 0ee04354c4..a72d36c9e2 100644
       FETCH_ADVANCE_INST 3
       GET_INST_OPCODE ip
       GOTO_OPCODE ip
-@@ -964,7 +964,7 @@ END \name
+@@ -966,7 +966,7 @@ END \name
       mov ip2, x26
       .endif
       ldr lr, [x0, #ART_METHOD_QUICK_CODE_OFFSET_64]
@@ -905,7 +868,7 @@ index 0ee04354c4..a72d36c9e2 100644
       # TODO: Use some other register for shorty and prefetch the instruction directly to wINST.
       mov xINST, x27
       ADVANCE 3
-@@ -1027,7 +1027,7 @@ END \name
+@@ -1029,7 +1029,7 @@ END \name
        mov ip2, x26
        .endif
        ldr lr, [x0, #ART_METHOD_QUICK_CODE_OFFSET_64]
@@ -914,7 +877,7 @@ index 0ee04354c4..a72d36c9e2 100644
     .endif
     SETUP_RETURN_VALUE xINST
  .Ldone_return_\suffix:
-@@ -1272,7 +1272,7 @@ END \name
+@@ -1274,7 +1274,7 @@ END \name
       mov ip2, x26
       .endif
       ldr lr, [x0, #ART_METHOD_QUICK_CODE_OFFSET_64]
@@ -923,7 +886,7 @@ index 0ee04354c4..a72d36c9e2 100644
       FETCH_ADVANCE_INST 3
       GET_INST_OPCODE ip
       GOTO_OPCODE ip
-@@ -1309,7 +1309,7 @@ END \name
+@@ -1311,7 +1311,7 @@ END \name
       mov ip2, x26
       .endif
       ldr lr, [x0, #ART_METHOD_QUICK_CODE_OFFSET_64]
@@ -932,7 +895,7 @@ index 0ee04354c4..a72d36c9e2 100644
       mov xINST, x27
       ADVANCE 3
       GET_INST_OPCODE ip
-@@ -1382,7 +1382,7 @@ END \name
+@@ -1384,7 +1384,7 @@ END \name
        mov ip2, x26
        .endif
        ldr lr, [x0, #ART_METHOD_QUICK_CODE_OFFSET_64]
@@ -941,7 +904,7 @@ index 0ee04354c4..a72d36c9e2 100644
     .endif
     SETUP_RETURN_VALUE xINST
  .Ldone_return_range_\suffix:
-@@ -1850,7 +1850,7 @@ NterpHandleHotnessOverflow:
+@@ -1852,7 +1852,7 @@ NterpHandleHotnessOverflow:
      bl free
  
      // Jump to the compiled code.
@@ -951,7 +914,7 @@ index 0ee04354c4..a72d36c9e2 100644
      DO_SUSPEND_CHECK continue_label=2b
      b 2b
 diff --git a/art/runtime/interpreter/mterp/arm64ng/object.S b/art/runtime/interpreter/mterp/arm64ng/object.S
-index df044d9833..3a79c923ba 100644
+index b843fcdde0..d6908cc96b 100644
 --- a/art/runtime/interpreter/mterp/arm64ng/object.S
 +++ b/art/runtime/interpreter/mterp/arm64ng/object.S
 @@ -465,7 +465,7 @@
@@ -964,7 +927,7 @@ index df044d9833..3a79c923ba 100644
     lsr     w1, wINST, #8               // w1 <- A
     SET_VREG_OBJECT w0, w1              // fp[A] <- value
 diff --git a/art/runtime/jit/jit.cc b/art/runtime/jit/jit.cc
-index 239f207e46..b99db177d0 100644
+index abade3a7d3..4fbd3f0075 100644
 --- a/art/runtime/jit/jit.cc
 +++ b/art/runtime/jit/jit.cc
 @@ -535,8 +535,14 @@ OsrData* Jit::PrepareForOsr(ArtMethod* method, uint32_t dex_pc, uint32_t* vregs)
@@ -985,7 +948,7 @@ index 239f207e46..b99db177d0 100644
                << method_name
                << "@"
 diff --git a/art/runtime/jit/jit_code_cache.cc b/art/runtime/jit/jit_code_cache.cc
-index 819ec874f8..40f6eb4528 100644
+index c1488ca4dd..18b2523e9d 100644
 --- a/art/runtime/jit/jit_code_cache.cc
 +++ b/art/runtime/jit/jit_code_cache.cc
 @@ -60,6 +60,12 @@
@@ -1001,7 +964,7 @@ index 819ec874f8..40f6eb4528 100644
  namespace art {
  namespace jit {
  
-@@ -285,6 +291,7 @@ bool JitCodeCache::PrivateRegionContainsPc(const void* ptr) const {
+@@ -288,6 +294,7 @@ bool JitCodeCache::PrivateRegionContainsPc(const void* ptr) const {
  }
  
  bool JitCodeCache::ContainsPc(const void* ptr) const {
@@ -1010,7 +973,7 @@ index 819ec874f8..40f6eb4528 100644
  }
  
 diff --git a/art/runtime/nterp_helpers.cc b/art/runtime/nterp_helpers.cc
-index 12afa3a014..e995055661 100644
+index fb2046ce56..f9b5427314 100644
 --- a/art/runtime/nterp_helpers.cc
 +++ b/art/runtime/nterp_helpers.cc
 @@ -22,6 +22,12 @@
@@ -1026,7 +989,7 @@ index 12afa3a014..e995055661 100644
  namespace art {
  
  /**
-@@ -202,7 +208,7 @@ uint32_t NterpGetVRegReference(ArtMethod** frame, uint16_t vreg) {
+@@ -215,7 +221,7 @@ uint32_t NterpGetVRegReference(ArtMethod** frame, uint16_t vreg) {
  uintptr_t NterpGetCatchHandler() {
    // Nterp uses the same landing pad for all exceptions. The dex_pc_ptr set before
    // longjmp will actually be used to jmp to the catch handler.
@@ -1036,7 +999,7 @@ index 12afa3a014..e995055661 100644
  
  bool CanMethodUseNterp(ArtMethod* method, InstructionSet isa) {
 diff --git a/art/runtime/oat.cc b/art/runtime/oat.cc
-index 64ed14ac41..ae3c633caf 100644
+index 2c7a73f964..ce1414978e 100644
 --- a/art/runtime/oat.cc
 +++ b/art/runtime/oat.cc
 @@ -25,6 +25,12 @@
@@ -1052,7 +1015,7 @@ index 64ed14ac41..ae3c633caf 100644
  namespace art {
  
  using android::base::StringPrintf;
-@@ -217,7 +223,8 @@ void OatHeader::SetExecutableOffset(uint32_t executable_offset) {
+@@ -214,7 +220,8 @@ void OatHeader::SetExecutableOffset(uint32_t executable_offset) {
  }
  
  static const void* GetTrampoline(const OatHeader& header, uint32_t offset) {
@@ -1089,12 +1052,12 @@ index fd42e45dce..d910a96543 100644
  
  inline const OatFile::BssMappingInfo* OatFile::FindBcpMappingInfo(const DexFile* dex_file) const {
 diff --git a/art/runtime/oat_quick_method_header.cc b/art/runtime/oat_quick_method_header.cc
-index 8fbf02abea..00b2522cea 100644
+index f0764da703..4e801340cb 100644
 --- a/art/runtime/oat_quick_method_header.cc
 +++ b/art/runtime/oat_quick_method_header.cc
-@@ -77,8 +77,14 @@ uintptr_t OatQuickMethodHeader::ToNativeQuickPc(ArtMethod* method,
-       LIKELY(is_for_catch_handler) ? code_info.GetCatchStackMapForDexPc(dex_pc)
-                                    : code_info.GetStackMapForDexPc(dex_pc);
+@@ -95,8 +95,14 @@ uintptr_t OatQuickMethodHeader::ToNativeQuickPcForCatchHandlers(
+   StackMap stack_map = code_info.GetCatchStackMapForDexPc(dex_pc_list);
+   *stack_map_row = stack_map.Row();
    if (stack_map.IsValid()) {
 -    return reinterpret_cast<uintptr_t>(entry_point) +
 -           stack_map.GetNativePcOffset(kRuntimeISA);
@@ -1108,9 +1071,9 @@ index 8fbf02abea..00b2522cea 100644
 +    return reinterpret_cast<uintptr_t>(entry_point);
    }
    if (abort_on_failure) {
-     ScopedObjectAccess soa(Thread::Current());
+     std::stringstream ss;
 diff --git a/art/runtime/oat_quick_method_header.h b/art/runtime/oat_quick_method_header.h
-index 8e6d08e3a1..787b424d69 100644
+index 769d67fb61..3a22e88a5d 100644
 --- a/art/runtime/oat_quick_method_header.h
 +++ b/art/runtime/oat_quick_method_header.h
 @@ -24,6 +24,12 @@
@@ -1156,10 +1119,10 @@ index 8e6d08e3a1..787b424d69 100644
    uint32_t GetFrameSizeInBytes() const {
      uint32_t result = GetFrameInfo().FrameSizeInBytes();
 diff --git a/art/runtime/quick_exception_handler.cc b/art/runtime/quick_exception_handler.cc
-index 82f50346e2..cce6af3e28 100644
+index fd57b4ae83..58fca0eca0 100644
 --- a/art/runtime/quick_exception_handler.cc
 +++ b/art/runtime/quick_exception_handler.cc
-@@ -41,6 +41,12 @@
+@@ -44,6 +44,12 @@
  #include "stack.h"
  #include "stack_map.h"
  
@@ -1182,7 +1145,7 @@ index 82f50346e2..cce6af3e28 100644
        exception_handler_->SetHandlerQuickFrame(GetCurrentQuickFrame());
        return false;  // End stack walk.
      }
-@@ -366,7 +373,8 @@ class DeoptimizeStackVisitor final : public StackVisitor {
+@@ -405,7 +412,8 @@ class DeoptimizeStackVisitor final : public StackVisitor {
      // This is the upcall, or the next full frame in single-frame deopt, or the
      // code isn't deoptimizeable. We remember the frame and last pc so that we
      // may long jump to them.
@@ -1193,10 +1156,10 @@ index 82f50346e2..cce6af3e28 100644
      exception_handler_->SetHandlerMethodHeader(GetCurrentOatQuickMethodHeader());
      if (!stacked_shadow_frame_pushed_) {
 diff --git a/art/runtime/quick_exception_handler.h b/art/runtime/quick_exception_handler.h
-index 9554f1d7d6..05467c8627 100644
+index 39462e55b4..b8e1b2a4af 100644
 --- a/art/runtime/quick_exception_handler.h
 +++ b/art/runtime/quick_exception_handler.h
-@@ -88,6 +88,9 @@ class QuickExceptionHandler {
+@@ -89,6 +89,9 @@ class QuickExceptionHandler {
    }
  
    void SetHandlerQuickFramePc(uintptr_t handler_quick_frame_pc) {
@@ -1221,10 +1184,10 @@ index 4dd47a8d55..1680528322 100644
    return static_cast<jlong>(reinterpret_cast<uintptr_t>(quick_code));
  }
 diff --git a/art/test/common/runtime_state.cc b/art/test/common/runtime_state.cc
-index a900714f09..afadac9ecf 100644
+index 46f3828798..427ec629fc 100644
 --- a/art/test/common/runtime_state.cc
 +++ b/art/test/common/runtime_state.cc
-@@ -203,8 +203,11 @@ extern "C" JNIEXPORT jboolean JNICALL Java_Main_hasJitCompiledEntrypoint(JNIEnv*
+@@ -204,8 +204,11 @@ extern "C" JNIEXPORT jboolean JNICALL Java_Main_hasJitCompiledEntrypoint(JNIEnv*
    ScopedUtfChars chars(env, method_name);
    ArtMethod* method = GetMethod(soa, cls, chars);
    ScopedAssertNoThreadSuspension sants(__FUNCTION__);
@@ -1238,21 +1201,8 @@ index a900714f09..afadac9ecf 100644
  }
  
  extern "C" JNIEXPORT jboolean JNICALL Java_Main_hasJitCompiledCode(JNIEnv* env,
-diff --git a/art/tools/buildbot-build.sh b/art/tools/buildbot-build.sh
-index 25f3b600ba..a9a05f85a3 100755
---- a/art/tools/buildbot-build.sh
-+++ b/art/tools/buildbot-build.sh
-@@ -199,7 +199,7 @@ if [[ $build_target == "yes" ]]; then
-     "libutils.so"
-     "libvndksupport.so"
-   )
--  if [ -d prebuilts/runtime/mainline/platform/impl ]; then
-+  if false; then
-     if [[ $TARGET_ARCH = arm* ]]; then
-       arch32=arm
-       arch64=arm64
 diff --git a/bionic/libc/arch-common/bionic/crtbegin.c b/bionic/libc/arch-common/bionic/crtbegin.c
-index 9b8ad4e364..c2e6824114 100644
+index b87db6436a..8b0e19413b 100644
 --- a/bionic/libc/arch-common/bionic/crtbegin.c
 +++ b/bionic/libc/arch-common/bionic/crtbegin.c
 @@ -31,9 +31,9 @@
@@ -1401,7 +1351,7 @@ index 6b39d6dd39..8f07cfdce4 100644
  
  __BEGIN_DECLS
 diff --git a/bionic/libc/bionic/libc_init_static.cpp b/bionic/libc/bionic/libc_init_static.cpp
-index 16ebb7af60..b1380b9174 100644
+index d64d402ab0..a7801f7c75 100644
 --- a/bionic/libc/bionic/libc_init_static.cpp
 +++ b/bionic/libc/bionic/libc_init_static.cpp
 @@ -42,6 +42,7 @@
@@ -1412,7 +1362,7 @@ index 16ebb7af60..b1380b9174 100644
  #include "platform/bionic/page.h"
  #include "platform/bionic/reserved_signals.h"
  #include "private/KernelArgumentBlock.h"
-@@ -69,17 +70,30 @@ __LIBC_HIDDEN__ void* __libc_sysinfo;
+@@ -69,10 +70,11 @@ __LIBC_HIDDEN__ void* __libc_sysinfo;
  extern "C" int __cxa_atexit(void (*)(void *), void *, void *);
  extern "C" const char* __gnu_basename(const char* path);
  
@@ -1426,7 +1376,8 @@ index 16ebb7af60..b1380b9174 100644
    }
  }
  
- #if defined(__aarch64__) || defined(__x86_64__)
+@@ -100,7 +102,19 @@ static void call_ifunc_resolvers() {
+ #else  // ...but modern architectures use RELA instead.
  extern __LIBC_HIDDEN__ __attribute__((weak)) ElfW(Rela) __rela_iplt_start[], __rela_iplt_end[];
  
 +#ifdef ANDROID_EXPERIMENTAL_PAC
@@ -1443,7 +1394,7 @@ index 16ebb7af60..b1380b9174 100644
 +#endif
 +
    if (__rela_iplt_start == nullptr || __rela_iplt_end == nullptr) {
-     // These symbols are not emitted by gold. Gold has code to do so, but for
+     // These symbols were not emitted by gold. Gold has code to do so, but for
      // whatever reason it is not being run. In these cases ifuncs cannot be
 @@ -401,6 +415,7 @@ __attribute__((no_sanitize("memtag"))) __noreturn static void __real_libc_init(
    __libc_init_AT_SECURE(args.envp);
@@ -1478,16 +1429,15 @@ index 417ce76181..d78cc015a3 100644
  #endif
  
 diff --git a/bionic/libc/bionic/sigaction.cpp b/bionic/libc/bionic/sigaction.cpp
-index 1cdb021563..35b22eb437 100644
+index 1cdb021563..0c1f18f531 100644
 --- a/bionic/libc/bionic/sigaction.cpp
 +++ b/bionic/libc/bionic/sigaction.cpp
-@@ -48,6 +48,23 @@ int sigaction(int signal, const struct sigaction* bionic_new_action, struct siga
+@@ -48,6 +48,22 @@ int sigaction(int signal, const struct sigaction* bionic_new_action, struct siga
  #if defined(SA_RESTORER)
      kernel_new_action.sa_restorer = bionic_new_action->sa_restorer;
  #if defined(__aarch64__)
 +#ifdef ANDROID_EXPERIMENTAL_PAC
-+    if (kernel_new_action.sa_handler != SIG_DFL && kernel_new_action.sa_handler != SIG_IGN &&
-+        kernel_new_action.sa_handler != SIG_ERR) {
++    if (kernel_new_action.sa_handler != SIG_DFL) {
 +      if (kernel_new_action.sa_flags & SA_SIGINFO) {
 +        kernel_new_action.sa_handler = __builtin_ptrauth_auth(
 +            kernel_new_action.sa_handler, 0,
@@ -1505,14 +1455,13 @@ index 1cdb021563..35b22eb437 100644
      // arm64 has sa_restorer, but unwinding works best if you just let the
      // kernel supply the default restorer from [vdso]. gdb doesn't care, but
      // libgcc needs the nop that the kernel includes before the actual code.
-@@ -73,6 +90,23 @@ int sigaction(int signal, const struct sigaction* bionic_new_action, struct siga
+@@ -73,6 +89,22 @@ int sigaction(int signal, const struct sigaction* bionic_new_action, struct siga
      bionic_old_action->sa_mask = kernel_old_action.sa_mask;
  #if defined(SA_RESTORER)
      bionic_old_action->sa_restorer = kernel_old_action.sa_restorer;
 +#endif
 +#if defined(__aarch64__) && defined(ANDROID_EXPERIMENTAL_PAC)
-+    if (bionic_old_action->sa_handler != SIG_DFL && bionic_old_action->sa_handler != SIG_IGN &&
-+        bionic_old_action->sa_handler != SIG_ERR) {
++    if (bionic_old_action->sa_handler != SIG_DFL) {
 +      if (bionic_old_action->sa_flags & SA_SIGINFO) {
 +        bionic_old_action->sa_sigaction = __builtin_ptrauth_sign_unauthenticated(
 +            bionic_old_action->sa_sigaction, 0,
@@ -1569,10 +1518,10 @@ index dbca9c0139..9f08cbe083 100644
      }
    }
 diff --git a/bionic/libc/platform/bionic/pac.h b/bionic/libc/platform/bionic/pac.h
-index 34efc48aea..57a0507fd7 100644
+index 34efc48aea..52eadf68b3 100644
 --- a/bionic/libc/platform/bionic/pac.h
 +++ b/bionic/libc/platform/bionic/pac.h
-@@ -40,3 +40,25 @@ inline uintptr_t __bionic_clear_pac_bits(uintptr_t ptr) {
+@@ -40,3 +40,26 @@ inline uintptr_t __bionic_clear_pac_bits(uintptr_t ptr) {
    return ptr;
  #endif
  }
@@ -1589,6 +1538,7 @@ index 34efc48aea..57a0507fd7 100644
 +inline void* __bionic_sign_voidp(void* ptr) {
 +#ifdef ANDROID_EXPERIMENTAL_PAC
 +  if (ptr) {
++    __asm__ __volatile__("xpaci %0" : "+r"(ptr));
 +    ptr = __builtin_ptrauth_sign_unauthenticated(ptr, 0, 0);
 +  }
 +#endif
@@ -1663,10 +1613,10 @@ index e0ea35bba5..b92de0620c 100644
  __LIBC_HIDDEN__ ElfW(Addr) __bionic_call_ifunc_resolver(ElfW(Addr) resolver_addr);
 +__LIBC_HIDDEN__ ElfW(Addr) __bionic_pac_sign_ptr(ElfW(Addr) addr, ElfW(Addr)* place);
 diff --git a/bionic/linker/Android.bp b/bionic/linker/Android.bp
-index 57420a96a1..500e1cf2d3 100644
+index 83077c6e4a..96bdac0292 100644
 --- a/bionic/linker/Android.bp
 +++ b/bionic/linker/Android.bp
-@@ -119,7 +119,10 @@ cc_defaults {
+@@ -122,7 +122,10 @@ cc_defaults {
      ],
  
      // We need to access Bionic private headers in the linker.
@@ -1679,10 +1629,10 @@ index 57420a96a1..500e1cf2d3 100644
  
  // ========================================================
 diff --git a/bionic/linker/linker.cpp b/bionic/linker/linker.cpp
-index c6588d2cd4..209ab92682 100644
+index 6246f8c20d..9a5842ab47 100644
 --- a/bionic/linker/linker.cpp
 +++ b/bionic/linker/linker.cpp
-@@ -47,6 +47,7 @@
+@@ -48,6 +48,7 @@
  #include <android-base/properties.h>
  #include <android-base/scopeguard.h>
  #include <async_safe/log.h>
@@ -1690,7 +1640,7 @@ index c6588d2cd4..209ab92682 100644
  #include <bionic/pthread_internal.h>
  
  // Private C library headers.
-@@ -2178,6 +2179,8 @@ void* do_dlopen(const char* name, int flags,
+@@ -2175,6 +2176,8 @@ void* do_dlopen(const char* name, int flags,
  }
  
  int do_dladdr(const void* addr, Dl_info* info) {
@@ -1699,7 +1649,7 @@ index c6588d2cd4..209ab92682 100644
    // Determine if this address can be found in any library currently mapped.
    soinfo* si = find_containing_library(addr);
    if (si == nullptr) {
-@@ -2291,6 +2294,11 @@ bool do_dlsym(void* handle,
+@@ -2288,6 +2291,11 @@ bool do_dlsym(void* handle,
        } else {
          *symbol = reinterpret_cast<void*>(found->resolve_symbol_address(sym));
        }
@@ -1711,7 +1661,7 @@ index c6588d2cd4..209ab92682 100644
        failure_guard.Disable();
        LD_LOG(kLogDlsym,
               "... dlsym successful: sym_name=\"%s\", sym_ver=\"%s\", found in=\"%s\", address=%p",
-@@ -3028,17 +3036,19 @@ bool soinfo::prelink_image() {
+@@ -3026,17 +3034,19 @@ bool soinfo::prelink_image() {
          break;
  
        case DT_INIT:
@@ -1734,7 +1684,7 @@ index c6588d2cd4..209ab92682 100644
          DEBUG("%s constructors (DT_INIT_ARRAY) found at %p", get_realpath(), init_array_);
          break;
  
-@@ -3047,7 +3057,7 @@ bool soinfo::prelink_image() {
+@@ -3045,7 +3055,7 @@ bool soinfo::prelink_image() {
          break;
  
        case DT_FINI_ARRAY:
@@ -1743,7 +1693,7 @@ index c6588d2cd4..209ab92682 100644
          DEBUG("%s destructors (DT_FINI_ARRAY) found at %p", get_realpath(), fini_array_);
          break;
  
-@@ -3056,7 +3066,7 @@ bool soinfo::prelink_image() {
+@@ -3054,7 +3064,7 @@ bool soinfo::prelink_image() {
          break;
  
        case DT_PREINIT_ARRAY:
@@ -1752,7 +1702,7 @@ index c6588d2cd4..209ab92682 100644
          DEBUG("%s constructors (DT_PREINIT_ARRAY) found at %p", get_realpath(), preinit_array_);
          break;
  
-@@ -3321,7 +3331,7 @@ bool soinfo::link_image(const SymbolLookupList& lookup_list, soinfo* local_group
+@@ -3319,7 +3329,7 @@ bool soinfo::link_image(const SymbolLookupList& lookup_list, soinfo* local_group
  }
  
  bool soinfo::protect_relro() {
@@ -1761,7 +1711,7 @@ index c6588d2cd4..209ab92682 100644
      DL_ERR("can't enable GNU RELRO protection for \"%s\": %s",
             get_realpath(), strerror(errno));
      return false;
-@@ -3329,6 +3339,10 @@ bool soinfo::protect_relro() {
+@@ -3327,6 +3337,10 @@ bool soinfo::protect_relro() {
    return true;
  }
  
@@ -1798,7 +1748,7 @@ index 6bc2615458..8274ce48fa 100644
    CHECK(*shadow_start == p);
    mprotect(shadow_start, PAGE_SIZE, PROT_READ);
 diff --git a/bionic/linker/linker_main.cpp b/bionic/linker/linker_main.cpp
-index f0e7b1b67d..ba46294477 100644
+index 833157e877..a082b5326f 100644
 --- a/bionic/linker/linker_main.cpp
 +++ b/bionic/linker/linker_main.cpp
 @@ -59,7 +59,7 @@
@@ -1810,7 +1760,7 @@ index f0e7b1b67d..ba46294477 100644
  
  static ElfW(Addr) get_elf_exec_load_bias(const ElfW(Ehdr)* elf);
  
-@@ -309,6 +309,22 @@ static void platform_properties_init() {
+@@ -303,6 +303,22 @@ static void platform_properties_init() {
  #endif
  }
  
@@ -1833,7 +1783,7 @@ index f0e7b1b67d..ba46294477 100644
  static ElfW(Addr) linker_main(KernelArgumentBlock& args, const char* exe_to_load) {
    ProtectedDataGuard guard;
  
-@@ -397,16 +413,36 @@ static ElfW(Addr) linker_main(KernelArgumentBlock& args, const char* exe_to_load
+@@ -391,16 +407,36 @@ static ElfW(Addr) linker_main(KernelArgumentBlock& args, const char* exe_to_load
    init_link_map_head(*solinker);
  
  #if defined(__aarch64__)
@@ -1871,7 +1821,7 @@ index f0e7b1b67d..ba46294477 100644
    }
  
    __libc_init_mte(somain->phdr, somain->phnum, somain->load_bias, args.argv);
-@@ -685,7 +721,10 @@ __attribute__((constructor(1))) static void detect_self_exec() {
+@@ -679,7 +715,10 @@ __attribute__((constructor(1))) static void detect_self_exec() {
  }
  
  static ElfW(Addr) __attribute__((noinline))
@@ -1883,7 +1833,7 @@ index f0e7b1b67d..ba46294477 100644
  
  /*
   * This is the entry point for the linker, called from begin.S. This
-@@ -705,7 +744,8 @@ extern "C" ElfW(Addr) __linker_init(void* raw_args) {
+@@ -699,7 +738,8 @@ extern "C" ElfW(Addr) __linker_init(void* raw_args) {
  
    // When the linker is run by itself (rather than as an interpreter for
    // another program), AT_BASE is 0.
@@ -1893,7 +1843,7 @@ index f0e7b1b67d..ba46294477 100644
    if (linker_addr == 0) {
      // The AT_PHDR and AT_PHNUM aux values describe this linker instance, so use
      // the phdr to find the linker's base address.
-@@ -721,6 +761,89 @@ extern "C" ElfW(Addr) __linker_init(void* raw_args) {
+@@ -715,6 +755,89 @@ extern "C" ElfW(Addr) __linker_init(void* raw_args) {
    // string.h functions must not be used prior to calling the linker's ifunc resolvers.
    call_ifunc_resolvers();
  
@@ -1983,7 +1933,7 @@ index f0e7b1b67d..ba46294477 100644
    soinfo tmp_linker_so(nullptr, nullptr, nullptr, 0, 0);
  
    tmp_linker_so.base = linker_addr;
-@@ -735,7 +858,7 @@ extern "C" ElfW(Addr) __linker_init(void* raw_args) {
+@@ -729,7 +852,7 @@ extern "C" ElfW(Addr) __linker_init(void* raw_args) {
    if (!tmp_linker_so.prelink_image()) __linker_cannot_link(args.argv[0]);
    if (!tmp_linker_so.link_image(SymbolLookupList(&tmp_linker_so), &tmp_linker_so, nullptr, nullptr)) __linker_cannot_link(args.argv[0]);
  
@@ -1992,7 +1942,7 @@ index f0e7b1b67d..ba46294477 100644
  }
  
  /*
-@@ -745,7 +868,8 @@ extern "C" ElfW(Addr) __linker_init(void* raw_args) {
+@@ -739,7 +862,8 @@ extern "C" ElfW(Addr) __linker_init(void* raw_args) {
   * function, so avoid inlining this function (http://b/80503879).
   */
  static ElfW(Addr) __attribute__((noinline))
@@ -2002,7 +1952,7 @@ index f0e7b1b67d..ba46294477 100644
    // Finish initializing the main thread.
    __libc_init_main_thread_late();
  
-@@ -769,37 +893,6 @@ __linker_init_post_relocation(KernelArgumentBlock& args, soinfo& tmp_linker_so)
+@@ -763,37 +887,6 @@ __linker_init_post_relocation(KernelArgumentBlock& args, soinfo& tmp_linker_so)
      }
    }
  
@@ -2100,10 +2050,10 @@ index b8b4ef792c..ff8bd1d720 100644
 +  ElfW(Word) features_ __unused;
  };
 diff --git a/bionic/linker/linker_phdr.cpp b/bionic/linker/linker_phdr.cpp
-index 60fd776209..e8be9ea4d9 100644
+index 73cfced386..425e667715 100644
 --- a/bionic/linker/linker_phdr.cpp
 +++ b/bionic/linker/linker_phdr.cpp
-@@ -872,11 +872,25 @@ int phdr_table_unprotect_segments(const ElfW(Phdr)* phdr_table,
+@@ -883,11 +883,25 @@ int phdr_table_unprotect_segments(const ElfW(Phdr)* phdr_table,
    return _phdr_table_set_load_prot(phdr_table, phdr_count, load_bias, PROT_WRITE);
  }
  
@@ -2133,7 +2083,7 @@ index 60fd776209..e8be9ea4d9 100644
    const ElfW(Phdr)* phdr = phdr_table;
    const ElfW(Phdr)* phdr_limit = phdr + phdr_count;
  
-@@ -914,27 +928,6 @@ static int _phdr_table_set_gnu_relro_prot(const ElfW(Phdr)* phdr_table, size_t p
+@@ -925,27 +939,6 @@ static int _phdr_table_set_gnu_relro_prot(const ElfW(Phdr)* phdr_table, size_t p
    return 0;
  }
  
@@ -2175,7 +2125,7 @@ index 98bf020ac6..e3d45569fe 100644
  int phdr_table_serialize_gnu_relro(const ElfW(Phdr)* phdr_table, size_t phdr_count,
                                     ElfW(Addr) load_bias, int fd, size_t* file_offset);
 diff --git a/bionic/linker/linker_relocate.cpp b/bionic/linker/linker_relocate.cpp
-index c7c7bfbb33..6273abf9d5 100644
+index 952dade9ec..9f37d8929d 100644
 --- a/bionic/linker/linker_relocate.cpp
 +++ b/bionic/linker/linker_relocate.cpp
 @@ -42,8 +42,11 @@
@@ -2190,7 +2140,7 @@ index c7c7bfbb33..6273abf9d5 100644
  static bool is_tls_reloc(ElfW(Word) type) {
    switch (type) {
      case R_GENERIC_TLS_DTPMOD:
-@@ -443,7 +446,7 @@ static bool process_relocation_impl(Relocator& relocator, const rel_t& reloc) {
+@@ -445,7 +448,7 @@ static bool process_relocation_impl(Relocator& relocator, const rel_t& reloc) {
          TlsDescriptor* desc = static_cast<TlsDescriptor*>(rel_target);
          if (found_in == nullptr) {
            // Unresolved weak relocation.
@@ -2199,7 +2149,7 @@ index c7c7bfbb33..6273abf9d5 100644
            desc->arg = addend;
            trace_reloc("RELO TLSDESC %16p <- unresolved weak, addend 0x%zx %s",
                        rel_target, static_cast<size_t>(addend), sym_name);
-@@ -452,7 +455,7 @@ static bool process_relocation_impl(Relocator& relocator, const rel_t& reloc) {
+@@ -454,7 +457,7 @@ static bool process_relocation_impl(Relocator& relocator, const rel_t& reloc) {
            size_t module_id = found_in->get_tls()->module_id;
            const TlsModule& mod = get_tls_module(module_id);
            if (mod.static_offset != SIZE_MAX) {
@@ -2208,7 +2158,7 @@ index c7c7bfbb33..6273abf9d5 100644
              desc->arg = mod.static_offset - relocator.tls_tp_base + sym_addr + addend;
              trace_reloc("RELO TLSDESC %16p <- static (0x%zx - 0x%zx + 0x%zx + 0x%zx) %s",
                          rel_target, mod.static_offset, relocator.tls_tp_base,
-@@ -477,6 +480,22 @@ static bool process_relocation_impl(Relocator& relocator, const rel_t& reloc) {
+@@ -479,6 +482,22 @@ static bool process_relocation_impl(Relocator& relocator, const rel_t& reloc) {
          }
        }
        break;
@@ -2231,7 +2181,7 @@ index c7c7bfbb33..6273abf9d5 100644
  #endif  // defined(__aarch64__)
  
  #if defined(__x86_64__)
-@@ -662,7 +681,7 @@ bool soinfo::relocate(const SymbolLookupList& lookup_list) {
+@@ -664,7 +683,7 @@ bool soinfo::relocate(const SymbolLookupList& lookup_list) {
    // Bionic currently only implements TLSDESC for arm64.
    for (const std::pair<TlsDescriptor*, size_t>& pair : relocator.deferred_tlsdesc_relocs) {
      TlsDescriptor* desc = pair.first;
@@ -2371,10 +2321,10 @@ index 5ee2d3ee28..f52f7507ec 100644
  /* Find the load bias and base address of an executable or shared object loaded
   * by the kernel. The ELF file's PHDR table must have a PT_PHDR entry.
 diff --git a/bionic/tests/signal_test.cpp b/bionic/tests/signal_test.cpp
-index 5bda8b3296..f04fd75c62 100644
+index fa648d230c..c6cc5c0b79 100644
 --- a/bionic/tests/signal_test.cpp
 +++ b/bionic/tests/signal_test.cpp
-@@ -270,7 +270,7 @@ static void TestSigAction(int (sigaction_fn)(int, const SigActionT*, SigActionT*
+@@ -277,7 +277,7 @@ static void TestSigAction(int (sigaction_fn)(int, const SigActionT*, SigActionT*
    sa = {};
    ASSERT_EQ(0, sigaction_fn(sig, nullptr, &sa));
    ASSERT_TRUE(sa.sa_handler == no_op_signal_handler);
@@ -2383,7 +2333,7 @@ index 5bda8b3296..f04fd75c62 100644
    ASSERT_EQ(static_cast<unsigned>(SA_ONSTACK), sa.sa_flags & ~sa_restorer);
  #ifdef SA_RESTORER
    ASSERT_EQ(bool(sa.sa_flags & sa_restorer), bool(sa.sa_restorer));
-@@ -288,7 +288,7 @@ static void TestSigAction(int (sigaction_fn)(int, const SigActionT*, SigActionT*
+@@ -295,7 +295,7 @@ static void TestSigAction(int (sigaction_fn)(int, const SigActionT*, SigActionT*
    sa = {};
    ASSERT_EQ(0, sigaction_fn(sig, nullptr, &sa));
    ASSERT_TRUE(sa.sa_sigaction == no_op_sigaction);
@@ -2392,11 +2342,23 @@ index 5bda8b3296..f04fd75c62 100644
    ASSERT_EQ(static_cast<unsigned>(SA_ONSTACK | SA_SIGINFO), sa.sa_flags & ~sa_restorer);
  #ifdef SA_RESTORER
    ASSERT_EQ(bool(sa.sa_flags & sa_restorer), bool(sa.sa_restorer));
+diff --git a/build/bazel/rules/abi/abi_dump.bzl b/build/bazel/rules/abi/abi_dump.bzl
+index 1dddd05d0c..8533929869 100644
+--- a/build/bazel/rules/abi/abi_dump.bzl
++++ b/build/bazel/rules/abi/abi_dump.bzl
+@@ -155,6 +155,7 @@ def _create_abi_dump(ctx, target, src, objects, header_inputs, compilation_flags
+ 
+     args.add("--")
+     args.add_all(compilation_flags)
++    args.add("-UANDROID_EXPERIMENTAL_PAC")
+ 
+     # The following two args come from here:
+     # https://cs.android.com/android/platform/superproject/+/master:build/soong/cc/builder.go;l=247;drc=ba17c7243d0e297efbc6fb5385d6d5aa81db9152
 diff --git a/build/make/core/binary.mk b/build/make/core/binary.mk
-index 1ad9be8744..4baa5b08b7 100644
+index 6f1d814a6e..c63d69ccdb 100644
 --- a/build/make/core/binary.mk
 +++ b/build/make/core/binary.mk
-@@ -241,6 +241,11 @@ ifneq ($(LOCAL_SDK_VERSION),)
+@@ -248,6 +248,11 @@ ifneq ($(LOCAL_SDK_VERSION),)
    my_ndk_stl_shared_lib_fullpath :=
    my_ndk_stl_static_lib :=
    my_cpu_variant := $(TARGET_$(LOCAL_2ND_ARCH_VAR_PREFIX)CPU_ABI)
@@ -2409,10 +2371,10 @@ index 1ad9be8744..4baa5b08b7 100644
    ifeq (,$(LOCAL_NDK_STL_VARIANT))
      LOCAL_NDK_STL_VARIANT := system
 diff --git a/build/make/core/board_config.mk b/build/make/core/board_config.mk
-index 88516fae03..280071b136 100644
+index af059730ea..99ed50c8ca 100644
 --- a/build/make/core/board_config.mk
 +++ b/build/make/core/board_config.mk
-@@ -350,6 +350,10 @@ ifeq (,$(TARGET_CPU_ABI_LIST_64_BIT))
+@@ -351,6 +351,10 @@ ifeq (,$(TARGET_CPU_ABI_LIST_64_BIT))
    endif
  endif
  
@@ -2423,6 +2385,29 @@ index 88516fae03..280071b136 100644
  # "arm64-v8a-hwasan", the ABI for libraries compiled with HWASAN, is supported
  # in all builds with SANITIZE_TARGET=hwaddress.
  ifneq ($(filter hwaddress,$(SANITIZE_TARGET)),)
+diff --git a/build/make/core/config_sanitizers.mk b/build/make/core/config_sanitizers.mk
+index 35c632c039..7cac1b0d41 100644
+--- a/build/make/core/config_sanitizers.mk
++++ b/build/make/core/config_sanitizers.mk
+@@ -245,9 +245,15 @@ endif
+ 
+ ifneq ($(filter memtag_stack,$(my_sanitize)),)
+   my_cflags += -fsanitize=memtag-stack
+-  my_cflags += -march=armv8a+memtag
+-  my_ldflags += -march=armv8a+memtag
+-  my_asflags += -march=armv8a+memtag
++  ifneq (,$(TARGET_EXPERIMENTAL_PAC))
++    my_cflags += -march=armv8.3a+memtag
++    my_ldflags += -march=armv8.3a+memtag
++    my_asflags += -march=armv8.3a+memtag
++  else
++    my_cflags += -march=armv8a+memtag
++    my_ldflags += -march=armv8a+memtag
++    my_asflags += -march=armv8a+memtag
++  endif
+   my_sanitize := $(filter-out memtag_stack,$(my_sanitize))
+ endif
+ 
 diff --git a/build/make/core/dex_preopt_odex_install.mk b/build/make/core/dex_preopt_odex_install.mk
 index b303b52f12..0d3f04aee2 100644
 --- a/build/make/core/dex_preopt_odex_install.mk
@@ -2447,6 +2432,39 @@ index 29a88f24bf..8e97440651 100644
          "expand.go",
          "filegroup.go",
          "fixture.go",
+diff --git a/build/soong/android/config_bp2build.go b/build/soong/android/config_bp2build.go
+index 2beeb51ec5..1bbb42e790 100644
+--- a/build/soong/android/config_bp2build.go
++++ b/build/soong/android/config_bp2build.go
+@@ -325,9 +325,16 @@ func BazelToolchainVars(config Config, exportedVars ExportedVariables) string {
+ 
+ 	definitions := make([]string, 0, len(results))
+ 	constants := make([]string, 0, len(results))
++	doPAuthABIHack := false
+ 	for _, b := range results {
+-		definitions = append(definitions,
+-			fmt.Sprintf("_%s = %s", b.variableName, b.internalDefinition))
++		if TargetExperimentalPac != "" && b.variableName == "Arm64ArchVariantCflags" {
++			doPAuthABIHack = true
++			definitions = append(definitions,
++				fmt.Sprintf("_Arm64BaseArchVariantCflags = %s",	b.internalDefinition))
++		} else {
++			definitions = append(definitions,
++				fmt.Sprintf("_%s = %s",	b.variableName,	b.internalDefinition))
++		}
+ 		constants = append(constants,
+ 			fmt.Sprintf("%[1]s%[2]s = _%[2]s,", starlark_fmt.Indention(1), b.variableName))
+ 	}
+@@ -337,6 +344,9 @@ func BazelToolchainVars(config Config, exportedVars ExportedVariables) string {
+ 	ret += "\n\n"
+ 	ret += strings.Join(definitions, "\n\n")
+ 	ret += "\n\n"
++	if doPAuthABIHack {
++  		ret += "_Arm64ArchVariantCflags = {k: _Arm64BaseArchVariantCflags[k] + _Arm64PAuthABICflags for k in _Arm64BaseArchVariantCflags}\n"
++	}
+ 	ret += "constants = struct(\n"
+ 	ret += strings.Join(constants, "\n")
+ 	ret += "\n)"
 diff --git a/build/soong/android/env.go b/build/soong/android/env.go
 new file mode 100644
 index 0000000000..4229af5e60
@@ -2479,7 +2497,7 @@ index 0000000000..4229af5e60
 +	TargetExperimentalPac = os.Getenv("TARGET_EXPERIMENTAL_PAC")
 +}
 diff --git a/build/soong/cc/builder.go b/build/soong/cc/builder.go
-index cb21b1ff4e..75b66e238c 100644
+index fef00d4d54..9ce0139064 100644
 --- a/build/soong/cc/builder.go
 +++ b/build/soong/cc/builder.go
 @@ -244,7 +244,7 @@ var (
@@ -2492,17 +2510,19 @@ index cb21b1ff4e..75b66e238c 100644
  		}, &remoteexec.REParams{
  			Labels:       map[string]string{"type": "abi-dump", "tool": "header-abi-dumper"},
 diff --git a/build/soong/cc/compiler.go b/build/soong/cc/compiler.go
-index a751754826..77ff1c9f75 100644
+index 88985b6f9c..811866f792 100644
 --- a/build/soong/cc/compiler.go
 +++ b/build/soong/cc/compiler.go
-@@ -463,6 +463,32 @@ func (compiler *baseCompiler) compilerFlags(ctx ModuleContext, flags Flags, deps
+@@ -458,6 +458,36 @@ func (compiler *baseCompiler) compilerFlags(ctx ModuleContext, flags Flags, deps
  	flags.Local.ConlyFlags = config.ClangFilterUnknownCflags(flags.Local.ConlyFlags)
  	flags.Local.LdFlags = config.ClangFilterUnknownCflags(flags.Local.LdFlags)
  
 +	if ctx.Config().Getenv("TARGET_EXPERIMENTAL_PAC") != "" {
 +		var cflags []string
 +		for _, f := range flags.Local.CFlags {
-+			if f != "-fwhole-program-vtables" {
++  			if f == "-march=armv8-a+memtag" {
++				cflags = append(cflags, "-march=armv8.3-a+memtag")
++  			} else if f != "-fwhole-program-vtables" {
 +				cflags = append(cflags, f)
 +			}
 +		}
@@ -2510,7 +2530,9 @@ index a751754826..77ff1c9f75 100644
 +
 +		var cppflags []string
 +		for _, f := range flags.Local.CppFlags {
-+			if f != "-fwhole-program-vtables" {
++  			if f == "-march=armv8-a+memtag" {
++				cppflags = append(cppflags, "-march=armv8.3-a+memtag")
++  			} else if f != "-fwhole-program-vtables" {
 +				cppflags = append(cppflags, f)
 +			}
 +		}
@@ -2529,22 +2551,48 @@ index a751754826..77ff1c9f75 100644
  	if ctx.Os().Class == android.Device {
  		version := ctx.minSdkVersion()
 diff --git a/build/soong/cc/config/arm64_device.go b/build/soong/cc/config/arm64_device.go
-index 66087e6f00..127bb6ec4a 100644
+index 28f368205e..562a4c5647 100644
 --- a/build/soong/cc/config/arm64_device.go
 +++ b/build/soong/cc/config/arm64_device.go
-@@ -223,6 +223,10 @@ func arm64ToolchainFactory(arch android.Arch) Toolchain {
+@@ -48,6 +48,16 @@ var (
+ 		},
+ 	}
+ 
++	arm64PAuthABICflags = []string{
++		"-DANDROID_EXPERIMENTAL_PAC",
++		"-mbranch-protection=pac-ret+b-key",
++		"-fptrauth-intrinsics",
++		"-fptrauth-calls",
++		"-fptrauth-auth-traps",
++		"-fptrauth-function-pointer-type-discrimination",
++		"-march=armv8.3a",
++	}
++
+ 	arm64Ldflags = []string{
+ 		"-Wl,--hash-style=gnu",
+ 		"-Wl,-z,separate-code",
+@@ -92,6 +102,8 @@ var (
+ )
+ 
+ func init() {
++	exportedVars.ExportStringListStaticVariable("Arm64PAuthABICflags", arm64PAuthABICflags)
++
+ 	exportedVars.ExportStringListStaticVariable("Arm64Ldflags", arm64Ldflags)
+ 	exportedVars.ExportStringListStaticVariable("Arm64Lldflags", arm64Lldflags)
+ 
+@@ -210,6 +222,10 @@ func arm64ToolchainFactory(arch android.Arch) Toolchain {
  	toolchainCflags = append(toolchainCflags,
  		variantOrDefault(arm64CpuVariantCflagsVar, arch.CpuVariant))
  
 +	if android.TargetExperimentalPac != "" {
-+		toolchainClangCflags = append(toolchainClangCflags, "-DANDROID_EXPERIMENTAL_PAC", "-mbranch-protection=pac-ret+b-key", "-fptrauth-intrinsics", "-fptrauth-calls", "-fptrauth-auth-traps", "-fptrauth-function-pointer-type-discrimination", "-march=armv8.3a")
++		toolchainCflags	= append(toolchainCflags, arm64PAuthABICflags...)
 +	}
 +
  	extraLdflags := variantOrDefault(arm64CpuVariantLdflags, arch.CpuVariant)
  	return &toolchainArm64{
  		ldflags: strings.Join([]string{
 diff --git a/build/soong/cc/config/arm64_linux_host.go b/build/soong/cc/config/arm64_linux_host.go
-index 2d316e6717..03eb7d5e6e 100644
+index 9f5124bb46..ce8ed6b3d9 100644
 --- a/build/soong/cc/config/arm64_linux_host.go
 +++ b/build/soong/cc/config/arm64_linux_host.go
 @@ -86,6 +86,10 @@ func linuxBionicArm64ToolchainFactory(arch android.Arch) Toolchain {
@@ -2559,10 +2607,10 @@ index 2d316e6717..03eb7d5e6e 100644
  	// the host CPU needs the fix
  	extraLdflags := "-Wl,--fix-cortex-a53-843419"
 diff --git a/build/soong/cc/config/global.go b/build/soong/cc/config/global.go
-index bf80907928..ac03a81df6 100644
+index 488af45c1d..cf0ded9745 100644
 --- a/build/soong/cc/config/global.go
 +++ b/build/soong/cc/config/global.go
-@@ -160,7 +160,6 @@ var (
+@@ -159,7 +159,6 @@ var (
  		"-Wl,-z,now",
  		"-Wl,--build-id=md5",
  		"-Wl,--fatal-warnings",
@@ -2571,10 +2619,10 @@ index bf80907928..ac03a81df6 100644
  		// --exclude-libs arguments can be removed.
  		"-Wl,--exclude-libs,libgcc.a",
 diff --git a/build/soong/cc/linker.go b/build/soong/cc/linker.go
-index 76a60ca7f1..51e0c79f68 100644
+index e49b97d0be..30533ffcb8 100644
 --- a/build/soong/cc/linker.go
 +++ b/build/soong/cc/linker.go
-@@ -471,7 +471,7 @@ func (linker *baseLinker) linkerFlags(ctx ModuleContext, flags Flags) Flags {
+@@ -450,7 +450,7 @@ func (linker *baseLinker) linkerFlags(ctx ModuleContext, flags Flags) Flags {
  
  	if linker.useClangLld(ctx) {
  		flags.Global.LdFlags = append(flags.Global.LdFlags, fmt.Sprintf("${config.%sGlobalLldflags}", hod))
@@ -2584,10 +2632,10 @@ index 76a60ca7f1..51e0c79f68 100644
  		} else if ctx.Device() {
  			// SHT_RELR relocations are only supported at API level >= 30.
 diff --git a/build/soong/cc/lto.go b/build/soong/cc/lto.go
-index 581856b46e..24ee54dd00 100644
+index 1afa1ddd9c..e56af43b6d 100644
 --- a/build/soong/cc/lto.go
 +++ b/build/soong/cc/lto.go
-@@ -92,24 +92,26 @@ func (lto *lto) flags(ctx BaseModuleContext, flags Flags) Flags {
+@@ -97,24 +97,26 @@ func (lto *lto) flags(ctx BaseModuleContext, flags Flags) Flags {
  	}
  
  	if lto.LTO(ctx) {
@@ -2648,28 +2696,63 @@ index 51ec6b875a..db96a72922 100644
  
  func (ndk *ndkPrebuiltStlLinker) link(ctx ModuleContext, flags Flags,
 diff --git a/build/soong/cc/sanitize.go b/build/soong/cc/sanitize.go
-index 0b47f0e6dc..4a0028057d 100644
+index aa61453ced..0a84a72471 100644
 --- a/build/soong/cc/sanitize.go
 +++ b/build/soong/cc/sanitize.go
-@@ -687,7 +687,7 @@ func (sanitize *sanitize) flags(ctx ModuleContext, flags Flags) Flags {
+@@ -78,6 +78,7 @@ var (
+ 	hwasanGlobalOptions = []string{"heap_history_size=1023", "stack_history_size=512",
+ 		"export_memory_stats=0", "max_malloc_fill_size=131072", "malloc_fill_byte=0"}
+ 	memtagStackCommonFlags = []string{"-march=armv8-a+memtag"}
++	memtag83StackCommonFlags = []string{"-march=armv8.3-a+memtag"}
+ 
+ 	hostOnlySanitizeFlags   = []string{"-fno-sanitize-recover=all"}
+ 	deviceOnlySanitizeFlags = []string{"-fsanitize-trap=all", "-ftrap-function=abort"}
+@@ -800,7 +801,7 @@ func (s *sanitize) flags(ctx ModuleContext, flags Flags) Flags {
  		flags.Local.LdFlags = append(flags.Local.LdFlags, `-Wl,-rpath,\$$ORIGIN`)
  	}
  
--	if Bool(sanitize.Properties.Sanitize.Cfi) {
-+	if Bool(sanitize.Properties.Sanitize.Cfi) && ctx.Config().Getenv("TARGET_EXPERIMENTAL_PAC") == "" {
+-	if Bool(sanProps.Cfi) {
++	if Bool(sanProps.Cfi) && ctx.Config().Getenv("TARGET_EXPERIMENTAL_PAC") == "" {
  		if ctx.Arch().ArchType == android.Arm {
  			// __cfi_check needs to be built as Thumb (see the code in linker_cfi.cpp). LLVM is not set up
  			// to do this on a function basis, so force Thumb on the entire module.
-@@ -735,8 +735,18 @@ func (sanitize *sanitize) flags(ctx ModuleContext, flags Flags) Flags {
+@@ -825,7 +826,7 @@ func (s *sanitize) flags(ctx ModuleContext, flags Flags) Flags {
+ 		}
+ 	}
+ 
+-	if Bool(sanProps.Memtag_stack) {
++	if Bool(sanProps.Memtag_stack) && android.TargetExperimentalPac == "" {
+ 		flags.Local.CFlags = append(flags.Local.CFlags, memtagStackCommonFlags...)
+ 		// TODO(fmayer): remove -Wno-error once https://reviews.llvm.org/D127917 is in Android toolchain.
+ 		flags.Local.CFlags = append(flags.Local.CFlags, "-Wno-error=frame-larger-than")
+@@ -836,6 +837,17 @@ func (s *sanitize) flags(ctx ModuleContext, flags Flags) Flags {
+ 		flags.Local.LdFlags = append(flags.Local.LdFlags, "-Wl,--no-fatal-warnings")
+ 	}
+ 
++	if Bool(sanProps.Memtag_stack) && android.TargetExperimentalPac != "" {
++		flags.Local.CFlags = append(flags.Local.CFlags, memtag83StackCommonFlags...)
++		// TODO(fmayer): remove -Wno-error once https://reviews.llvm.org/D127917 is in Android toolchain.
++		flags.Local.CFlags = append(flags.Local.CFlags, "-Wno-error=frame-larger-than")
++		flags.Local.AsFlags = append(flags.Local.AsFlags, memtag83StackCommonFlags...)
++		flags.Local.LdFlags = append(flags.Local.LdFlags, memtag83StackCommonFlags...)
++		// This works around LLD complaining about the stack frame size.
++		// TODO(fmayer): remove once https://reviews.llvm.org/D127917 is in Android toolchain.
++		flags.Local.LdFlags = append(flags.Local.LdFlags, "-Wl,--no-fatal-warnings")
++	}
++
+ 	if (Bool(sanProps.Memtag_heap) || Bool(sanProps.Memtag_stack)) && ctx.binary() {
+ 		if Bool(sanProps.Diag.Memtag_heap) {
+ 			flags.Local.LdFlags = append(flags.Local.LdFlags, "-fsanitize-memtag-mode=sync")
+@@ -848,8 +860,18 @@ func (s *sanitize) flags(ctx ModuleContext, flags Flags) Flags {
  		flags.Local.CFlags = append(flags.Local.CFlags, intOverflowCflags...)
  	}
  
--	if len(sanitize.Properties.Sanitizers) > 0 {
--		sanitizeArg := "-fsanitize=" + strings.Join(sanitize.Properties.Sanitizers, ",")
-+	sanitizers := sanitize.Properties.Sanitizers
+-	if len(s.Properties.Sanitizers) > 0 {
+-		sanitizeArg := "-fsanitize=" + strings.Join(s.Properties.Sanitizers, ",")
++	sanitizers := s.Properties.Sanitizers
 +	if ctx.Config().Getenv("TARGET_EXPERIMENTAL_PAC") != "" {
 +		sanitizers = nil
-+		for _, s := range sanitize.Properties.Sanitizers {
++		for _, s := range s.Properties.Sanitizers {
 +			if !strings.HasPrefix(s, "cfi") {
 +				sanitizers = append(sanitizers, s)
 +			}
@@ -2682,23 +2765,23 @@ index 0b47f0e6dc..4a0028057d 100644
  		flags.Local.AsFlags = append(flags.Local.AsFlags, sanitizeArg)
  		flags.Local.LdFlags = append(flags.Local.LdFlags, sanitizeArg)
 diff --git a/build/soong/cmd/soong_build/main.go b/build/soong/cmd/soong_build/main.go
-index 0b8cc8864e..e81f49de8a 100644
+index 9b51160227..b97d077f5f 100644
 --- a/build/soong/cmd/soong_build/main.go
 +++ b/build/soong/cmd/soong_build/main.go
-@@ -340,6 +340,8 @@ func main() {
+@@ -377,6 +377,8 @@ func main() {
  		configuration.SetAllowMissingDependencies()
  	}
  
 +	android.TargetExperimentalPac = configuration.Getenv("TARGET_EXPERIMENTAL_PAC")
 +
+ 	extraNinjaDeps := []string{configuration.ProductVariablesFileName, usedEnvFile}
  	if shared.IsDebugging() {
  		// Add a non-existent file to the dependencies so that soong_build will rerun when the debugger is
- 		// enabled even if it completed successfully.
 diff --git a/build/soong/dexpreopt/dexpreopt.go b/build/soong/dexpreopt/dexpreopt.go
-index fdfd22e1b3..d7b38cfe1a 100644
+index a590c72a51..c7f0d81bf9 100644
 --- a/build/soong/dexpreopt/dexpreopt.go
 +++ b/build/soong/dexpreopt/dexpreopt.go
-@@ -355,9 +355,13 @@ func dexpreoptCommand(ctx android.PathContext, globalSoong *GlobalSoongConfig, g
+@@ -359,9 +359,13 @@ func dexpreoptCommand(ctx android.PathContext, globalSoong *GlobalSoongConfig, g
  		dexLocationArg = strings.TrimPrefix(dexLocationArg, "/system")
  	}
  
@@ -2716,10 +2799,10 @@ index fdfd22e1b3..d7b38cfe1a 100644
  		FlagWithOutput("--write-invocation-to=", invocationPath).ImplicitOutput(invocationPath).
  		Flag("--runtime-arg").FlagWithArg("-Xms", global.Dex2oatXms).
 diff --git a/build/soong/java/dexpreopt_bootjars.go b/build/soong/java/dexpreopt_bootjars.go
-index 4e416fc829..c9eec51414 100644
+index 373b478c8a..222c5fd0c1 100644
 --- a/build/soong/java/dexpreopt_bootjars.go
 +++ b/build/soong/java/dexpreopt_bootjars.go
-@@ -643,6 +643,10 @@ func buildBootImageVariant(ctx android.ModuleContext, image *bootImageVariant, p
+@@ -695,6 +695,10 @@ func buildBootImageVariant(ctx android.ModuleContext, image *bootImageVariant, p
  		cmd.Text(`ANDROID_LOG_TAGS="*:v"`)
  	}
  
@@ -2730,23 +2813,38 @@ index 4e416fc829..c9eec51414 100644
  	invocationPath := outputPath.ReplaceExtension(ctx, "invocation")
  
  	cmd.Tool(globalSoong.Dex2oat).
+diff --git a/build/soong/rust/config/arm64_device.go b/build/soong/rust/config/arm64_device.go
+index ae783e8ddf..fedaa98832 100644
+--- a/build/soong/rust/config/arm64_device.go
++++ b/build/soong/rust/config/arm64_device.go
+@@ -96,6 +96,10 @@ func Arm64ToolchainFactory(arch android.Arch) Toolchain {
+ 		toolchainRustFlags = append(toolchainRustFlags, Arm64ArchFeatureRustFlags[feature]...)
+ 	}
+ 
++	if android.TargetExperimentalPac != "" {
++  		toolchainRustFlags = append(toolchainRustFlags, "-Ctarget-feature=+paca,+pacg", "-Cptrauth-calls")
++	}
++
+ 	return &toolchainArm64{
+ 		toolchainRustFlags: strings.Join(toolchainRustFlags, " "),
+ 	}
 diff --git a/build/soong/ui/build/config.go b/build/soong/ui/build/config.go
-index 14a99d0807..747fd15ae7 100644
+index b5ee440641..ad6ebd26ef 100644
 --- a/build/soong/ui/build/config.go
 +++ b/build/soong/ui/build/config.go
-@@ -243,6 +243,7 @@ func NewConfig(ctx Context, args ...string) Config {
+@@ -299,6 +299,7 @@ func NewConfig(ctx Context, args ...string) Config {
  	// Default matching ninja
  	ret.parallel = runtime.NumCPU() + 2
  	ret.keepGoing = 1
 +	ret.skipSoongTests = true
  
  	ret.totalRAM = detectTotalRAM(ctx)
- 
+ 	ret.parseArgs(ctx, args)
 diff --git a/device/generic/goldfish-opengl/system/egl/egl.cpp b/device/generic/goldfish-opengl/system/egl/egl.cpp
-index 0845ac0186..98acf9b458 100644
+index 5d193bfb9c..fff5e0882a 100644
 --- a/device/generic/goldfish-opengl/system/egl/egl.cpp
 +++ b/device/generic/goldfish-opengl/system/egl/egl.cpp
-@@ -1536,7 +1536,8 @@ EGLBoolean eglWaitClient()
+@@ -1541,7 +1541,8 @@ EGLBoolean eglWaitClient()
  }
  
  // We may need to trigger this directly from the TLS destructor.
@@ -2756,7 +2854,7 @@ index 0845ac0186..98acf9b458 100644
      if (!tInfo) return EGL_TRUE;
  
      tInfo->eglError = EGL_SUCCESS;
-@@ -1891,7 +1892,7 @@ EGLBoolean eglMakeCurrent(EGLDisplay dpy, EGLSurface draw, EGLSurface read, EGLC
+@@ -1896,7 +1897,7 @@ EGLBoolean eglMakeCurrent(EGLDisplay dpy, EGLSurface draw, EGLSurface read, EGLC
  
      // Only place to initialize the TLS destructor; any
      // thread can suddenly jump in any eglMakeCurrent
@@ -2804,11 +2902,11 @@ index f3d01e4139..c487f825af 100644
  {
      ATResponse *p_response = NULL;
      int err;
-diff --git a/external/arm-optimized-routines/string/asmdefs.h b/external/arm-optimized-routines/string/asmdefs.h
-index 340b427a50..0d92b142b2 100644
---- a/external/arm-optimized-routines/string/asmdefs.h
-+++ b/external/arm-optimized-routines/string/asmdefs.h
-@@ -21,6 +21,7 @@
+diff --git a/external/arm-optimized-routines/string/aarch64/asmdefs.h b/external/arm-optimized-routines/string/aarch64/asmdefs.h
+index 069b146f4a..c1baac5359 100644
+--- a/external/arm-optimized-routines/string/aarch64/asmdefs.h
++++ b/external/arm-optimized-routines/string/aarch64/asmdefs.h
+@@ -19,6 +19,7 @@
  #define FEATURE_1_AND 0xc0000000
  #define FEATURE_1_BTI 1
  #define FEATURE_1_PAC 2
@@ -2816,7 +2914,7 @@ index 340b427a50..0d92b142b2 100644
  
  /* Add a NT_GNU_PROPERTY_TYPE_0 note.  */
  #define GNU_PROPERTY(type, value)	\
-@@ -44,7 +45,7 @@
+@@ -42,7 +43,7 @@
  
  #if WANT_GNU_PROPERTY
  /* Add property note with supported features to all asm files.  */
@@ -2904,6 +3002,95 @@ index 6af394d8c9..6fe5e61815 100644
  {
  	struct fd_screen *screen = fd_screen(pscreen);
  
+diff --git a/external/rust/crates/libc/src/lib.rs b/external/rust/crates/libc/src/lib.rs
+index 0ce739f09d..7f57d6fba0 100644
+--- a/external/rust/crates/libc/src/lib.rs
++++ b/external/rust/crates/libc/src/lib.rs
+@@ -27,6 +27,7 @@
+ #![cfg_attr(not(feature = "rustc-dep-of-std"), no_std)]
+ #![cfg_attr(feature = "rustc-dep-of-std", no_core)]
+ #![cfg_attr(libc_const_extern_fn_unstable, feature(const_extern_fn))]
++#![cfg_attr(ptrauth_calls, feature(link_llvm_intrinsics))]
+ 
+ // ANDROID: Use std to allow building as a dylib.
+ #[cfg(android_dylib)]
+diff --git a/external/rust/crates/libc/src/unix/mod.rs b/external/rust/crates/libc/src/unix/mod.rs
+index 826b835182..4244ee9c4f 100644
+--- a/external/rust/crates/libc/src/unix/mod.rs
++++ b/external/rust/crates/libc/src/unix/mod.rs
+@@ -3,6 +3,8 @@
+ //! More functions and definitions can be found in the more specific modules
+ //! according to the platform in question.
+ 
++use core::convert::TryInto;
++
+ pub type c_schar = i8;
+ pub type c_uchar = u8;
+ pub type c_short = i16;
+@@ -1044,8 +1046,6 @@ extern "C" {
+ 
+     pub fn ftruncate(fd: ::c_int, length: off_t) -> ::c_int;
+ 
+-    pub fn signal(signum: ::c_int, handler: sighandler_t) -> sighandler_t;
+-
+     #[cfg_attr(target_os = "netbsd", link_name = "__getrusage50")]
+     pub fn getrusage(resource: ::c_int, usage: *mut rusage) -> ::c_int;
+ 
+@@ -1604,3 +1604,25 @@ cfg_if! {
+         pub use self::no_align::*;
+     }
+ }
++
++cfg_if! {
++    if #[cfg(ptrauth_calls)] {
++        extern "C" {
++            #[link_name = "signal"]
++            fn real_signal(signum: ::c_int, handler: sighandler_t) -> sighandler_t;
++
++            #[link_name = "llvm.ptrauth.sign"]
++            fn ptrauth_sign(pointer: i64, key: i32, discriminator: i64) -> i64;
++        }
++
++        pub unsafe fn signal(signum: ::c_int, handler: sighandler_t) -> sighandler_t {
++            let signed_sig_ign = ptrauth_sign(SIG_IGN.try_into().unwrap(), 0, 42525).try_into().unwrap();
++            let retval = real_signal(signum, if handler == SIG_IGN { signed_sig_ign } else { handler });
++            if retval == signed_sig_ign { SIG_IGN } else { retval }
++        }
++    } else {
++        extern "C" {
++            pub fn signal(signum: ::c_int, handler: sighandler_t) -> sighandler_t;
++        }
++    }
++}
+diff --git a/external/rust/crates/libsqlite3-sys/src/lib.rs b/external/rust/crates/libsqlite3-sys/src/lib.rs
+index cb69ea202a..2fc6e6fe07 100644
+--- a/external/rust/crates/libsqlite3-sys/src/lib.rs
++++ b/external/rust/crates/libsqlite3-sys/src/lib.rs
+@@ -1,4 +1,5 @@
+ #![allow(non_snake_case, non_camel_case_types)]
++#![feature(link_llvm_intrinsics)]
+ 
+ pub use self::error::*;
+ 
+@@ -11,8 +12,17 @@ pub fn SQLITE_STATIC() -> sqlite3_destructor_type {
+     None
+ }
+ 
++extern "C" {
++    #[link_name = "llvm.ptrauth.sign"]
++    fn ptrauth_sign(pointer: isize, key: i32, discriminator: i64) -> isize;
++}
++
+ pub fn SQLITE_TRANSIENT() -> sqlite3_destructor_type {
+-    Some(unsafe { mem::transmute(-1isize) })
++    if cfg!(ptrauth_calls) {
++        Some(unsafe { mem::transmute(ptrauth_sign(-1isize, 0, 43630)) })
++    } else {
++        Some(unsafe { mem::transmute(-1isize) })
++    }
+ }
+ 
+ /// Run-Time Limit Categories
 diff --git a/external/strace/sysent.h b/external/strace/sysent.h
 index cf2daed1be..d3ffb2f14f 100644
 --- a/external/strace/sysent.h
@@ -2924,7 +3111,7 @@ index cf2daed1be..d3ffb2f14f 100644
  } struct_sysent;
  
 diff --git a/external/swiftshader/src/Reactor/LLVMJIT.cpp b/external/swiftshader/src/Reactor/LLVMJIT.cpp
-index d3dbdb987e..e718c9cc64 100644
+index fad747af06..98f7a14f82 100644
 --- a/external/swiftshader/src/Reactor/LLVMJIT.cpp
 +++ b/external/swiftshader/src/Reactor/LLVMJIT.cpp
 @@ -834,6 +834,9 @@ public:
@@ -2938,10 +3125,10 @@ index d3dbdb987e..e718c9cc64 100644
  		}
  
 diff --git a/external/swiftshader/src/Reactor/LLVMReactor.cpp b/external/swiftshader/src/Reactor/LLVMReactor.cpp
-index 54bbebcb7d..efa332b119 100644
+index 6f7e503982..3dacc81799 100644
 --- a/external/swiftshader/src/Reactor/LLVMReactor.cpp
 +++ b/external/swiftshader/src/Reactor/LLVMReactor.cpp
-@@ -3392,7 +3392,13 @@ Value *Call(RValue<Pointer<Byte>> fptr, Type *retTy, std::initializer_list<Value
+@@ -3396,7 +3396,13 @@ Value *Call(RValue<Pointer<Byte>> fptr, Type *retTy, std::initializer_list<Value
  	auto funcTy = llvm::FunctionType::get(T(retTy), paramTys, false);
  
  	auto funcPtrTy = funcTy->getPointerTo();
@@ -3052,11 +3239,11 @@ index f7512b2cde..a886b28e1b 100644
  };
  
  // Data processing 2 source.
-diff --git a/frameworks/av/media/libaudiohal/FactoryHalHidl.cpp b/frameworks/av/media/libaudiohal/FactoryHalHidl.cpp
-index 590fec5443..8303beac14 100644
---- a/frameworks/av/media/libaudiohal/FactoryHalHidl.cpp
-+++ b/frameworks/av/media/libaudiohal/FactoryHalHidl.cpp
-@@ -58,8 +58,8 @@ bool createHalService(const std::string& version, const std::string& interface,
+diff --git a/frameworks/av/media/libaudiohal/FactoryHal.cpp b/frameworks/av/media/libaudiohal/FactoryHal.cpp
+index f88915d7f4..de7c2fd642 100644
+--- a/frameworks/av/media/libaudiohal/FactoryHal.cpp
++++ b/frameworks/av/media/libaudiohal/FactoryHal.cpp
+@@ -87,8 +87,8 @@ bool createHalService(const AudioHalVersionInfo& version, bool isDevice, void**
                  error != nullptr ? error : "unknown error");
          return false;
      }
@@ -3305,10 +3492,10 @@ index 3cb5c60259..c9f0ea3500 100644
              }
  
 diff --git a/frameworks/base/core/java/com/android/internal/os/ZygoteInit.java b/frameworks/base/core/java/com/android/internal/os/ZygoteInit.java
-index ca1ae194cb..344e3ed33c 100644
+index 076e4e118e..b874c946b5 100644
 --- a/frameworks/base/core/java/com/android/internal/os/ZygoteInit.java
 +++ b/frameworks/base/core/java/com/android/internal/os/ZygoteInit.java
-@@ -858,6 +858,9 @@ public class ZygoteInit {
+@@ -868,6 +868,9 @@ public class ZygoteInit {
                      abiList = argv[i].substring(ABI_LIST_ARG.length());
                  } else if (argv[i].startsWith(SOCKET_NAME_ARG)) {
                      zygoteSocketName = argv[i].substring(SOCKET_NAME_ARG.length());
@@ -3318,7 +3505,7 @@ index ca1ae194cb..344e3ed33c 100644
                  } else {
                      throw new RuntimeException("Unknown command line argument: " + argv[i]);
                  }
-@@ -903,9 +906,9 @@ public class ZygoteInit {
+@@ -913,9 +916,9 @@ public class ZygoteInit {
  
              ZygoteHooks.stopZygoteNoThreadCreation();
  
@@ -3330,7 +3517,7 @@ index ca1ae194cb..344e3ed33c 100644
                  Runnable r = forkSystemServer(abiList, zygoteSocketName, zygoteServer);
  
                  // {@code r == null} in the parent (zygote) process, and {@code r != null} in the
-@@ -916,6 +919,8 @@ public class ZygoteInit {
+@@ -926,6 +929,8 @@ public class ZygoteInit {
                  }
              }
  
@@ -3339,7 +3526,7 @@ index ca1ae194cb..344e3ed33c 100644
              Log.i(TAG, "Accepting command socket connections");
  
              // The select loop returns early in the child process after a fork and
-@@ -937,6 +942,8 @@ public class ZygoteInit {
+@@ -947,6 +952,8 @@ public class ZygoteInit {
          }
      }
  
@@ -3348,7 +3535,7 @@ index ca1ae194cb..344e3ed33c 100644
      /**
       * Return {@code true} if this device configuration has another zygote.
       *
-@@ -944,7 +951,7 @@ public class ZygoteInit {
+@@ -954,7 +961,7 @@ public class ZygoteInit {
       * supports all ABIs this device supports, there won't be another zygote.
       */
      private static boolean hasSecondZygote(String abiList) {
@@ -3394,10 +3581,10 @@ index f8598f2f47..2764b89be7 100644
          mUsapPoolSupported = true;
          fetchUsapPoolPolicyProps();
 diff --git a/frameworks/base/core/jni/com_android_internal_os_Zygote.cpp b/frameworks/base/core/jni/com_android_internal_os_Zygote.cpp
-index cbc34629e8..10de580395 100644
+index fad9e0e798..cf73a5adda 100644
 --- a/frameworks/base/core/jni/com_android_internal_os_Zygote.cpp
 +++ b/frameworks/base/core/jni/com_android_internal_os_Zygote.cpp
-@@ -875,6 +875,9 @@ static void DetachDescriptors(JNIEnv* env,
+@@ -877,6 +877,9 @@ static void DetachDescriptors(JNIEnv* env,
      }
  
      for (int fd : fds_to_close) {
@@ -3407,7 +3594,7 @@ index cbc34629e8..10de580395 100644
        ALOGV("Switching descriptor %d to /dev/null", fd);
        if (TEMP_FAILURE_RETRY(dup3(devnull_fd, fd, O_CLOEXEC)) == -1) {
          fail_fn(StringPrintf("Failed dup3() on descriptor %d: %s", fd, strerror(errno)));
-@@ -2405,16 +2408,17 @@ static void com_android_internal_os_Zygote_nativeInitNativeState(JNIEnv* env, jc
+@@ -2598,16 +2601,17 @@ static void com_android_internal_os_Zygote_nativeInitNativeState(JNIEnv* env, jc
     * Obtain file descriptors created by init from the environment.
     */
  
@@ -3552,7 +3739,7 @@ index cf6702e45f..2195dec9bf 100644
      }
  
 diff --git a/frameworks/base/libs/hwui/jni/fonts/Font.cpp b/frameworks/base/libs/hwui/jni/fonts/Font.cpp
-index 09be630dc7..699c2d0285 100644
+index d78df3dca3..a1f09c502d 100644
 --- a/frameworks/base/libs/hwui/jni/fonts/Font.cpp
 +++ b/frameworks/base/libs/hwui/jni/fonts/Font.cpp
 @@ -50,8 +50,8 @@ static inline NativeFontBuilder* toBuilder(jlong ptr) {
@@ -3623,10 +3810,10 @@ index c13c800651..dfb07ed569 100644
  
  // Regular JNI
 diff --git a/frameworks/native/cmds/installd/dexopt.cpp b/frameworks/native/cmds/installd/dexopt.cpp
-index ebb78913b1..ce9d079aaa 100644
+index 794750ff81..af8c7cedee 100644
 --- a/frameworks/native/cmds/installd/dexopt.cpp
 +++ b/frameworks/native/cmds/installd/dexopt.cpp
-@@ -1941,6 +1941,9 @@ int dexopt(const char* dex_path, uid_t uid, const char* pkgname, const char* ins
+@@ -1950,6 +1950,9 @@ int dexopt(const char* dex_path, uid_t uid, const char* pkgname, const char* ins
      if (!GetProperty("ro.product.cpu.abilist64", "").empty()) {
        use_dex2oat64 = GetBoolProperty("dalvik.vm.dex2oat64.enabled", false);
      }
@@ -3637,7 +3824,7 @@ index ebb78913b1..ce9d079aaa 100644
          (use_dex2oat64 ? kDex2oat64Path : kDex2oat32Path),
          (use_dex2oat64 ? kDex2oatDebug64Path : kDex2oatDebug32Path),
 diff --git a/frameworks/native/opengl/libs/EGL/getProcAddress.cpp b/frameworks/native/opengl/libs/EGL/getProcAddress.cpp
-index b3d6f74e86..84712fe1c3 100644
+index e0ba946260..141ce7076a 100644
 --- a/frameworks/native/opengl/libs/EGL/getProcAddress.cpp
 +++ b/frameworks/native/opengl/libs/EGL/getProcAddress.cpp
 @@ -60,6 +60,12 @@ namespace android {
@@ -3662,7 +3849,7 @@ index b3d6f74e86..84712fe1c3 100644
              "1:\n"                                                  \
              :                                                       \
 diff --git a/frameworks/native/opengl/libs/GLES2/gl2.cpp b/frameworks/native/opengl/libs/GLES2/gl2.cpp
-index 65f50f54fb..f4ab842f15 100644
+index 5bd5c141b6..b531bb0dfb 100644
 --- a/frameworks/native/opengl/libs/GLES2/gl2.cpp
 +++ b/frameworks/native/opengl/libs/GLES2/gl2.cpp
 @@ -91,12 +91,19 @@ using namespace android;
@@ -3686,7 +3873,7 @@ index 65f50f54fb..f4ab842f15 100644
              "1:\n"                                                  \
              :                                                       \
 diff --git a/frameworks/native/opengl/libs/GLES_CM/gl.cpp b/frameworks/native/opengl/libs/GLES_CM/gl.cpp
-index bacd4b4bc8..5f835d6153 100644
+index 64c0f97708..689220d4ab 100644
 --- a/frameworks/native/opengl/libs/GLES_CM/gl.cpp
 +++ b/frameworks/native/opengl/libs/GLES_CM/gl.cpp
 @@ -147,12 +147,19 @@ GL_API void GL_APIENTRY glWeightPointerOESBounds(GLint size, GLenum type,
@@ -3834,10 +4021,10 @@ index bb4b7ae3ac..6f3e3b38da 100644
  
  /* Perform the actual YuvToRGB conversion in a macro, from register to
 diff --git a/hardware/interfaces/audio/common/all-versions/default/service/service.cpp b/hardware/interfaces/audio/common/all-versions/default/service/service.cpp
-index fbf616563d..41bf84c6d7 100644
+index 7b5a932ff6..bdba4f6e29 100644
 --- a/hardware/interfaces/audio/common/all-versions/default/service/service.cpp
 +++ b/hardware/interfaces/audio/common/all-versions/default/service/service.cpp
-@@ -60,8 +60,8 @@ static bool registerExternalServiceImplementation(const std::string& libName,
+@@ -66,8 +66,8 @@ static bool registerExternalServiceImplementation(const std::string& libName,
                error != nullptr ? error : "unknown error");
          return false;
      }
@@ -3862,17 +4049,17 @@ index 573e0e3e28..ff2029468f 100644
          }
      }
 diff --git a/libcore/libart/src/main/java/dalvik/system/VMRuntime.java b/libcore/libart/src/main/java/dalvik/system/VMRuntime.java
-index 8a0d631fb2..28b24319a2 100644
+index 456f2ea86d..4f3ab8abc8 100644
 --- a/libcore/libart/src/main/java/dalvik/system/VMRuntime.java
 +++ b/libcore/libart/src/main/java/dalvik/system/VMRuntime.java
-@@ -64,6 +64,7 @@ public final class VMRuntime {
+@@ -62,6 +62,7 @@ public final class VMRuntime {
          ABI_TO_INSTRUCTION_SET_MAP.put("x86_64", "x86_64");
          ABI_TO_INSTRUCTION_SET_MAP.put("arm64-v8a", "arm64");
          ABI_TO_INSTRUCTION_SET_MAP.put("arm64-v8a-hwasan", "arm64");
 +        ABI_TO_INSTRUCTION_SET_MAP.put("arm64-v9a", "arm64");
+         ABI_TO_INSTRUCTION_SET_MAP.put("riscv64", "riscv64");
      }
  
-     /**
 diff --git a/libnativehelper/JniConstants.c b/libnativehelper/JniConstants.c
 index 177298e1b8..d4b89f6885 100644
 --- a/libnativehelper/JniConstants.c
@@ -3887,7 +4074,7 @@ index 177298e1b8..d4b89f6885 100644
  #define JCLASS_INITIALIZE(cls, signature, androidOnly)                      \
      CLASS_NAME(cls) = FindClass(g_init_env, signature, androidOnly);
 diff --git a/packages/modules/Bluetooth/system/osi/src/alarm.cc b/packages/modules/Bluetooth/system/osi/src/alarm.cc
-index 19baacbd68..7ab0089df9 100644
+index 2f0a27ea71..60b7bee986 100644
 --- a/packages/modules/Bluetooth/system/osi/src/alarm.cc
 +++ b/packages/modules/Bluetooth/system/osi/src/alarm.cc
 @@ -142,7 +142,7 @@ static void remove_pending_alarm(alarm_t* alarm);
@@ -3918,10 +4105,10 @@ index 19baacbd68..7ab0089df9 100644
    if (timer_create(clock_id, &sigevent, timer) == -1) {
      LOG_ERROR("%s unable to create timer with clock %d: %s", __func__, clock_id,
 diff --git a/packages/modules/NeuralNetworks/driver/sample_shim/Android.bp b/packages/modules/NeuralNetworks/driver/sample_shim/Android.bp
-index 249ead9e46..c3e3d67565 100644
+index b0659ece0e..3577912474 100644
 --- a/packages/modules/NeuralNetworks/driver/sample_shim/Android.bp
 +++ b/packages/modules/NeuralNetworks/driver/sample_shim/Android.bp
-@@ -115,4 +115,5 @@ cc_binary {
+@@ -118,4 +118,5 @@ cc_binary {
      stl: "libc++_static",
      init_rc: ["config/android.hardware.neuralnetworks-shim-service-sample.rc"],
      vintf_fragments: ["config/android.hardware.neuralnetworks-shim-service-sample.xml"],
@@ -4102,7 +4289,7 @@ index e756fecca0..81cc59041c 100644
      if (result != 0) {
          ALOGE("androidCreateRawThreadEtc failed (entry=%p, res=%d, %s)\n"
 diff --git a/system/core/rootdir/init.zygote64.rc b/system/core/rootdir/init.zygote64.rc
-index b6ca5c0012..2a30e7130c 100644
+index 74a64c80f4..78cc65e025 100644
 --- a/system/core/rootdir/init.zygote64.rc
 +++ b/system/core/rootdir/init.zygote64.rc
 @@ -5,6 +5,8 @@ service zygote /system/bin/app_process64 -Xzygote /system/bin --zygote --start-s
@@ -4113,7 +4300,7 @@ index b6ca5c0012..2a30e7130c 100644
 +    socket usap_pool_arm64_v8a stream 660 root system
      onrestart exec_background - system system -- /system/bin/vdc volume abort_fuse
      onrestart write /sys/power/state on
-     onrestart restart audioserver
+     # NOTE: If the wakelock name here is changed, then also
 diff --git a/system/libhidl/transport/ServiceManagement.cpp b/system/libhidl/transport/ServiceManagement.cpp
 index f3ee611fbc..7de669ef7b 100644
 --- a/system/libhidl/transport/ServiceManagement.cpp
@@ -4131,10 +4318,10 @@ index f3ee611fbc..7de669ef7b 100644
                  const char* error = dlerror();
                  LOG(ERROR) << "Passthrough lookup opened " << lib << " but could not find symbol "
 diff --git a/system/netd/server/Android.bp b/system/netd/server/Android.bp
-index 615e740f13..7562bdc011 100644
+index 7773cb02cb..fc3af6f8ee 100644
 --- a/system/netd/server/Android.bp
 +++ b/system/netd/server/Android.bp
-@@ -160,6 +160,7 @@ cc_binary {
+@@ -167,6 +167,7 @@ cc_binary {
          cfi: true,
          memtag_heap: true,
      },
@@ -4143,10 +4330,10 @@ index 615e740f13..7562bdc011 100644
  
  cc_binary {
 diff --git a/system/sepolicy/private/file_contexts b/system/sepolicy/private/file_contexts
-index 951c9b5b5f..e68dc78463 100644
+index 57fcdfb467..b20a1fc4de 100644
 --- a/system/sepolicy/private/file_contexts
 +++ b/system/sepolicy/private/file_contexts
-@@ -169,8 +169,10 @@
+@@ -172,8 +172,10 @@
  /dev/socket/wpa_wlan[0-9] u:object_r:wpa_socket:s0
  /dev/socket/zygote	u:object_r:zygote_socket:s0
  /dev/socket/zygote_secondary	u:object_r:zygote_socket:s0
@@ -4158,5 +4345,5 @@ index 951c9b5b5f..e68dc78463 100644
  /dev/sys/block/by-name/rootdisk(/.*)?	u:object_r:rootdisk_sysdev:s0
  /dev/sys/block/by-name/userdata(/.*)?	u:object_r:userdata_sysdev:s0
 -- 
-2.38.0.rc1.362.ged0d419d3c-goog
+2.40.0.rc1.284.g88254d51c5-goog
 
