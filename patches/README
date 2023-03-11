@@ -24,6 +24,45 @@ system. See the comments at the top of that file for how to use it.
 
 [1] https://github.com/llvm/llvm-project/blob/master/llvm/utils/gn/README.rst
 
+Building Rust
+-------------
+
+To build the Rust toolchain, first clone the PAuth ABI fork of Rust:
+
+git clone -b apple-pac https://github.com/pcc/rust
+
+Make a copy of this LLVM repository under rust/src/llvm-project.
+Then in the rust directory, create a source tarball:
+
+./x.py dist rustc-src
+
+In a separate directory, clone the Android Rust toolchain repository:
+
+mkdir android-rust
+cd android-rust
+repo init -u https://android.googlesource.com/platform/manifest -b rust-toolchain
+repo sync -j72 -m /path/to/aosp/prebuilts/rust/linux-x86/1.67.1/manifest_*.xml
+
+Replace the contents of the toolchain/rustc directory with the contents
+of the source tarball that you just created:
+
+cd toolchain/rustc
+rm -rf *
+tar xz --strip-components=1 < /path/to/rust/build/dist/rustc-1.67.0-dev-src.tar.gz
+touch Android.mk
+
+Remove an unwanted patch from the toolchain/android_rust repository:
+
+rm toolchain/android_rust/patches/longterm/rustc-0012-libstd-link-signal-at-compilation-for-Android.patch
+
+Finally, build the toolchain:
+
+toolchain/android_rust/build.py --lto none
+
+And symlink the built toolchain into your AOSP source directory:
+
+ln -s $PWD/out/package /path/to/aosp/prebuilts/rust/linux-x86/myrust
+
 Building the NDK libc++
 -----------------------
 
@@ -66,6 +105,12 @@ by the frankendroid script.
 Set ENABLE_CFI=false because this prototype is not compatible
 with the software-based CFI used in Android.
 
+Set the following environment variables to specify the Rust compiler:
+
+export RUST_PREBUILTS_VERSION=myrust
+export RUST_DEFAULT_LINTS=' '
+export RUST_VENDOR_LINTS=' '
+
 Aside from that, follow the target-specific instructions.
 
 For FVP, see https://cs.android.com/android/platform/superproject/+/master:device/generic/goldfish/fvpbase/README.md
@@ -88,10 +133,17 @@ startup because WebView is provided as a prebuilt and therefore does
 not conform to the PAC ABI. The WebView prebuilt will need to be
 rebuilt and instructions for doing so will be provided at a later date.
 
-Programs with Rust components may crash on startup because the Rust
-compiler does not know about the PAC ABI. For now we disable PAC in
-these processes via an ELF note; the long term solution is to teach
-the Rust compiler to support the PAC ABI, for example by leveraging the
-cross-language type identifiers proposed as part of:
+Running the Rust std tests
+--------------------------
 
-https://github.com/rust-lang/rust/issues/89653
+Run the script llvm/utils/frankenndk (read it first, to figure out how
+to run it) to create a franken-NDK in the ndk directory of your LLVM
+source checkout that uses the PAuth ABI compiler.
+
+Then create a cargo.yaml file in the root directory of your PAuth ABI
+Rust fork with the following contents:
+
+[build]
+android-ndk = "/path/to/llvm-project/ndk"
+
+Finally, run ./build_pauth_abi.sh in the same location.
