@@ -14,11 +14,24 @@ in host Bionic: https://github.com/AsahiLinux/docs/wiki/Broken-Software
 On the M1, run:
 
 sudo pacman -S docker
+sudo systemctl enable docker
+sudo systemctl start docker
+sudo usermod -aG docker $USER
+# log in again for the group membership to take effect
 git clone https://github.com/google/android-cuttlefish
 cd android-cuttlefish/docker
 ./build.sh
 ln -s $PWD/cf ~/bin # or another directory on $PATH
 cf docker_create
+
+If you're lucky enough to have more than one M1 (or other arm64) machine,
+then you only need to build the Docker image with ./build.sh once. You
+can copy the image from one machine to another with a command such as:
+
+docker save cuttlefish | ssh b docker load
+
+run on the source machine, where b is your destination machine. This
+step would replace the ./build.sh step above.
 
 On the host, in your AOSP tree:
 
