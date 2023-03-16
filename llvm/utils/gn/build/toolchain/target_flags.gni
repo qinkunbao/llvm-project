@@ -15,10 +15,7 @@ if (current_os == "android") {
     "--sysroot=$android_ndk_path/toolchains/llvm/prebuilt/linux-x86_64/sysroot",
     "--gcc-toolchain=$android_ndk_path/toolchains/llvm/prebuilt/linux-x86_64",
   ]
-  target_ldflags += [
-    "-static-libstdc++",
-    "--unwindlib=none",
-  ]
+  target_ldflags += [ "-static-libstdc++" ]
   if (current_cpu == "arm") {
     target_flags += [ "-march=armv7-a" ]
   }
