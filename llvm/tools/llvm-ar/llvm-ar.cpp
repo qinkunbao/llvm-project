@@ -1076,7 +1076,8 @@ static void performWriteOperation(ArchiveOperation Operation,
 
   Error E =
       writeArchive(ArchiveName, NewMembersP ? *NewMembersP : NewMembers, Symtab,
-                   Kind, Deterministic, Thin, std::move(OldArchiveBuf));
+                   Kind, Deterministic, Thin, std::move(OldArchiveBuf),
+                   std::nullopt, [](Error Err) { return Err; });
   failIfError(std::move(E), ArchiveName);
 }
 

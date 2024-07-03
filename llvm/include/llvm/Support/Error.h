@@ -740,6 +740,13 @@ private:
 /// ErrorHandling.h.
 [[noreturn]] void report_fatal_error(Error Err, bool gen_crash_diag = true);
 
+/// Return the specified value if Err is a success value, otherwise return the
+/// error.
+template <typename T>
+Expected<T> errorOrValue(Error Err, T t) {
+  return Err ? Expected<T>(std::move(Err)) : Expected<T>(std::move(t));
+}
+
 /// Report a fatal error if Err is a failure value.
 ///
 /// This function can be used to wrap calls to fallible functions ONLY when it

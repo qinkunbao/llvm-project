@@ -48,11 +48,14 @@ enum class SymtabWritingMode {
   BigArchive64  // Only write the 64-bit symbol table.
 };
 
+Error warnToStderr(Error Err);
+
 Error writeArchive(StringRef ArcName, ArrayRef<NewArchiveMember> NewMembers,
                    SymtabWritingMode WriteSymtab, object::Archive::Kind Kind,
                    bool Deterministic, bool Thin,
                    std::unique_ptr<MemoryBuffer> OldArchiveBuf = nullptr,
-                   std::optional<bool> IsEC = std::nullopt);
+                   std::optional<bool> IsEC = std::nullopt,
+                   function_ref<Error(Error)> Warn = warnToStderr);
 
 // writeArchiveToBuffer is similar to writeArchive but returns the Archive in a
 // buffer instead of writing it out to a file.
