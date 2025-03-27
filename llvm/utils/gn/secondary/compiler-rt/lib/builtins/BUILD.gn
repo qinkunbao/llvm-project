@@ -1,5 +1,6 @@
 import("//compiler-rt/target.gni")
 import("//llvm/utils/gn/build/buildflags.gni")
+import("//llvm/utils/gn/build/toolchain/target_flags.gni")
 
 declare_args() {
   # Skip the atomic builtin (should normally be provided by a shared library).
@@ -510,6 +511,9 @@ static_library("builtins") {
     }
   }
 
+  if (emupac_force_non_pac) {
+    defines = [ "FORCE_NON_PAC" ]
+  }
   if (current_cpu == "avr") {
     sources += [
       "avr/divmodhi4.S",
