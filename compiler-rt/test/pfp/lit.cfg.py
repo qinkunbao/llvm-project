@@ -34,7 +34,4 @@ def build_invocation(compile_flags, with_lto=False):
 
 
 config.substitutions.append(("%clangxx ", build_invocation(clang_cxxflags)))
-if config.target_arch == 'aarch64':
-    config.substitutions.append(("%clangxx_pfp ", build_invocation(clang_pfp_cxxflags, True)))
-else:
-    config.substitutions.append(("%clangxx_pfp ", build_invocation(clang_pfp_cxxflags)))
+config.substitutions.append(("%clangxx_pfp ", build_invocation(clang_pfp_cxxflags, config.use_thinlto)))
