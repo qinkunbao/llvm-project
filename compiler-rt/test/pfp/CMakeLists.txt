@@ -1,6 +1,5 @@
 set(PFP_TESTSUITES)
 set(PFP_TEST_DEPS ${SANITIZER_COMMON_LIT_TEST_DEPS} unwind lld compiler-rt)
-set(PFP_TEST_USE_LLD True)
 
 macro(add_pfp_testsuite arch thinlto)
   set(PFP_TEST_TARGET_ARCH ${arch})

@@ -4,7 +4,7 @@
 config.name_suffix = "@PFP_TEST_CONFIG_SUFFIX@"
 config.target_cflags = "@PFP_TEST_TARGET_CFLAGS@"
 config.target_arch = "@PFP_TEST_TARGET_ARCH@"
-config.use_lld = @PFP_TEST_USE_LLD@
+config.use_lld = True
 config.use_thinlto = @PFP_TEST_USE_THINLTO@
 config.libunwind_shared = "@LIBUNWIND_ENABLE_SHARED@"
 config.libunwind_install_dir = "@LLVM_BINARY_DIR@/@LIBUNWIND_INSTALL_LIBRARY_DIR@"
