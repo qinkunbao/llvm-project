@@ -120,6 +120,6 @@ if (WIN32)
   set(ALL_ORC_SUPPORTED_ARCH ${X86_64})
 endif()
 
-if (UNIX)
+if (OS_NAME MATCHES "Linux")
   set(ALL_PFP_SUPPORTED_ARCH ${X86_64} ${ARM64})
 endif()
