@@ -1,5 +1,8 @@
 set(PFP_TESTSUITES)
-set(PFP_TEST_DEPS ${SANITIZER_COMMON_LIT_TEST_DEPS} unwind lld compiler-rt)
+set(PFP_TEST_DEPS ${SANITIZER_COMMON_LIT_TEST_DEPS} unwind compiler-rt)
+if(COMPILER_RT_HAS_LLD AND TARGET lld)
+  list(APPEND PFP_TEST_DEPS lld)
+endif()
 
 macro(add_pfp_testsuite arch thinlto)
   set(PFP_TEST_TARGET_ARCH ${arch})
