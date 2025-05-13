@@ -42,26 +42,11 @@ bool NoSanitizeList::containsFunction(SanitizerMask Mask,
   return SSCL->inSection(Mask, "fun", FunctionName);
 }
 
-void printLoc(SourceLocation& Loc, SourceManager& SM) {
-    llvm::raw_ostream &OS = llvm::outs();
-  if (Loc.isValid()) {
-    OS << "Loc:";
-    Loc.print(OS, SM);
-    OS << "-----\n";
-  }
-}
-
-void printSrc(StringRef name, SourceManager& SM) {
-    llvm::raw_ostream &OS = llvm::outs();
-    OS << "src:";
-    OS << name;
-    OS << "-----\n";
-}
 
 bool NoSanitizeList::containsFile(SanitizerMask Mask, StringRef FileName,
                                   StringRef Category) const {
-  printSrc(FileName, SM);
-  return SSCL->inSection(Mask, "src", FileName, Category);
+  bool allowList = SSCL->inSection(Mask, "src", FileName, "sanitize");
+  return SSCL->inSection(Mask, "src", FileName, Category) && !allowList;
 }
 
 
@@ -75,7 +60,6 @@ bool NoSanitizeList::containsMainFile(SanitizerMask Mask, StringRef FileName,
 
 bool NoSanitizeList::containsLocation(SanitizerMask Mask, SourceLocation Loc,
                                       StringRef Category) const {
-  printLoc(Loc, SM);
   return Loc.isValid() &&
          containsFile(Mask, SM.getFilename(SM.getFileLoc(Loc)), Category);
 }
