@@ -3511,6 +3511,7 @@ void CodeGenModule::AddGlobalAnnotations(const ValueDecl *D,
 
 bool CodeGenModule::isInNoSanitizeList(SanitizerMask Kind, llvm::Function *Fn,
                                        SourceLocation Loc) const {
+                                        
   const auto &NoSanitizeL = getContext().getNoSanitizeList();
   // NoSanitize by function name.
   if (NoSanitizeL.containsFunction(Kind, Fn->getName()))
